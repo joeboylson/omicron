@@ -48,7 +48,15 @@ Built in this order. Each part replaces an old tool only once it's ready.
       members (`supabase/migrations/0001_identity.sql`).
 - [x] Test setup in multipass: self-hosted Supabase (release v0.8.4) in the
       `omicron-dev` VM. `dev/supabase/install.sh`, `migrate.sh`, `test.sh`.
-- [ ] Machines check in and listen for changes with Supabase Realtime.
+- [x] Machines check in and listen for changes with Supabase Realtime:
+      `omicron daemon` checks in every 30 seconds and prints each change the
+      machine is allowed to see as one JSON line (`src/realtime.rs`). It
+      reconnects on its own and gets a new login before the old one expires.
+      End-to-end tests in `tests/daemon.rs`.
+- [ ] Note for later handlers: Realtime can deliver a change made just before
+      listening started, so whatever reacts to changes must be safe to run
+      twice. Also check how delete events interact with the access rules.
+- [ ] Run `omicron daemon` at login (launchd on macOS, systemd on Linux).
 
 ## 3. Projects and tasks (replaces Trello)
 - [ ] Projects with members, per-Project statuses, and one Done status.

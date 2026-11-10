@@ -13,3 +13,4 @@ ureq = { version = "2", features = ["json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 getrandom = "0.2"
 tiny_http = "0.12"
+tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }

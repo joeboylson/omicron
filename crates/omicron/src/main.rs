@@ -39,6 +39,13 @@ enum Command {
         #[arg(long = "host")]
         hosts: Vec<String>,
     },
+    /// Run in the background: check in, and print each change this machine
+    /// can see as one JSON line
+    Daemon {
+        /// Seconds between check-ins
+        #[arg(long, default_value_t = 30)]
+        check_in_every: u64,
+    },
     /// Machines: register this one, check in
     #[command(subcommand)]
     Machines(Machines),
@@ -101,6 +108,7 @@ fn run(cli: Cli) -> Result<()> {
             let supabase = Config::load()?.supabase()?;
             omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
         }
+        Command::Daemon { check_in_every } => daemon(check_in_every),
         Command::Machines(m) => machines(m),
         Command::People(p) => people(p),
     }
@@ -180,4 +188,47 @@ fn people(p: People) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// The tables a machine listens to.
+const WATCHED: &[&str] = &["projects", "project_members", "project_machines", "machines"];
+
+fn daemon(check_in_every: u64) -> Result<()> {
+    use omicron::realtime::{self, Event};
+    use std::io::Write;
+    let config = Config::load()?;
+    let supabase = config.supabase()?;
+    let key = config.machine_key()?;
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    // One login for check-ins; Realtime asks for its own when it needs one.
+    let mut current = supabase.sign_in_machine(&key)?;
+    let mut since_login = std::time::Instant::now();
+    realtime::listen(
+        &supabase,
+        WATCHED,
+        || supabase.sign_in_machine(&key),
+        std::time::Duration::from_secs(check_in_every.max(1)),
+        || {
+            if since_login.elapsed().as_secs() + 300 >= current.expires_in {
+                current = supabase.sign_in_machine(&key)?;
+                since_login = std::time::Instant::now();
+            }
+            supabase.request_as(&current, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
+            Ok(())
+        },
+        &stop,
+        |event| {
+            match event {
+                Event::Listening => eprintln!("omicron daemon: listening for changes"),
+                Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
+                Event::Change(c) => {
+                    let line = json!({ "table": c.table, "type": c.kind, "record": c.record, "old_record": c.old_record });
+                    let mut out = std::io::stdout().lock();
+                    writeln!(out, "{line}")?;
+                    out.flush()?;
+                }
+            }
+            Ok(())
+        },
+    )
 }
