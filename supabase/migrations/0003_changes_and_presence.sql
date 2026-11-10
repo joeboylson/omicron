@@ -13,7 +13,8 @@
 
 create table public.changes (
   seq bigint generated always as identity primary key,
-  at timestamptz not null default now(),
+  -- When the line was written (not when its transaction started).
+  at timestamptz not null default clock_timestamp(),
   table_name text not null,
   kind text not null check (kind in ('INSERT', 'UPDATE', 'DELETE')),
   -- The Project the change belongs to, if any.
@@ -29,6 +30,7 @@ create table public.changes (
 );
 create index changes_project_idx on public.changes (project_id, seq);
 create index changes_subject_idx on public.changes (subject_id, seq);
+create index changes_at_idx on public.changes (at);
 
 alter table public.changes enable row level security;
 create policy "see changes" on public.changes for select using (
@@ -48,6 +50,7 @@ declare
   r jsonb := coalesce(row_new, row_old);
   project uuid;
   subject uuid;
+  line bigint;
 begin
   case tg_table_name
     when 'projects' then project := (r ->> 'id')::uuid; subject := null;
@@ -63,7 +66,12 @@ begin
     return null;
   end if;
   insert into public.changes (table_name, kind, project_id, subject_id, record, old_record)
-  values (tg_table_name, tg_op, project, subject, row_new, row_old);
+  values (tg_table_name, tg_op, project, subject, row_new, row_old)
+  returning seq into line;
+  -- Keep 30 days. Done here, every 100th line, instead of on a timer.
+  if line % 100 = 0 then
+    delete from public.changes where at < now() - interval '30 days';
+  end if;
   return null;
 end;
 $$;
@@ -76,6 +84,18 @@ create trigger record_change after insert or update or delete on public.project_
   for each row execute function public.record_change();
 create trigger record_change after insert or update or delete on public.machines
   for each row execute function public.record_change();
+
+-- The lines from the last second, by the signed-in user's access rules. Two
+-- changes saved at the same moment can be numbered in one order and finish
+-- in the other; a machine starting up rereads this window so it can't skip
+-- the one that finished last.
+create function public.recent_changes() returns setof public.changes
+language sql stable set search_path = '' as $$
+  select * from public.changes
+  where at >= (select max(at) from public.changes) - interval '1 second'
+  order by seq;
+$$;
+grant execute on function public.recent_changes() to authenticated;
 
 -- Listeners follow the change list instead of each table.
 alter publication supabase_realtime drop table

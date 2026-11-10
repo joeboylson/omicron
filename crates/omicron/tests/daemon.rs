@@ -288,3 +288,77 @@ fn the_daemon_stops_on_a_bad_key() {
     let said: Vec<String> = daemon.errors.iter().collect();
     assert!(said.iter().any(|l| l.contains("doesn't work")), "{said:?}");
 }
+
+/// A `psql` session straight into the test database, if the test VM has one.
+fn psql() -> Option<Child> {
+    let cmd = std::env::var("OMICRON_TEST_PSQL").ok()?;
+    let mut parts = cmd.split_whitespace();
+    let mut c = Command::new(parts.next()?);
+    c.args(parts).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+    Some(c.spawn().unwrap())
+}
+
+#[test]
+fn a_change_that_finishes_saving_late_is_still_printed() {
+    use std::io::Write;
+    let s = supabase_or_skip!();
+    let Some(mut held) = psql() else {
+        eprintln!("skipped: no direct database access");
+        return;
+    };
+    let key = s.register_machine(&unique("watcher"), true).unwrap();
+    let home = std::env::temp_dir().join(format!("omicron-test-{}", Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("config.json"), json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string()).unwrap();
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+
+    // Start a save and hold it open: its line gets a number now but stays
+    // hidden until it finishes.
+    let late = unique("late");
+    let stdin = held.stdin.as_mut().unwrap();
+    writeln!(stdin, "begin; insert into public.projects (name) values ('{late}'); select pg_sleep(0.3);").unwrap();
+    stdin.flush().unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+
+    // A later save finishes first and is printed first.
+    let me = person(&s, "owner");
+    let early = unique("early");
+    start_project(&s, &me, &early);
+    let first = daemon.wait_for("the later save", |c| c["table"] == "projects" && c["record"]["name"] == early.as_str());
+
+    // Now the held save finishes. Its number is lower, but it must still arrive.
+    writeln!(stdin, "commit;").unwrap();
+    stdin.flush().unwrap();
+    let second = daemon.wait_for("the save that finished late", |c| c["table"] == "projects" && c["record"]["name"] == late.as_str());
+    assert!(second["seq"].as_i64() < first["seq"].as_i64(), "the held save should have the lower number");
+    drop(held.stdin.take());
+    let _ = held.wait();
+}
+
+#[test]
+fn lines_older_than_30_days_are_cleared_out() {
+    use std::io::Write;
+    let s = supabase_or_skip!();
+    let Some(mut db) = psql() else {
+        eprintln!("skipped: no direct database access");
+        return;
+    };
+    let marker = unique("ancient");
+    {
+        let stdin = db.stdin.as_mut().unwrap();
+        writeln!(stdin, "insert into public.changes (table_name, kind, at, record) values ('projects', 'INSERT', now() - interval '31 days', jsonb_build_object('name', '{marker}'));").unwrap();
+        writeln!(stdin, "insert into public.changes (table_name, kind, at, record) values ('projects', 'INSERT', now() - interval '29 days', jsonb_build_object('name', '{marker}-recent'));").unwrap();
+    }
+    drop(db.stdin.take());
+    assert!(db.wait().unwrap().success());
+
+    // Cleanup runs every 100th line, so make a little over 100.
+    let me = person(&s, "busy");
+    for i in 0..30 {
+        start_project(&s, &me, &format!("{marker}-{i}"));
+    }
+    let left = |name: &str| s.admin_request("GET", &format!("/rest/v1/changes?record->>name=eq.{name}&select=seq"), None).unwrap();
+    assert_eq!(left(&marker), json!([]), "the 31-day-old line should be gone");
+    assert_eq!(left(&format!("{marker}-recent")).as_array().unwrap().len(), 1, "the 29-day-old line should stay");
+}

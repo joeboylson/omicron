@@ -61,11 +61,15 @@ Built in this order. Each part replaces an old tool only once it's ready.
         private channel. A machine shows up when its daemon connects and
         drops off when it disconnects. `omicron machines awake` lists them.
       End-to-end tests in `tests/daemon.rs`.
-- [ ] Rare gap: two changes saved at the same moment can get their numbers
-      in one order and finish in the other. A listener could then skip the
-      lower one. Fix by reading a short window back on each change, or by
-      numbering lines as they finish.
-- [ ] The change list grows forever. Decide how long to keep it.
+- [x] Out-of-order saves: two changes saved at the same moment can be
+      numbered in one order and finish in the other. Each machine remembers
+      the last 1,000 lines it handled (not just the highest number), so a
+      late one is still handled once, and on startup it rereads every line
+      from the last second. Tested by holding a save open in the database.
+- [x] The change list keeps 30 days. The database clears older lines itself
+      every 100th line, so there's no timer.
+- [ ] A machine that's off for more than 30 days misses what was cleared.
+      Decide what it should do then (for example, reload everything).
 - [ ] Run `omicron daemon` at login (launchd on macOS, systemd on Linux).
 
 ## 3. Projects and tasks (replaces Trello)

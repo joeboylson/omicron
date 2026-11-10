@@ -273,12 +273,21 @@ fn daemon() -> Result<()> {
     })
 }
 
-/// Read the change list from where this machine left off. The first time,
+/// Read the change list from where this machine left off, plus every line
+/// from the last second (in case one finished saving late). The first time,
 /// start from now instead of replaying all of history.
 fn catch_up(supabase: &omicron::supa::Supabase, session: &omicron::supa::Session, state: &mut omicron::config::State) -> Result<()> {
+    let window = supabase.request_as(session, "POST", "/rest/v1/rpc/recent_changes", Some(json!({})))?;
+    let window = window.as_array().cloned().unwrap_or_default();
     let Some(mut last) = state.last_change else {
         let newest = supabase.request_as(session, "GET", "/rest/v1/changes?select=seq&order=seq.desc&limit=1", None)?;
-        state.last_change = Some(newest.get(0).and_then(|r| r["seq"].as_i64()).unwrap_or(0));
+        // Mark what's there as handled, without printing it.
+        for row in &window {
+            if let Some(seq) = row["seq"].as_i64() {
+                state.mark(seq);
+            }
+        }
+        state.last_change = Some(newest.get(0).and_then(|r| r["seq"].as_i64()).unwrap_or(0).max(state.last_change.unwrap_or(0)));
         return state.save();
     };
     const PAGE: usize = 500;
@@ -290,16 +299,20 @@ fn catch_up(supabase: &omicron::supa::Supabase, session: &omicron::supa::Session
         }
         match state.last_change {
             Some(now) if rows.len() == PAGE && now > last => last = now,
-            _ => return Ok(()),
+            _ => break,
         }
     }
+    for row in &window {
+        handle_change(row, state)?;
+    }
+    Ok(())
 }
 
 /// Print one line of the change list, unless it was already handled.
 fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State) -> Result<()> {
     use std::io::Write;
     let Some(seq) = row["seq"].as_i64() else { return Ok(()) };
-    if state.last_change.is_some_and(|last| seq <= last) {
+    if !state.is_new(seq) {
         return Ok(());
     }
     let line = json!({
@@ -315,6 +328,6 @@ fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State) ->
     let mut out = std::io::stdout().lock();
     writeln!(out, "{line}")?;
     out.flush()?;
-    state.last_change = Some(seq);
+    state.mark(seq);
     state.save()
 }

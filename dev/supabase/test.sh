@@ -7,5 +7,8 @@ export OMICRON_SUPABASE_URL=http://localhost:8000
 export OMICRON_SUPABASE_KEY=$(env_value ANON_KEY)
 export OMICRON_SUPABASE_SECRET_KEY=$(env_value SERVICE_ROLE_KEY)
 export CARGO_TARGET_DIR=$HOME/target
+# Lets tests talk to the database directly, to set up cases the API can't
+# (like a save that's held open). Only on the test VM.
+export OMICRON_TEST_PSQL="sudo docker compose -f $HOME/supabase/docker-compose.yml exec -T db psql -U postgres -q -v ON_ERROR_STOP=1"
 cd "$HOME/omicron"
 "$HOME/.cargo/bin/cargo" test "$@"

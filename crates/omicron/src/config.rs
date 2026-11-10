@@ -94,12 +94,46 @@ impl Config {
 /// What this machine has done so far, in `~/.omicron/state.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct State {
-    /// The last line of the change list this machine has handled.
+    /// The highest line of the change list this machine has handled.
     #[serde(default)]
     pub last_change: Option<i64>,
+    /// The most recent lines handled, so a line that finishes saving after a
+    /// higher-numbered one still gets handled exactly once.
+    #[serde(default)]
+    pub recent: Vec<i64>,
 }
 
+/// How many handled lines to remember.
+const RECENT: usize = 1000;
+
 impl State {
+    /// Should this line be handled? Yes unless it already was. Lines far
+    /// below the newest handled one count as handled already (they're from
+    /// before this machine started remembering).
+    pub fn is_new(&self, seq: i64) -> bool {
+        if self.recent.binary_search(&seq).is_ok() {
+            return false;
+        }
+        match (self.last_change, self.recent.first()) {
+            (None, _) => true,
+            (Some(last), _) if seq > last => true,
+            (Some(_), Some(&oldest)) => seq > oldest,
+            (Some(_), None) => false,
+        }
+    }
+
+    /// Remember that this line was handled.
+    pub fn mark(&mut self, seq: i64) {
+        if let Err(i) = self.recent.binary_search(&seq) {
+            self.recent.insert(i, seq);
+        }
+        if self.recent.len() > RECENT {
+            let extra = self.recent.len() - RECENT;
+            self.recent.drain(..extra);
+        }
+        self.last_change = Some(self.last_change.map_or(seq, |l| l.max(seq)));
+    }
+
     pub fn load() -> Result<State> {
         let path = home()?.join("state.json");
         match std::fs::read_to_string(&path) {
@@ -116,5 +150,51 @@ impl State {
         std::fs::write(&tmp, serde_json::to_string(self)?)?;
         std::fs::rename(&tmp, &path).with_context(|| format!("couldn't save {}", path.display()))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::State;
+
+    #[test]
+    fn each_line_is_handled_once() {
+        let mut s = State::default();
+        assert!(s.is_new(5));
+        s.mark(5);
+        assert!(!s.is_new(5));
+        assert!(s.is_new(6));
+    }
+
+    #[test]
+    fn a_lower_line_that_finishes_late_is_still_handled() {
+        let mut s = State::default();
+        s.mark(10);
+        s.mark(12);
+        // 11 finished saving after 12.
+        assert!(s.is_new(11));
+        s.mark(11);
+        assert!(!s.is_new(11));
+        assert_eq!(s.last_change, Some(12));
+    }
+
+    #[test]
+    fn it_remembers_a_bounded_number_of_lines() {
+        let mut s = State::default();
+        for seq in 1..=1500 {
+            s.mark(seq);
+        }
+        assert_eq!(s.recent.len(), 1000);
+        assert_eq!(s.recent.first(), Some(&501));
+        // Lines older than what it remembers count as already handled.
+        assert!(!s.is_new(100));
+        assert!(s.is_new(1501));
+    }
+
+    #[test]
+    fn a_machine_that_never_remembered_lines_only_takes_newer_ones() {
+        let s = State { last_change: Some(50), recent: vec![] };
+        assert!(!s.is_new(49));
+        assert!(s.is_new(51));
     }
 }
