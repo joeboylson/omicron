@@ -48,14 +48,24 @@ Built in this order. Each part replaces an old tool only once it's ready.
       members (`supabase/migrations/0001_identity.sql`).
 - [x] Test setup in multipass: self-hosted Supabase (release v0.8.4) in the
       `omicron-dev` VM. `dev/supabase/install.sh`, `migrate.sh`, `test.sh`.
-- [x] Machines check in and listen for changes with Supabase Realtime:
-      `omicron daemon` checks in every 30 seconds and prints each change the
-      machine is allowed to see as one JSON line (`src/realtime.rs`). It
-      reconnects on its own and gets a new login before the old one expires.
+- [x] Event-driven, with no timers:
+      - **Change list** (`changes` table): the database adds a numbered line
+        for every change, with who made it and the row before and after.
+        Nobody can edit it. People and machines only see lines for their
+        Projects, plus lines about themselves (so they learn they were
+        removed).
+      - **`omicron daemon`** reads the lines it missed while off, then follows
+        new ones live. It remembers its place in `~/.omicron/state.json`, so
+        each line is printed once, in order, even across restarts.
+      - **Who's awake** is Supabase's live list of connected machines on a
+        private channel. A machine shows up when its daemon connects and
+        drops off when it disconnects. `omicron machines awake` lists them.
       End-to-end tests in `tests/daemon.rs`.
-- [ ] Note for later handlers: Realtime can deliver a change made just before
-      listening started, so whatever reacts to changes must be safe to run
-      twice. Also check how delete events interact with the access rules.
+- [ ] Rare gap: two changes saved at the same moment can get their numbers
+      in one order and finish in the other. A listener could then skip the
+      lower one. Fix by reading a short window back on each change, or by
+      numbering lines as they finish.
+- [ ] The change list grows forever. Decide how long to keep it.
 - [ ] Run `omicron daemon` at login (launchd on macOS, systemd on Linux).
 
 ## 3. Projects and tasks (replaces Trello)

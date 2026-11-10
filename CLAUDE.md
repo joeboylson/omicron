@@ -14,8 +14,11 @@ teams of Claude sessions (rewritten from legion).
 - **No central server.** Every computer runs its own copy of Omicron and talks
   straight to one shared Supabase database. Anyone can set it up against their
   own Supabase.
-- **Event-driven.** Machines react to changes as they happen (Supabase
-  Realtime). Don't check the database on a timer.
+- **Event-driven.** Every change adds a line to the `changes` table (written
+  by the database itself). Machines catch up on lines they missed, then follow
+  new ones live through Supabase Realtime. Who's awake comes from Realtime's
+  list of connected machines. Don't check the database on a timer, and make
+  anything that reacts to a change safe to run twice.
 - **The database is the source of truth**, including logins.
 - **People** sign in with their Tailscale identity. **Machines** use an API key,
   one per machine. API keys are never for people.

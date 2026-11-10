@@ -195,16 +195,83 @@ fn the_daemon_only_hears_about_its_own_projects() {
     assert!(leaked.is_empty(), "heard about a Project it isn't in: {leaked:?}");
 }
 
+/// Run a one-off `omicron` command as the machine in `home`.
+fn run(home: &Path, args: &[&str]) -> String {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
+    for (k, _) in std::env::vars() {
+        if k.starts_with("OMICRON_") {
+            cmd.env_remove(k);
+        }
+    }
+    let out = cmd.env("OMICRON_HOME", home).args(args).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
 #[test]
-fn the_daemon_keeps_checking_in() {
+fn a_running_daemon_shows_as_awake_and_drops_off_when_it_stops() {
     let s = supabase_or_skip!();
-    let (home, id) = registered_machine(&s, &unique("beat"));
-    let daemon = start_daemon(&home, &["--check-in-every", "1"]);
+    let name = unique("awake");
+    let (home, _) = registered_machine(&s, &name);
+    let (other, _) = registered_machine(&s, &unique("asker"));
+
+    let daemon = start_daemon(&home, &[]);
     daemon.wait_until_listening();
-    let seen = |s: &Supabase| s.admin_request("GET", &format!("/rest/v1/machines?id=eq.{id}&select=last_seen"), None).unwrap()[0]["last_seen"].clone();
-    let first = seen(&s);
-    std::thread::sleep(Duration::from_millis(2500));
-    assert_ne!(seen(&s), first);
+    assert!(run(&other, &["machines", "awake"]).lines().any(|l| l == name), "{name} should be awake");
+
+    drop(daemon);
+    // Supabase notices the closed connection right away; allow a moment.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if !run(&other, &["machines", "awake"]).lines().any(|l| l == name) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{name} still shows as awake after it stopped");
+        std::thread::sleep(Duration::from_millis(300));
+    }
+}
+
+#[test]
+fn a_restarted_daemon_catches_up_on_what_it_missed_once() {
+    let s = supabase_or_skip!();
+    let (home, id) = registered_machine(&s, &unique("sleepy"));
+    let me = person(&s, "owner");
+    let project = start_project(&s, &me, "Shared");
+    s.request_as(&me, "POST", "/rest/v1/project_machines", Some(json!({ "project_id": project, "machine_id": id }))).unwrap();
+
+    // Start once so the machine knows where it is in the change list.
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+    s.request_as(&me, "PATCH", &format!("/rest/v1/projects?id=eq.{project}"), Some(json!({ "name": "While awake" }))).unwrap();
+    let seen = daemon.wait_for("the rename while awake", |c| c["record"]["name"] == "While awake");
+    drop(daemon);
+
+    // Changed while the machine was off.
+    s.request_as(&me, "PATCH", &format!("/rest/v1/projects?id=eq.{project}"), Some(json!({ "name": "While asleep" }))).unwrap();
+
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+    let missed = daemon.wait_for("the rename it missed", |c| c["record"]["name"] == "While asleep");
+    assert!(missed["seq"].as_i64() > seen["seq"].as_i64());
+    std::thread::sleep(Duration::from_millis(500));
+    let repeats: Vec<Value> = daemon.drain().into_iter().filter(|c| c["record"]["name"] == "While awake").collect();
+    assert!(repeats.is_empty(), "printed a change twice: {repeats:?}");
+}
+
+#[test]
+fn changes_say_who_made_them() {
+    let s = supabase_or_skip!();
+    let (home, id) = registered_machine(&s, &unique("history"));
+    let me = person(&s, "owner");
+    let project = start_project(&s, &me, "Tracked");
+    s.request_as(&me, "POST", "/rest/v1/project_machines", Some(json!({ "project_id": project, "machine_id": id }))).unwrap();
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+    s.request_as(&me, "PATCH", &format!("/rest/v1/projects?id=eq.{project}"), Some(json!({ "name": "Renamed" }))).unwrap();
+    let change = daemon.wait_for("the rename", |c| c["record"]["name"] == "Renamed");
+    assert_eq!(change["actor_id"], me.user.id.to_string());
+    assert_eq!(change["old_record"]["name"], "Tracked");
+    assert_eq!(change["project_id"], project.as_str());
 }
 
 #[test]

@@ -39,13 +39,9 @@ enum Command {
         #[arg(long = "host")]
         hosts: Vec<String>,
     },
-    /// Run in the background: check in, and print each change this machine
-    /// can see as one JSON line
-    Daemon {
-        /// Seconds between check-ins
-        #[arg(long, default_value_t = 30)]
-        check_in_every: u64,
-    },
+    /// Run in the background: show this machine as awake, catch up on
+    /// missed changes, then print each new change as one JSON line
+    Daemon,
     /// Machines: register this one, check in
     #[command(subcommand)]
     Machines(Machines),
@@ -71,8 +67,10 @@ enum Machines {
     UseKey {
         key: String,
     },
-    /// Sign in with this machine's key and say it's awake
+    /// Sign in with this machine's key and record when it was last seen
     CheckIn,
+    /// List the machines that are awake right now
+    Awake,
 }
 
 #[derive(Subcommand)]
@@ -108,7 +106,7 @@ fn run(cli: Cli) -> Result<()> {
             let supabase = Config::load()?.supabase()?;
             omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
         }
-        Command::Daemon { check_in_every } => daemon(check_in_every),
+        Command::Daemon => daemon(),
         Command::Machines(m) => machines(m),
         Command::People(p) => people(p),
     }
@@ -175,7 +173,36 @@ fn machines(m: Machines) -> Result<()> {
             }
             Ok(())
         }
+        Machines::Awake => {
+            let supabase = config.supabase()?;
+            let key = config.machine_key()?;
+            for name in awake_machines(&supabase, &key)? {
+                println!("{name}");
+            }
+            Ok(())
+        }
     }
+}
+
+/// Join the shared channel just long enough to see who's connected.
+fn awake_machines(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey) -> Result<Vec<String>> {
+    use omicron::realtime::{self, Event, Listen, Next};
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    let mut names = None;
+    let started = std::time::Instant::now();
+    realtime::listen(supabase, &Listen { tables: &[], announce: None }, || supabase.sign_in_machine(key), &stop, |event| {
+        Ok(match event {
+            Event::Connected(who) => {
+                names = Some(who.values().filter_map(|d| d["name"].as_str().map(String::from)).collect::<Vec<_>>());
+                Next::Stop
+            }
+            Event::Reconnecting(why) if started.elapsed().as_secs() > 10 => bail!("couldn't reach Realtime: {why}"),
+            _ => Next::Continue,
+        })
+    })?;
+    let mut names = names.context("Realtime didn't say who's connected")?;
+    names.sort();
+    Ok(names)
 }
 
 fn people(p: People) -> Result<()> {
@@ -190,45 +217,87 @@ fn people(p: People) -> Result<()> {
     }
 }
 
-/// The tables a machine listens to.
-const WATCHED: &[&str] = &["projects", "project_members", "project_machines", "machines"];
+/// Run in the background.
+///
+/// Shows this machine as awake on the shared channel (there's no check-in
+/// timer: it drops off the moment it disconnects), reads the lines of the
+/// change list it missed while it was off, then prints each new line as it
+/// arrives. Each line is printed once, in order, even across restarts.
+fn daemon() -> Result<()> {
+    use omicron::config::State;
+    use omicron::realtime::{self, Event, Listen, Next};
 
-fn daemon(check_in_every: u64) -> Result<()> {
-    use omicron::realtime::{self, Event};
-    use std::io::Write;
     let config = Config::load()?;
     let supabase = config.supabase()?;
     let key = config.machine_key()?;
+    let first = supabase.sign_in_machine(&key)?;
+    let me = supabase.request_as(&first, "GET", &format!("/rest/v1/machines?id=eq.{}&select=name", key.machine_id), None)?;
+    let name = me.get(0).and_then(|r| r["name"].as_str()).context("this machine's record is missing")?.to_string();
+    let mut state = State::load()?;
     let stop = std::sync::atomic::AtomicBool::new(false);
-    // One login for check-ins; Realtime asks for its own when it needs one.
-    let mut current = supabase.sign_in_machine(&key)?;
-    let mut since_login = std::time::Instant::now();
-    realtime::listen(
-        &supabase,
-        WATCHED,
-        || supabase.sign_in_machine(&key),
-        std::time::Duration::from_secs(check_in_every.max(1)),
-        || {
-            if since_login.elapsed().as_secs() + 300 >= current.expires_in {
-                current = supabase.sign_in_machine(&key)?;
-                since_login = std::time::Instant::now();
+
+    let listen = Listen {
+        tables: &["changes"],
+        announce: Some((key.machine_id.to_string(), json!({ "kind": "machine", "machine_id": key.machine_id, "name": name }))),
+    };
+    realtime::listen(&supabase, &listen, || supabase.sign_in_machine(&key), &stop, |event| {
+        match event {
+            Event::Listening => {
+                let session = supabase.sign_in_machine(&key)?;
+                supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
+                catch_up(&supabase, &session, &mut state)?;
+                eprintln!("omicron daemon: {name} is listening for changes");
             }
-            supabase.request_as(&current, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
-            Ok(())
-        },
-        &stop,
-        |event| {
-            match event {
-                Event::Listening => eprintln!("omicron daemon: listening for changes"),
-                Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
-                Event::Change(c) => {
-                    let line = json!({ "table": c.table, "type": c.kind, "record": c.record, "old_record": c.old_record });
-                    let mut out = std::io::stdout().lock();
-                    writeln!(out, "{line}")?;
-                    out.flush()?;
-                }
-            }
-            Ok(())
-        },
-    )
+            Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
+            Event::Change(c) if c.table == "changes" => handle_change(&c.record, &mut state)?,
+            Event::Change(_) | Event::Connected(_) => {}
+        }
+        Ok(Next::Continue)
+    })
+}
+
+/// Read the change list from where this machine left off. The first time,
+/// start from now instead of replaying all of history.
+fn catch_up(supabase: &omicron::supa::Supabase, session: &omicron::supa::Session, state: &mut omicron::config::State) -> Result<()> {
+    let Some(mut last) = state.last_change else {
+        let newest = supabase.request_as(session, "GET", "/rest/v1/changes?select=seq&order=seq.desc&limit=1", None)?;
+        state.last_change = Some(newest.get(0).and_then(|r| r["seq"].as_i64()).unwrap_or(0));
+        return state.save();
+    };
+    const PAGE: usize = 500;
+    loop {
+        let rows = supabase.request_as(session, "GET", &format!("/rest/v1/changes?seq=gt.{last}&order=seq.asc&limit={PAGE}"), None)?;
+        let rows = rows.as_array().cloned().unwrap_or_default();
+        for row in &rows {
+            handle_change(row, state)?;
+        }
+        match state.last_change {
+            Some(now) if rows.len() == PAGE && now > last => last = now,
+            _ => return Ok(()),
+        }
+    }
+}
+
+/// Print one line of the change list, unless it was already handled.
+fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State) -> Result<()> {
+    use std::io::Write;
+    let Some(seq) = row["seq"].as_i64() else { return Ok(()) };
+    if state.last_change.is_some_and(|last| seq <= last) {
+        return Ok(());
+    }
+    let line = json!({
+        "seq": seq,
+        "at": row["at"],
+        "table": row["table_name"],
+        "type": row["kind"],
+        "project_id": row["project_id"],
+        "actor_id": row["actor_id"],
+        "record": row["record"],
+        "old_record": row["old_record"],
+    });
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "{line}")?;
+    out.flush()?;
+    state.last_change = Some(seq);
+    state.save()
 }

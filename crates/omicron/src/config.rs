@@ -90,3 +90,31 @@ impl Config {
             .parse()
     }
 }
+
+/// What this machine has done so far, in `~/.omicron/state.json`.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct State {
+    /// The last line of the change list this machine has handled.
+    #[serde(default)]
+    pub last_change: Option<i64>,
+}
+
+impl State {
+    pub fn load() -> Result<State> {
+        let path = home()?.join("state.json");
+        match std::fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text).with_context(|| format!("{} isn't valid", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(State::default()),
+            Err(e) => Err(e).with_context(|| format!("couldn't read {}", path.display())),
+        }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = home()?.join("state.json");
+        std::fs::create_dir_all(home()?)?;
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_string(self)?)?;
+        std::fs::rename(&tmp, &path).with_context(|| format!("couldn't save {}", path.display()))?;
+        Ok(())
+    }
+}

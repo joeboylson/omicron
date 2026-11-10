@@ -188,3 +188,37 @@ fn a_wrong_machine_key_is_refused() {
     let err = s.sign_in_machine(&wrong).unwrap_err().to_string();
     assert!(err.contains("doesn't work"), "{err}");
 }
+
+#[test]
+fn only_members_see_a_projects_change_list() {
+    let s = supabase_or_skip!();
+    let me = s.sign_in_person(&someone("lee")).unwrap();
+    let stranger = s.sign_in_person(&someone("max")).unwrap();
+    let _stranger_project = new_project(&s, &stranger, "Theirs");
+    let project = new_project(&s, &me, "Mine");
+    let path = format!("/rest/v1/changes?project_id=eq.{project}&select=seq,table_name,kind");
+    let mine = s.request_as(&me, "GET", &path, None).unwrap();
+    assert!(mine.as_array().unwrap().iter().any(|c| c["table_name"] == "projects" && c["kind"] == "INSERT"), "{mine}");
+    assert_eq!(s.request_as(&stranger, "GET", &path, None).unwrap(), json!([]));
+}
+
+#[test]
+fn nobody_can_write_to_the_change_list() {
+    let s = supabase_or_skip!();
+    let me = s.sign_in_person(&someone("ned")).unwrap();
+    let tried = s.request_as(&me, "POST", "/rest/v1/changes", Some(json!({ "table_name": "projects", "kind": "INSERT" })));
+    assert!(tried.is_err());
+}
+
+#[test]
+fn people_removed_from_a_project_still_see_that_they_were_removed() {
+    let s = supabase_or_skip!();
+    let me = s.sign_in_person(&someone("oli")).unwrap();
+    let them = s.sign_in_person(&someone("pam")).unwrap();
+    let project = new_project(&s, &me, "Leaving");
+    s.request_as(&me, "POST", "/rest/v1/project_members", Some(json!({ "project_id": project, "person_id": them.user.id }))).unwrap();
+    s.request_as(&me, "DELETE", &format!("/rest/v1/project_members?project_id=eq.{project}&person_id=eq.{}", them.user.id), None)
+        .unwrap();
+    let theirs = s.request_as(&them, "GET", &format!("/rest/v1/changes?project_id=eq.{project}&table_name=eq.project_members&kind=eq.DELETE"), None).unwrap();
+    assert_eq!(theirs.as_array().unwrap().len(), 1, "{theirs}");
+}
