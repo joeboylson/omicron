@@ -43,7 +43,8 @@ mounted at `~/omicron` and a self-hosted Supabase at `~/supabase`.
 
 ```sh
 multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/supabase/migrate.sh   # apply new migrations (--reset to start over)
-multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/supabase/test.sh      # every test, including the Supabase ones
+multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/supabase/test.sh      # every Rust test, including the Supabase ones
+multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/e2e.sh                # browser tests (Playwright) against the real `omicron serve`
 ```
 
 New VM: `dev/vm/setup.sh`, then `dev/supabase/install.sh`.

@@ -1,0 +1,11 @@
+{
+  "name": "omicron-e2e",
+  "private": true,
+  "description": "Browser tests for the Omicron web page. Run with dev/e2e.sh inside the omicron-dev VM.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2"
+  }
+}

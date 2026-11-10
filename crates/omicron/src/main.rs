@@ -29,6 +29,16 @@ enum Command {
     },
     /// Who this machine is signed in to Tailscale as
     Whoami,
+    /// Serve the web page on this machine (makes it a Web Machine)
+    Serve {
+        /// The port on 127.0.0.1 to listen on (0 picks a free one)
+        #[arg(long, default_value_t = 8787)]
+        port: u16,
+        /// Another host name the page may be opened at, like this machine's
+        /// Tailscale name. Can be given more than once.
+        #[arg(long = "host")]
+        hosts: Vec<String>,
+    },
     /// Machines: register this one, check in
     #[command(subcommand)]
     Machines(Machines),
@@ -86,6 +96,10 @@ fn run(cli: Cli) -> Result<()> {
             let person = identity::local_person()?;
             println!("{} ({})", person.display_name, person.login);
             Ok(())
+        }
+        Command::Serve { port, hosts } => {
+            let supabase = Config::load()?.supabase()?;
+            omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
         }
         Command::Machines(m) => machines(m),
         Command::People(p) => people(p),

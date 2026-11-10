@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omicron</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #fff; color: #111; }
+    @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } }
+    .error { color: #c00; }
+  </style>
+</head>
+<body>
+  <!-- Stand-in page until the React app is built. It proves the sign-in works:
+       ask the Web Machine for a login, then read Projects straight from Supabase. -->
+  <h1>Omicron</h1>
+  <p id="status">Signing in…</p>
+  <h2>Projects</h2>
+  <ul id="projects"></ul>
+  <script>
+    const status = document.getElementById("status");
+    async function start() {
+      const config = await (await fetch("/config.json")).json();
+      const res = await fetch("/api/session", { method: "POST" });
+      const session = await res.json();
+      if (!res.ok) throw new Error(session.error || res.statusText);
+      status.textContent = `Signed in as ${session.display_name} (${session.login})`;
+      status.dataset.personId = session.person_id;
+      status.dataset.via = session.via;
+      const projects = await fetch(`${config.supabase_url}/rest/v1/projects?select=id,name&order=name`, {
+        headers: { apikey: config.supabase_key, Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!projects.ok) throw new Error(`couldn't load Projects: ${projects.status}`);
+      const list = document.getElementById("projects");
+      const rows = await projects.json();
+      if (rows.length === 0) list.innerHTML = "<li>No Projects yet. Ask someone to add you to one.</li>";
+      for (const p of rows) {
+        const li = document.createElement("li");
+        li.textContent = p.name;
+        list.appendChild(li);
+      }
+    }
+    start().catch((e) => { status.textContent = `Couldn't sign in: ${e.message}`; status.className = "error"; });
+  </script>
+</body>
+</html>

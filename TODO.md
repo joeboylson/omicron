@@ -36,8 +36,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       `machines check-in`, `people link`. Settings in `~/.omicron/config.json`
       (only this user can read it). End-to-end tests in `tests/cli.rs` run the
       real command.
-- [ ] The Web Machine's sign-in page: put `identity::visitor` and
-      `sign_in_person` together, and hand the login to the web page.
+- [x] The Web Machine's sign-in page: `omicron serve` listens on 127.0.0.1,
+      refuses any host name that isn't localhost or one given with `--host`,
+      and `POST /api/session` hands the visitor a Supabase login. A stand-in
+      page signs in and lists the person's Projects straight from Supabase.
+      Browser tests in `e2e/` (Playwright, run with `dev/e2e.sh`).
 
 ## 2. Base
 - [x] Rust workspace in this repo. Web page skeleton still to do.
