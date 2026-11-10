@@ -1,0 +1,68 @@
+OMICRON DEFINITIONS
+
+Project
+  A group of tasks with its own members and its own list of statuses.
+  Members only see the Projects they belong to. Don't use "board".
+
+Web Machine
+  A machine that also shows the Omicron web page. This is optional, and any
+  number of machines can do it. It signs people in with their Tailscale
+  identity. It talks straight to Supabase like every other machine, and no
+  other machine relies on it.
+
+Done status
+  The one status in a Project that means a task is finished. Each Project
+  picks its own.
+
+Needs review
+  A mark on a task that means "check this." Only a Claude session can add it.
+  It isn't a status. The task stays in whatever status it was in.
+
+Task
+  One piece of work in a Project, given to a person or a Claude session.
+  Not the same as a job.
+
+Teams (omicron teams)
+  The part of Omicron that runs teams of Claude sessions. Rewritten from
+  legion. It barely knows about the rest of Omicron.
+
+Team
+  One lead and its workers, in one folder, following one workflow.
+  (legion: deployment. Earlier notes also said "squad".)
+
+Lead
+  The main session of a team. It hands out work and is the only one that
+  starts or stops workers. (legion: commander)
+
+Worker
+  Any other session in a team. (legion: operator)
+
+Role
+  What a worker does, like planner or builder. Copies of one role are
+  builder, builder-2, and so on.
+
+Workflow
+  Which role a job goes to next. (legion: pipeline)
+
+Job
+  One piece of work given to a team. Not the same as a task.
+  (legion: mission)
+
+Part
+  A piece of a job's current step, split off so several workers can do it at
+  the same time.
+
+Advisor
+  An optional session that suggests speed-ups to the lead. It never gives
+  orders. (legion: strategist)
+
+Request
+  Anything in a team waiting on me: a question, a permission, a stuck job, a
+  decision. (legion: escalation)
+
+Heads-up
+  A one-line warning for the whole team. (legion: callout)
+
+Runner
+  The program a worker runs in, like Claude Code or OpenCode.
+  (legion: harness)

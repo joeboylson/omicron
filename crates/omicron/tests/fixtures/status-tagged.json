@@ -1,0 +1,6 @@
+{
+  "Self": { "HostName": "server", "UserID": 333, "Online": true },
+  "User": {
+    "333": { "ID": 333, "LoginName": "tagged-devices", "DisplayName": "tagged-devices" }
+  }
+}

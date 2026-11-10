@@ -1,0 +1,13 @@
+[package]
+name = "omicron"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+getrandom = "0.2"

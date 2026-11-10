@@ -1,0 +1,7 @@
+{
+  "Self": { "HostName": "laptop", "UserID": 111, "Online": true },
+  "User": {
+    "111": { "ID": 111, "LoginName": "someone@example.com", "DisplayName": "Some One" },
+    "222": { "ID": 222, "LoginName": "other@example.com", "DisplayName": "Other Person" }
+  }
+}

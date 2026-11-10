@@ -1,0 +1,16 @@
+# Planning notes stay local
+ref/
+
+# Rust
+target/
+
+# Web
+node_modules/
+dist/
+
+# Local settings and secrets
+.env
+.env.*
+*.local
+
+.DS_Store
