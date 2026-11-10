@@ -69,8 +69,13 @@ begin
   values (tg_table_name, tg_op, project, subject, row_new, row_old)
   returning seq into line;
   -- Keep 30 days. Done here, every 100th line, instead of on a timer.
+  -- Machines not seen for 30 days are switched off at the same time: they'd
+  -- have missed changes that are now gone. `omicron machines switch-on`
+  -- brings one back.
   if line % 100 = 0 then
     delete from public.changes where at < now() - interval '30 days';
+    update public.machines set active = false
+    where active and coalesce(last_seen, created_at) < now() - interval '30 days';
   end if;
   return null;
 end;

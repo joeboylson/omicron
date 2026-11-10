@@ -238,3 +238,45 @@ fn as_machine_acts_as_the_machine_even_on_a_persons_computer() {
     assert!(fails(&me, &["projects", "list"]).contains("couldn't tell who you are"));
 }
 
+
+/// The Tailscale login a person's computer belongs to.
+fn login_of(c: &Computer) -> String {
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(c.tailscale.as_ref().unwrap()).unwrap()).unwrap();
+    v["User"]["1"]["LoginName"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn the_people_table_adds_and_removes_people() {
+    let s = supabase_or_skip!();
+    let (me, project) = person_with_project(&s, "Pat");
+    let wife = persons_computer(&s, "Sam");
+    // Sam signs in once (as the web page would), so they exist.
+    let sam_login = login_of(&wife);
+    assert_eq!(ok(&wife, &["projects", "list"]), "No Projects yet.\n");
+
+    let table = ok(&me, &["people", "list"]);
+    assert!(table.lines().any(|l| l.starts_with("Sam  (") && l.ends_with("no Projects")), "{table}");
+
+    assert_eq!(ok(&me, &["people", "add", &sam_login, &project]).trim(), format!("Added Sam to {project}."));
+    assert!(ok(&wife, &["projects", "list"]).lines().any(|l| l == project));
+    // Now Sam is in a Project, Sam sees the people table too.
+    assert!(ok(&wife, &["people", "list"]).lines().any(|l| l.starts_with("Pat  (")));
+
+    assert_eq!(ok(&me, &["people", "remove", &sam_login, &project]).trim(), format!("Took Sam out of {project}."));
+    assert_eq!(ok(&wife, &["projects", "list"]), "No Projects yet.\n");
+    assert!(fails(&me, &["people", "remove", &sam_login, &project]).contains("isn't in"));
+    assert!(fails(&me, &["people", "add", "nobody@example.com", &project]).contains("nobody called"));
+}
+
+#[test]
+fn machines_are_added_to_projects_from_the_terminal() {
+    let s = supabase_or_skip!();
+    let (me, project) = person_with_project(&s, "Pat");
+    let name = unique("mini");
+    s.register_machine(&name, false).unwrap();
+
+    assert_eq!(ok(&me, &["machines", "add", &name, &project]).trim(), format!("Added {name} to {project}."));
+    assert!(ok(&me, &["machines", "list"]).lines().any(|l| l == format!("{name}  {project}")));
+    assert_eq!(ok(&me, &["machines", "remove", &name, &project]).trim(), format!("Took {name} out of {project}."));
+    assert!(fails(&me, &["machines", "remove", &name, &project]).contains("isn't in"));
+}

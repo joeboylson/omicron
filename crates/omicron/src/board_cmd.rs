@@ -229,3 +229,59 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
         }
     }
 }
+
+pub fn list_people(as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    for p in board.people()? {
+        let projects = if p.projects.is_empty() { "no Projects".to_string() } else { p.projects.join(", ") };
+        println!("{}  ({})  {projects}", p.name, p.logins.join(", "));
+    }
+    Ok(())
+}
+
+pub fn add_person(who: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, person) = (board.project(project)?, board.person(who)?);
+    board.add_member(&p, &person)?;
+    println!("Added {} to {}.", person.name, p.name);
+    Ok(())
+}
+
+pub fn remove_person(who: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, person) = (board.project(project)?, board.person(who)?);
+    board.remove_member(&p, &person)?;
+    println!("Took {} out of {}.", person.name, p.name);
+    Ok(())
+}
+
+pub fn list_machines(as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    for m in board.machines()? {
+        let access = if m.all_projects {
+            "every Project".to_string()
+        } else if m.projects.is_empty() {
+            "no Projects".to_string()
+        } else {
+            m.projects.join(", ")
+        };
+        println!("{}  {access}{}", m.name, if m.active { "" } else { "  (switched off)" });
+    }
+    Ok(())
+}
+
+pub fn add_machine(name: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, m) = (board.project(project)?, board.machine(name)?);
+    board.add_machine(&p, &m)?;
+    println!("Added {} to {}.", m.name, p.name);
+    Ok(())
+}
+
+pub fn remove_machine(name: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, m) = (board.project(project)?, board.machine(name)?);
+    board.remove_machine(&p, &m)?;
+    println!("Took {} out of {}.", m.name, p.name);
+    Ok(())
+}

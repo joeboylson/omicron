@@ -362,3 +362,46 @@ fn lines_older_than_30_days_are_cleared_out() {
     assert_eq!(left(&marker), json!([]), "the 31-day-old line should be gone");
     assert_eq!(left(&format!("{marker}-recent")).as_array().unwrap().len(), 1, "the 29-day-old line should stay");
 }
+
+#[test]
+fn machines_unseen_for_30_days_are_switched_off_until_switched_back_on() {
+    use std::io::Write;
+    let s = supabase_or_skip!();
+    let Some(mut db) = psql() else {
+        eprintln!("skipped: no direct database access");
+        return;
+    };
+    let name = unique("dusty");
+    let (home, id) = registered_machine(&s, &name);
+    let fresh = unique("fresh");
+    let (_fresh_home, fresh_id) = registered_machine(&s, &fresh);
+    {
+        let stdin = db.stdin.as_mut().unwrap();
+        writeln!(stdin, "update public.machines set last_seen = now() - interval '31 days', created_at = now() - interval '40 days' where id = '{id}';").unwrap();
+    }
+    drop(db.stdin.take());
+    assert!(db.wait().unwrap().success());
+
+    // The switch-off happens with the change-list cleanup, every 100th line.
+    let me = person(&s, "busy");
+    for i in 0..30 {
+        start_project(&s, &me, &format!("{name}-{i}"));
+    }
+    let active = |id: Uuid| s.admin_request("GET", &format!("/rest/v1/machines?id=eq.{id}&select=active"), None).unwrap()[0]["active"].clone();
+    assert_eq!(active(id), json!(false), "the machine unseen for 31 days should be switched off");
+    assert_eq!(active(fresh_id), json!(true), "a new machine should stay on");
+
+    // Its daemon says why and how to fix it, and stops.
+    let mut daemon = start_daemon(&home, &[]);
+    assert!(!daemon.child.wait().unwrap().success());
+    let said: Vec<String> = daemon.errors.iter().collect();
+    assert!(said.iter().any(|l| l.contains("switched off") && l.contains("switch-on")), "{said:?}");
+
+    // Switched back on from a machine with the secret key, it runs again.
+    let web = std::env::temp_dir().join(format!("omicron-test-{}", Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&web).unwrap();
+    std::fs::write(web.join("config.json"), json!({ "supabase_url": s.url, "supabase_key": s.key, "supabase_secret_key": s.secret_key }).to_string()).unwrap();
+    assert_eq!(run(&web, &["machines", "switch-on", &name]).trim(), format!("Switched {name} on."));
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+}

@@ -85,10 +85,24 @@ enum Machines {
     CheckIn,
     /// List the machines that are awake right now
     Awake,
+    /// List machines and the Projects they can use
+    List,
+    /// Let a machine use a Project
+    Add { machine: String, project: String },
+    /// Take a machine out of a Project
+    Remove { machine: String, project: String },
+    /// Switch a machine back on (after 30 days unseen, or by hand). Needs the secret key.
+    SwitchOn { machine: String },
 }
 
 #[derive(Subcommand)]
 enum People {
+    /// The people table: everyone, with their logins and Projects
+    List,
+    /// Add a person to a Project (by name or Tailscale login)
+    Add { person: String, project: String },
+    /// Take a person out of a Project
+    Remove { person: String, project: String },
     /// Link another Tailscale identity to a person. Needs the secret key.
     Link {
         /// The person's ID
@@ -121,7 +135,13 @@ fn run(cli: Cli) -> Result<()> {
             omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
         }
         Command::Daemon => daemon(),
+        Command::Machines(Machines::List) => board_cmd::list_machines(cli.as_machine),
+        Command::Machines(Machines::Add { machine, project }) => board_cmd::add_machine(&machine, &project, cli.as_machine),
+        Command::Machines(Machines::Remove { machine, project }) => board_cmd::remove_machine(&machine, &project, cli.as_machine),
         Command::Machines(m) => machines(m),
+        Command::People(People::List) => board_cmd::list_people(cli.as_machine),
+        Command::People(People::Add { person, project }) => board_cmd::add_person(&person, &project, cli.as_machine),
+        Command::People(People::Remove { person, project }) => board_cmd::remove_person(&person, &project, cli.as_machine),
         Command::People(p) => people(p),
         Command::Projects(c) => board_cmd::projects(c, cli.as_machine),
         Command::Statuses(c) => board_cmd::statuses(c, cli.as_machine),
@@ -190,6 +210,20 @@ fn machines(m: Machines) -> Result<()> {
             }
             Ok(())
         }
+        Machines::List | Machines::Add { .. } | Machines::Remove { .. } => unreachable!("handled in run"),
+        Machines::SwitchOn { machine } => {
+            let supabase = config.supabase()?;
+            let rows = supabase.admin_request(
+                "PATCH",
+                &format!("/rest/v1/machines?name=eq.{}", machine.replace(' ', "%20")),
+                Some(json!({ "active": true })),
+            )?;
+            if rows.as_array().is_some_and(|a| a.is_empty()) {
+                bail!("no machine called {machine}");
+            }
+            println!("Switched {machine} on.");
+            Ok(())
+        }
         Machines::Awake => {
             let supabase = config.supabase()?;
             let key = config.machine_key()?;
@@ -224,6 +258,7 @@ fn awake_machines(supabase: &omicron::supa::Supabase, key: &omicron::supa::Machi
 
 fn people(p: People) -> Result<()> {
     match p {
+        People::List | People::Add { .. } | People::Remove { .. } => unreachable!("handled in run"),
         People::Link { person, login, name } => {
             let supabase = Config::load()?.supabase()?;
             let who = TailscalePerson { display_name: name.unwrap_or_else(|| login.clone()), login };
@@ -248,8 +283,12 @@ fn daemon() -> Result<()> {
     let supabase = config.supabase()?;
     let key = config.machine_key()?;
     let first = supabase.sign_in_machine(&key)?;
-    let me = supabase.request_as(&first, "GET", &format!("/rest/v1/machines?id=eq.{}&select=name", key.machine_id), None)?;
-    let name = me.get(0).and_then(|r| r["name"].as_str()).context("this machine's record is missing")?.to_string();
+    let me = supabase.request_as(&first, "GET", &format!("/rest/v1/machines?id=eq.{}&select=name,active", key.machine_id), None)?;
+    let row = me.get(0).context("this machine's record is missing")?;
+    let name = row["name"].as_str().unwrap_or("?").to_string();
+    if row["active"].as_bool() == Some(false) {
+        bail!("{name} is switched off (machines are switched off after 30 days unseen). Switch it back on from a Web Machine with `omicron machines switch-on {name}`.");
+    }
     let mut state = State::load()?;
     let stop = std::sync::atomic::AtomicBool::new(false);
 
@@ -257,11 +296,18 @@ fn daemon() -> Result<()> {
         tables: &["changes"],
         announce: Some((key.machine_id.to_string(), json!({ "kind": "machine", "machine_id": key.machine_id, "name": name }))),
     };
-    realtime::listen(&supabase, &listen, || supabase.sign_in_machine(&key), &stop, |event| {
+    // Each new login (on connect, and about hourly after) also records that
+    // this machine is still around, so one in use never hits the 30-day
+    // switch-off.
+    let login = || {
+        let session = supabase.sign_in_machine(&key)?;
+        supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
+        Ok(session)
+    };
+    realtime::listen(&supabase, &listen, login, &stop, |event| {
         match event {
             Event::Listening => {
                 let session = supabase.sign_in_machine(&key)?;
-                supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
                 catch_up(&supabase, &session, &mut state)?;
                 eprintln!("omicron daemon: {name} is listening for changes");
             }

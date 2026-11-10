@@ -49,6 +49,36 @@ pub struct ChecklistItem {
     pub position: f64,
 }
 
+/// A person, with their Tailscale logins and the Projects you share with them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    pub logins: Vec<String>,
+    pub projects: Vec<String>,
+}
+
+/// A machine, with the Projects you share with it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Machine {
+    pub id: String,
+    pub name: String,
+    pub active: bool,
+    pub all_projects: bool,
+    pub projects: Vec<String>,
+}
+
+fn names(v: &Value, list: &str, inner: &str, field: &str) -> Vec<String> {
+    let mut out: Vec<String> = v[list]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| if inner.is_empty() { r[field].as_str() } else { r[inner][field].as_str() }.map(String::from))
+        .collect();
+    out.sort_by_key(|n| n.to_lowercase());
+    out
+}
+
 /// What a new task starts with.
 #[derive(Debug, Default, Clone)]
 pub struct NewTask {
@@ -190,6 +220,101 @@ impl Board {
             [] => bail!("nobody called {name} is in {}", project.name),
             _ => bail!("more than one member of {} is called {name}", project.name),
         }
+    }
+
+    /// Everyone you can see: yourself, and everyone else once you're in a Project.
+    pub fn people(&self) -> Result<Vec<Person>> {
+        let rows = self.get("/rest/v1/people?select=id,display_name,tailscale_identities(login),project_members(projects(name))&order=display_name")?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| Person {
+                id: r["id"].as_str().unwrap_or_default().to_string(),
+                name: r["display_name"].as_str().unwrap_or_default().to_string(),
+                logins: names(r, "tailscale_identities", "", "login"),
+                projects: names(r, "project_members", "projects", "name"),
+            })
+            .collect())
+    }
+
+    /// A person by name (any case), Tailscale login, or id.
+    pub fn person(&self, who: &str) -> Result<Person> {
+        let all = self.people()?;
+        let hits: Vec<&Person> = all
+            .iter()
+            .filter(|p| p.id == who || p.name.eq_ignore_ascii_case(who) || p.logins.iter().any(|l| l.eq_ignore_ascii_case(who)))
+            .collect();
+        match hits.as_slice() {
+            [one] => Ok((*one).clone()),
+            [] => bail!("nobody called {who} (people show up after they first sign in)"),
+            _ => bail!("more than one person is called {who}. Use their Tailscale login."),
+        }
+    }
+
+    pub fn add_member(&self, project: &Project, person: &Person) -> Result<()> {
+        if person.projects.iter().any(|p| p == &project.name) {
+            return Ok(());
+        }
+        self.send("POST", "/rest/v1/project_members", json!({ "project_id": project.id, "person_id": person.id }))?;
+        Ok(())
+    }
+
+    pub fn remove_member(&self, project: &Project, person: &Person) -> Result<()> {
+        let gone = self.supabase.request_as(
+            &self.session,
+            "DELETE",
+            &format!("/rest/v1/project_members?project_id=eq.{}&person_id=eq.{}", project.id, person.id),
+            None,
+        )?;
+        if gone.as_array().is_some_and(|a| a.is_empty()) {
+            bail!("{} isn't in {}", person.name, project.name);
+        }
+        Ok(())
+    }
+
+    pub fn machines(&self) -> Result<Vec<Machine>> {
+        let rows = self.get("/rest/v1/machines?select=id,name,active,all_projects,project_machines(projects(name))&order=name")?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| Machine {
+                id: r["id"].as_str().unwrap_or_default().to_string(),
+                name: r["name"].as_str().unwrap_or_default().to_string(),
+                active: r["active"].as_bool().unwrap_or(false),
+                all_projects: r["all_projects"].as_bool().unwrap_or(false),
+                projects: names(r, "project_machines", "projects", "name"),
+            })
+            .collect())
+    }
+
+    pub fn machine(&self, name_or_id: &str) -> Result<Machine> {
+        self.machines()?
+            .into_iter()
+            .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
+            .with_context(|| format!("no machine called {name_or_id}"))
+    }
+
+    pub fn add_machine(&self, project: &Project, machine: &Machine) -> Result<()> {
+        if machine.projects.iter().any(|p| p == &project.name) {
+            return Ok(());
+        }
+        self.send("POST", "/rest/v1/project_machines", json!({ "project_id": project.id, "machine_id": machine.id }))?;
+        Ok(())
+    }
+
+    pub fn remove_machine(&self, project: &Project, machine: &Machine) -> Result<()> {
+        let gone = self.supabase.request_as(
+            &self.session,
+            "DELETE",
+            &format!("/rest/v1/project_machines?project_id=eq.{}&machine_id=eq.{}", project.id, machine.id),
+            None,
+        )?;
+        if gone.as_array().is_some_and(|a| a.is_empty()) {
+            bail!("{} isn't in {}", machine.name, project.name);
+        }
+        Ok(())
     }
 
     pub fn tasks(&self, project: &Project) -> Result<Vec<Task>> {

@@ -68,8 +68,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       from the last second. Tested by holding a save open in the database.
 - [x] The change list keeps 30 days. The database clears older lines itself
       every 100th line, so there's no timer.
-- [ ] A machine that's off for more than 30 days misses what was cleared.
-      Decide what it should do then (for example, reload everything).
+- [x] A machine unseen for 30 days is switched off in the same cleanup
+      step (it would have missed cleared lines). Its daemon says so and stops;
+      `omicron machines switch-on <name>` (secret key) brings it back. A
+      running daemon records it's still around each time it renews its login
+      (about hourly), so a machine in use never expires.
 - [ ] Run `omicron daemon` at login (launchd on macOS, systemd on Linux).
 
 ## 3. Projects and tasks (replaces Trello)
@@ -84,7 +87,9 @@ Built in this order. Each part replaces an old tool only once it's ready.
       show, move, done, label, check, tick, needs-review, reviewed). They act
       as you when this machine can tell who you are, or as the machine with
       `--as-machine`. Terminal tests in `tests/board.rs`.
-- [ ] People table in `omicron`: list people, add or remove them from Projects.
+- [x] People table in `omicron`: `people list`, `people add`, `people remove`
+      (by name or Tailscale login). Machines too: `machines list`,
+      `machines add`, `machines remove`.
 - [ ] Web page (installable on the phone) and the same things in `omicron`.
 
 ## 4. Claude sessions
