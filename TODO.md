@@ -31,8 +31,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       themselves; members see everyone and can add or remove people and
       machines; machines see only their Projects (or all, if set); switched-off
       machines see nothing; machines can't start Projects or add people.
-- [ ] `omicron` commands for these: register a machine, sign it in, link a
-      second Tailscale identity.
+- [x] `omicron` commands for these: `setup`, `machines register` (or
+      `--print` a key for another machine), `machines use-key`,
+      `machines check-in`, `people link`. Settings in `~/.omicron/config.json`
+      (only this user can read it). End-to-end tests in `tests/cli.rs` run the
+      real command.
 - [ ] The Web Machine's sign-in page: put `identity::visitor` and
       `sign_in_person` together, and hand the login to the web page.
 
