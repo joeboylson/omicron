@@ -69,9 +69,18 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - [ ] Run `omicron daemon` at login (launchd on macOS, systemd on Linux).
 
 ## 3. Projects and tasks (replaces Trello)
-- [ ] Projects with members, per-Project statuses, and one Done status.
-- [ ] Tasks: title, who it's given to, status, date, labels, checklists.
-- [ ] People table: anyone can add or remove people from Projects.
+- [x] Projects with members, per-Project statuses, and one Done status. New
+      Projects start with **To do** and **Done**. Marking another status as
+      Done moves the mark; a Project can't lose its Done status.
+- [x] Tasks: title, notes, status, date, who it's given to (members only),
+      labels (per Project), checklists, and a short number per Project (#3).
+- [x] Needs review: only machines (Claude sessions) can put it on; anyone can
+      take it off.
+- [x] `omicron projects`, `omicron statuses`, `omicron tasks` (add, list,
+      show, move, done, label, check, tick, needs-review, reviewed). They act
+      as you when this machine can tell who you are, or as the machine with
+      `--as-machine`. Terminal tests in `tests/board.rs`.
+- [ ] People table in `omicron`: list people, add or remove them from Projects.
 - [ ] Web page (installable on the phone) and the same things in `omicron`.
 
 ## 4. Claude sessions

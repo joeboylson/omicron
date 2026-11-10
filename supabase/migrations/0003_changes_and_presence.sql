@@ -56,9 +56,10 @@ begin
     when 'machines' then project := null; subject := (r ->> 'id')::uuid;
     else project := (r ->> 'project_id')::uuid; subject := null;
   end case;
-  -- A machine's check-in time isn't worth a line.
-  if tg_table_name = 'machines' and tg_op = 'UPDATE'
-     and (row_new - 'last_seen') = (row_old - 'last_seen') then
+  -- Bookkeeping columns aren't worth a line: a machine's last-seen time, and
+  -- a Project's next task number.
+  if tg_op = 'UPDATE'
+     and (row_new - 'last_seen' - 'next_task_number') = (row_old - 'last_seen' - 'next_task_number') then
     return null;
   end if;
   insert into public.changes (table_name, kind, project_id, subject_id, record, old_record)

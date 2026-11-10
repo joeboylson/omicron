@@ -222,3 +222,27 @@ fn people_removed_from_a_project_still_see_that_they_were_removed() {
     let theirs = s.request_as(&them, "GET", &format!("/rest/v1/changes?project_id=eq.{project}&table_name=eq.project_members&kind=eq.DELETE"), None).unwrap();
     assert_eq!(theirs.as_array().unwrap().len(), 1, "{theirs}");
 }
+
+#[test]
+fn tasks_cant_use_another_projects_status() {
+    let s = supabase_or_skip!();
+    let me = s.sign_in_person(&someone("quin")).unwrap();
+    let a = new_project(&s, &me, "A");
+    let b = new_project(&s, &me, "B");
+    let b_status = s.request_as(&me, "GET", &format!("/rest/v1/statuses?project_id=eq.{b}&select=id&limit=1"), None).unwrap();
+    let tried = s.request_as(&me, "POST", "/rest/v1/tasks", Some(json!({ "project_id": a, "title": "x", "status_id": b_status[0]["id"] })));
+    assert!(tried.unwrap_err().to_string().contains("another Project"));
+}
+
+#[test]
+fn a_project_keeps_its_done_status_but_can_be_deleted_whole() {
+    let s = supabase_or_skip!();
+    let me = s.sign_in_person(&someone("rae")).unwrap();
+    let p = new_project(&s, &me, "Temp");
+    let tried = s.request_as(&me, "DELETE", &format!("/rest/v1/statuses?project_id=eq.{p}&is_done=eq.true"), None);
+    assert!(tried.unwrap_err().to_string().contains("needs a Done status"));
+    let status = s.request_as(&me, "GET", &format!("/rest/v1/statuses?project_id=eq.{p}&select=id&limit=1"), None).unwrap();
+    s.request_as(&me, "POST", "/rest/v1/tasks", Some(json!({ "project_id": p, "title": "x", "status_id": status[0]["id"] }))).unwrap();
+    s.request_as(&me, "DELETE", &format!("/rest/v1/projects?id=eq.{p}"), None).unwrap();
+    assert_eq!(s.admin_request("GET", &format!("/rest/v1/tasks?project_id=eq.{p}"), None).unwrap(), json!([]));
+}

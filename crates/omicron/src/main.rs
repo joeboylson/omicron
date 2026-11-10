@@ -5,10 +5,15 @@ use omicron::identity::{self, TailscalePerson};
 use serde_json::json;
 use uuid::Uuid;
 
+mod board_cmd;
+
 /// Tasks, Projects, and Claude sessions in one tool.
 #[derive(Parser)]
 #[command(name = "omicron", version)]
 struct Cli {
+    /// Act as this machine instead of as you (how Claude sessions act)
+    #[arg(long, global = true)]
+    as_machine: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -45,6 +50,15 @@ enum Command {
     /// Machines: register this one, check in
     #[command(subcommand)]
     Machines(Machines),
+    /// Projects: list them, start one
+    #[command(subcommand)]
+    Projects(board_cmd::Projects),
+    /// A Project's statuses (its columns)
+    #[command(subcommand)]
+    Statuses(board_cmd::Statuses),
+    /// Tasks: add, move, finish, label, checklists
+    #[command(subcommand)]
+    Tasks(board_cmd::Tasks),
     /// People: link Tailscale identities
     #[command(subcommand)]
     People(People),
@@ -109,6 +123,9 @@ fn run(cli: Cli) -> Result<()> {
         Command::Daemon => daemon(),
         Command::Machines(m) => machines(m),
         Command::People(p) => people(p),
+        Command::Projects(c) => board_cmd::projects(c, cli.as_machine),
+        Command::Statuses(c) => board_cmd::statuses(c, cli.as_machine),
+        Command::Tasks(c) => board_cmd::tasks(c, cli.as_machine),
     }
 }
 
