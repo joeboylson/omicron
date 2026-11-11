@@ -34,6 +34,10 @@ enum Command {
         /// The secret key. Only for Web Machines.
         #[arg(long)]
         secret_key: Option<String>,
+        /// Where visitors' browsers reach Supabase, if not --url (a Web
+        /// Machine that reaches Supabase locally)
+        #[arg(long)]
+        public_url: Option<String>,
     },
     /// Who this machine is signed in to Tailscale as
     Whoami,
@@ -156,15 +160,17 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Setup { url, key, secret_key } => setup(url, key, secret_key),
+        Command::Setup { url, key, secret_key, public_url } => setup(url, key, secret_key, public_url),
         Command::Whoami => {
             let person = identity::local_person()?;
             println!("{} ({})", person.display_name, person.login);
             Ok(())
         }
         Command::Serve { port, hosts } => {
-            let supabase = Config::load()?.supabase()?;
-            omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
+            let config = Config::load()?;
+            let supabase = config.supabase()?;
+            let public_supabase_url = config.public_supabase_url.clone();
+            omicron::web::WebMachine { supabase, public_supabase_url, extra_hosts: hosts }.serve(port)
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
@@ -209,9 +215,9 @@ fn run(cli: Cli) -> Result<()> {
     }
 }
 
-fn setup(url: Option<String>, key: Option<String>, secret_key: Option<String>) -> Result<()> {
-    if url.is_none() && key.is_none() && secret_key.is_none() {
-        bail!("give at least one of --url, --key, --secret-key");
+fn setup(url: Option<String>, key: Option<String>, secret_key: Option<String>, public_url: Option<String>) -> Result<()> {
+    if url.is_none() && key.is_none() && secret_key.is_none() && public_url.is_none() {
+        bail!("give at least one of --url, --key, --secret-key, --public-url");
     }
     let mut config = Config::load()?;
     if let Some(u) = url {
@@ -222,6 +228,9 @@ fn setup(url: Option<String>, key: Option<String>, secret_key: Option<String>) -
     }
     if let Some(s) = secret_key {
         config.supabase_secret_key = Some(s);
+    }
+    if let Some(p) = public_url {
+        config.public_supabase_url = Some(p.trim_end_matches('/').to_string());
     }
     config.save()?;
     println!("Saved to {}", config::path()?.display());

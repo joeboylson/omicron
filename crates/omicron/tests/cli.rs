@@ -137,6 +137,15 @@ fn setup_saves_settings_only_this_user_can_read() {
 }
 
 #[test]
+fn a_web_machine_can_give_browsers_another_supabase_address() {
+    let home = new_home();
+    ok(omicron(&home, &["setup", "--url", "http://127.0.0.1:8000", "--public-url", "https://box.example.ts.net:8450/"]));
+    let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(home.join("config.json")).unwrap()).unwrap();
+    assert_eq!(saved["supabase_url"], "http://127.0.0.1:8000");
+    assert_eq!(saved["public_supabase_url"], "https://box.example.ts.net:8450");
+}
+
+#[test]
 fn setup_with_nothing_says_what_it_needs() {
     assert!(fails(omicron(&new_home(), &["setup"])).contains("--url"));
 }

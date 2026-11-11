@@ -58,17 +58,20 @@ with the same paths. Run the same scripts with
 `bash dev/docker/systemd-test.sh` checks `omicron daemon start-at-login`
 against a real systemd.
 
-The test web page is on the tailnet, admin only, at
-https://atlas.taileedd95.ts.net:8451 (the home-lab session runs the gate in
-front). `bash dev/docker/serve.sh` (re)starts the `omicron serve` behind it
-with the current code; `serve.sh stop` stops it. It uses the test Supabase.
+The real Omicron runs on this Mac (atlas), against the test Supabase for now:
+`bash dev/mac.sh` builds, installs `~/.local/bin/omicron`, and restarts the
+web page (127.0.0.1:9010, on the tailnet admin-only at
+https://atlas.taileedd95.ts.net:8451 through the home lab's gate) and the
+daemon, in the tmux sessions `omicron-serve` and `omicron-daemon`. Claude
+sessions get Omicron's hooks with `claude --settings
+~/.omicron/claude/settings.json`; Claude Code's own settings are left alone.
 
 ## How to work here
 
 - Keep every file for this project in this folder.
-- Run and test things in a multipass VM (or a Docker container), never against
-  the tools installed on this Mac. The old tools keep running until each
-  Omicron part replaces them.
+- Run tests in the multipass VM or the `omicron-dev` container. Omicron
+  itself runs for real on this Mac (`dev/mac.sh`). The old tools keep running
+  until each Omicron part replaces them.
 - `ref/` is planning notes and stays out of git.
 - Git pushes to my personal GitHub (`joeboylson/omicron`) with my personal key
   and email. This is set in this repo's local git config. Don't change it, and

@@ -52,6 +52,8 @@ fn content_type(path: &str) -> &'static str {
 
 pub struct WebMachine {
     pub supabase: Supabase,
+    /// Where visitors' browsers reach Supabase, if not `supabase.url`.
+    pub public_supabase_url: Option<String>,
     /// Host names (besides localhost) the page may be opened at, like this
     /// machine's Tailscale name. Anything else is refused, so another website
     /// can't trick a browser into asking for a login (DNS rebinding).
@@ -122,7 +124,12 @@ impl WebMachine {
             (Method::Get, "/config.json") => Ok((
                 200,
                 "application/json",
-                json!({ "supabase_url": self.supabase.url, "supabase_key": self.supabase.key }).to_string().into_bytes(),
+                json!({
+                    "supabase_url": self.public_supabase_url.as_deref().unwrap_or(&self.supabase.url),
+                    "supabase_key": self.supabase.key,
+                })
+                .to_string()
+                .into_bytes(),
             )),
             (Method::Post, "/api/session") => self.session(request),
             (_, "/api/session") => Ok((405, "application/json", json!({ "error": "use POST" }).to_string().into_bytes())),

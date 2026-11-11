@@ -78,8 +78,10 @@ Built in this order. Each part replaces an old tool only once it's ready.
       service on Linux and starts it. It restarts after a failure but not
       after a switched-off stop. Tested against real systemd in a container
       (`dev/docker/systemd-test.sh`).
-- [ ] Try `start-at-login` on a real Mac (launchd). Only the file it writes
-      is tested so far.
+- [ ] Try `start-at-login` on a real Mac (launchd). Installing the login item
+      from a Claude session was blocked by its permission checks; run it by
+      hand (`omicron daemon start-at-login`). Until then `dev/mac.sh` runs the
+      daemon in tmux.
 
 ## 3. Projects and tasks (replaces Trello)
 - [x] Projects with members, per-Project statuses, and one Done status. New
@@ -124,8 +126,12 @@ Built in this order. Each part replaces an old tool only once it's ready.
       by the next hook or daemon start). Hooks never fail Claude and never
       call Supabase for windows Omicron doesn't track. Shown on each Project's
       page, live. Tests in `tests/sessions.rs` and `e2e/tests/projects.spec.js`.
-- [ ] Try the hooks with real Claude Code (tested so far with the same JSON
-      Claude Code sends, from a stand-in window process).
+- [x] Tried with real Claude Code on the Mac (11 Nov 2026): a `claude -p`
+      session added itself, its end hook closed it, `--resume` reopened it,
+      the start hook handed it a sent task, and it reported back with
+      `tasks comment --review`. Hooks come from `~/.omicron/claude/settings.json`
+      via `claude --settings`, since changing Claude Code's own settings was
+      blocked by its permission checks.
 - [ ] Picker to jump into a session (needs a way in: tmux, or the Claude app).
 - [ ] Keep the name in sync with `/rename`.
 - [x] Dispatch: a task is given to a person or a Claude session

@@ -19,6 +19,11 @@ pub struct Config {
     /// The secret key. Only on Web Machines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supabase_secret_key: Option<String>,
+    /// Where visitors' browsers reach Supabase, when it isn't `supabase_url`
+    /// (a Web Machine that reaches Supabase locally, while browsers use its
+    /// tailnet address). Only on Web Machines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_supabase_url: Option<String>,
     /// This machine's API key, from `omicron machines register`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine_key: Option<String>,
