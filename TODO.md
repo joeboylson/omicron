@@ -99,7 +99,9 @@ Built in this order. Each part replaces an old tool only once it's ready.
       `omicron` program (`crates/omicron/build.rs`, `dev/web.sh`). Browser
       tests in `e2e/tests/projects.spec.js`; screenshots with
       `OMICRON_SCREENSHOTS=1 dev/e2e.sh screenshots`.
-- [ ] Installable on the phone: icons in the manifest (it has none yet).
+- [x] Installable on the phone: icons (`web/public/icon.svg`, PNGs made by
+      `dev/icons.js`). A browser test asks Chrome whether it would offer to
+      install the page.
 - [ ] Drag tasks between statuses and reorder them (now: pick the status in
       the task view; new tasks go to the bottom).
 - [ ] Labels: rename, remove, colors (the `color` column is unused).

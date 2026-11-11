@@ -76,3 +76,18 @@ test("the page refuses to be opened under another site's name", async () => {
   });
   expect(status).toBe(421);
 });
+
+test("the page can be installed as an app", async ({ page }) => {
+  await page.goto(omicron.url);
+  await expect(page.getByTestId("me")).toBeVisible();
+  const manifest = await (await page.request.get(`${omicron.url}/manifest.webmanifest`)).json();
+  expect(manifest.icons.map((i) => i.sizes)).toEqual(expect.arrayContaining(["192x192", "512x512"]));
+  for (const icon of ["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"]) {
+    const res = await page.request.get(`${omicron.url}${icon}`);
+    expect(res.headers()["content-type"], icon).toBe("image/png");
+  }
+  // Ask Chrome itself whether it would offer to install the page.
+  const cdp = await page.context().newCDPSession(page);
+  const { installabilityErrors } = await cdp.send("Page.getInstallabilityErrors");
+  expect(installabilityErrors).toEqual([]);
+});
