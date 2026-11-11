@@ -6,7 +6,7 @@ parts I use to run Claude: sessions, handoffs, chat, machines, accounts, and
 teams of Claude sessions (rewritten from legion).
 
 - Words: `DEFINITIONS.txt`. Use those names and no others.
-- Decisions and reasons: `ref/BRAINSTORM.md` (not in git).
+- Decisions and reasons: `ref/BRAINSTORM.md`; the Teams plan: `ref/TEAMS.md`.
 - Work list: `TODO.md`.
 
 ## What it is
@@ -111,7 +111,7 @@ Repeated steps, in `scripts/` (run on the Mac):
 - Run tests in the multipass VM or the `omicron-dev` container. Omicron
   itself runs for real on this Mac (`dev/mac.sh`). The old tools keep running
   until each Omicron part replaces them.
-- `ref/` is planning notes and stays out of git.
+- `ref/` is planning notes (the brainstorm, the Teams plan), kept in git.
 - Git pushes to my personal GitHub (`joeboylson/omicron`) with my personal key
   and email. This is set in this repo's local git config. Don't change it, and
   don't use the work `gh` login for this repo.
