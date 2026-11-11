@@ -82,6 +82,12 @@ async function startOmicron() {
         input: JSON.stringify(input),
         encoding: "utf8",
       }),
+    /** Any `omicron` command, run from inside the window with process id `window`. */
+    cliIn: (window, ...args) =>
+      execFileSync(need("OMICRON_BIN"), args, {
+        env: { ...env, OMICRON_CLAUDE_PID: String(window) },
+        encoding: "utf8",
+      }),
     /** `omicron sessions add` from inside the window with process id `window`. */
     addSession: (window, name, project) =>
       execFileSync(need("OMICRON_BIN"), ["sessions", "add", name, "--project", project], {

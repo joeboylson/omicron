@@ -270,7 +270,7 @@ fn a_task_sent_to_a_session_is_handed_over_once() {
     assert_eq!(out["decision"], "block");
     let reason = out["reason"].as_str().unwrap();
     assert!(reason.contains(&format!("#1 in {project}: Write the parser")), "{reason}");
-    assert!(reason.contains("needs-review"), "{reason}");
+    assert!(reason.contains("comment") && reason.contains("--review"), "{reason}");
     assert!(!reason.contains("Already finished"), "finished tasks aren't handed over: {reason}");
     // Only once.
     assert_eq!(stop(&mac), "");
@@ -315,4 +315,56 @@ fn a_task_sent_to_a_session_is_handed_over_once() {
     assert!(stop(&mac).contains("Write the parser"));
     w.kill().unwrap();
     w2.kill().unwrap();
+}
+
+#[test]
+fn a_session_reports_on_its_task_and_a_person_answers() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let mut w = window();
+    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
+    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+    ok(&pat, None, &["tasks", "add", &project, "Write the parser"]);
+
+    // The session reports, from inside its window, and asks for review.
+    let shown = ok(&mac, Some(w.id()), &["tasks", "comment", &project, "1", "Done: parser plus 12 tests.", "--review"]);
+    assert!(shown.contains("needs review"), "{shown}");
+    assert!(shown.contains(&format!("{mac_name} (session parser), ")), "{shown}");
+    assert!(shown.contains(": Done: parser plus 12 tests."), "{shown}");
+
+    // Pat answers and takes the mark off.
+    ok(&pat, None, &["tasks", "comment", &project, "1", "Looks good."]);
+    ok(&pat, None, &["tasks", "reviewed", &project, "1"]);
+    let shown = ok(&pat, None, &["tasks", "show", &project, "1"]);
+    let lines: Vec<&str> = shown.lines().filter(|l| l.contains(": Done:") || l.contains("Looks good")).collect();
+    assert_eq!(lines.len(), 2, "{shown}");
+    assert!(lines[0].contains("session parser") && lines[1].starts_with("  Pat, "), "{shown}");
+    assert!(!shown.contains("needs review"), "{shown}");
+
+    // A machine can't sign a comment as another machine's session.
+    let (other, other_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &other_name, &project]);
+    let key: omicron::supa::MachineKey = serde_json::from_str::<Value>(&std::fs::read_to_string(other.home.join("config.json")).unwrap()).unwrap()
+        ["machine_key"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let login = s.sign_in_machine(&key).unwrap();
+    let ids = s
+        .admin_request("GET", &format!("/rest/v1/tasks?select=id,sessions(id),projects!inner(name)&projects.name=eq.{project}&number=eq.1"), None)
+        .unwrap();
+    let parser = s.admin_request("GET", &format!("/rest/v1/sessions?name=eq.parser&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap();
+    let forged = s.request_as(
+        &login,
+        "POST",
+        "/rest/v1/comments",
+        Some(json!({ "task_id": ids[0]["id"], "body": "Not mine", "session_id": parser[0]["id"] })),
+    );
+    assert!(forged.is_err(), "{forged:?}");
+    w.kill().unwrap();
 }

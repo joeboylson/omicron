@@ -68,6 +68,16 @@ pub enum Tasks {
     /// Send a task to a Claude session in the Project. It picks the task up
     /// at its next turn.
     Send { project: String, number: i64, session: String },
+    /// Comment on a task. From inside a Claude session, the comment says
+    /// which session wrote it.
+    Comment {
+        project: String,
+        number: i64,
+        text: String,
+        /// Also mark it as needing review (a Claude session's report)
+        #[arg(long)]
+        review: bool,
+    },
 }
 
 /// Sign in for board commands.
@@ -78,14 +88,21 @@ pub enum Tasks {
 pub fn sign_in(as_machine: bool) -> Result<Board> {
     let config = Config::load()?;
     let supabase = config.supabase()?;
-    let as_machine = as_machine || std::env::var("OMICRON_AS").is_ok_and(|v| v == "machine");
-    let session = if !as_machine && supabase.secret_key.is_some() {
+    let session = if !acts_as_machine(as_machine)? {
         let me = identity::local_person().context("couldn't tell who you are. Use --as-machine to act as this machine.")?;
         supabase.sign_in_person(&me)?
     } else {
         supabase.sign_in_machine(&config.machine_key()?)?
     };
     Ok(Board { supabase, session })
+}
+
+/// Whether `sign_in` signs in as this machine rather than as you.
+pub fn acts_as_machine(as_machine: bool) -> Result<bool> {
+    let config = Config::load()?;
+    Ok(as_machine
+        || std::env::var("OMICRON_AS").is_ok_and(|v| v == "machine")
+        || config.supabase()?.secret_key.is_none())
 }
 
 pub fn projects(cmd: Projects, as_machine: bool) -> Result<()> {
@@ -169,6 +186,13 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
     let changed = |p: &Project, t: Task| -> Result<()> {
         let statuses = board.statuses(p)?;
         print_task(p, &statuses, &t);
+        for c in board.comments(&t)? {
+            let who = match &c.session {
+                Some(s) => format!("{} (session {s})", c.author),
+                None => c.author.clone(),
+            };
+            println!("  {who}, {}: {}", c.at.get(..16).unwrap_or(&c.at).replace('T', " "), c.body);
+        }
         Ok(())
     };
     match cmd {
@@ -231,6 +255,22 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
         Tasks::Reviewed { project, number } => {
             let p = board.project(&project)?;
             let t = board.set_needs_review(&p, number, false)?;
+            changed(&p, t)
+        }
+        Tasks::Comment { project, number, text, review } => {
+            let p = board.project(&project)?;
+            let t = board.task(&p, number)?;
+            // Inside a Claude session that Omicron tracks, as its machine.
+            let session_id = if acts_as_machine(as_machine)? {
+                let windows = omicron::windows::Windows::load()?;
+                omicron::windows::this_window(&windows)?
+                    .and_then(|pid| windows.windows.get(&pid))
+                    .and_then(|w| w.session_id.clone())
+            } else {
+                None
+            };
+            board.add_comment(&t, &text, session_id.as_deref())?;
+            let t = if review { board.set_needs_review(&p, number, true)? } else { t };
             changed(&p, t)
         }
         Tasks::Send { project, number, session } => {

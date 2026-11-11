@@ -1,4 +1,4 @@
-import { CalendarDays, CheckSquare, Terminal } from "lucide-react";
+import { CalendarDays, CheckSquare, MessageSquare, Terminal } from "lucide-react";
 import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
           ))}
         </div>
       )}
-      {(task.due_on || task.checklist.length > 0 || assignee || session) && (
+      {(task.due_on || task.checklist.length > 0 || task.comments.length > 0 || assignee || session) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {task.due_on && (
             <span className="flex items-center gap-1">
@@ -47,6 +47,12 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
               <span className="font-mono">
                 {ticked}/{task.checklist.length}
               </span>
+            </span>
+          )}
+          {task.comments.length > 0 && (
+            <span className="flex items-center gap-1" title={`${task.comments.length} comments`}>
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span className="font-mono">{task.comments.length}</span>
             </span>
           )}
           {session && (

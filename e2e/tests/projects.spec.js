@@ -263,7 +263,21 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     expect(out.decision).toBe("block");
     expect(out.reason).toContain(`#1 in ${name}: Write the parser`);
     await expect(page.getByTestId("pickup")).toHaveText("Picked up by the session.");
+
+    // It reports back and asks for review; the page shows it live.
+    omicron.cliIn(win.pid, "tasks", "comment", name, "1", "Parser done, with tests.", "--review", "--as-machine");
+    const comments = page.getByRole("list", { name: "Comments" });
+    await expect(comments).toContainText(`${machineName}parser`);
+    await expect(comments).toContainText("Parser done, with tests.");
+    await expect(page.getByTestId("needs-review")).toBeVisible();
+
+    // A person answers from the page.
+    await page.getByLabel("New comment").fill("Thanks, looks good.");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(comments.getByRole("listitem")).toHaveCount(2);
+    await expect(comments.getByRole("listitem").last()).toContainText("Thanks, looks good.");
     await page.keyboard.press("Escape");
+    await expect(card).toContainText("2");
     await expect(card).toContainText("parser");
     await expect(card).not.toContainText("waiting");
   } finally {

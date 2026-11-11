@@ -143,6 +143,15 @@ fn task_from(v: &Value) -> Result<Task> {
     })
 }
 
+/// A comment on a task. `session` names the Claude session that wrote it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    pub author: String,
+    pub session: Option<String>,
+    pub body: String,
+    pub at: String,
+}
+
 /// A Claude session's record (see `windows` for the local side).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionRecord {
@@ -463,6 +472,30 @@ impl Board {
             .flatten()
             .map(|v| Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?)))
             .collect()
+    }
+
+    pub fn comments(&self, task: &Task) -> Result<Vec<Comment>> {
+        let rows = self.get(&format!(
+            "/rest/v1/comments?task_id=eq.{}&select=author_name,body,created_at,sessions(name)&order=created_at",
+            task.id
+        ))?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|v| Comment {
+                author: v["author_name"].as_str().unwrap_or("").to_string(),
+                session: v["sessions"]["name"].as_str().map(String::from),
+                body: v["body"].as_str().unwrap_or("").to_string(),
+                at: v["created_at"].as_str().unwrap_or("").to_string(),
+            })
+            .collect())
+    }
+
+    /// Comment on a task, naming the Claude session it comes from, if any.
+    pub fn add_comment(&self, task: &Task, body: &str, session_id: Option<&str>) -> Result<()> {
+        self.send("POST", "/rest/v1/comments", json!({ "task_id": task.id, "body": body, "session_id": session_id }))?;
+        Ok(())
     }
 
     pub fn set_needs_review(&self, project: &Project, number: i64, on: bool) -> Result<Task> {

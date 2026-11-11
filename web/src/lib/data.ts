@@ -8,6 +8,7 @@ export type ProjectSummary = { id: string; name: string; taskCount: number };
 export type Status = { id: string; name: string; position: number; is_done: boolean };
 export type Label = { id: string; name: string; color: string | null };
 export type Person = { id: string; display_name: string };
+export type Comment = { id: string; author: string; session: string | null; body: string; created_at: string };
 export type ChecklistItem = { id: string; text: string; done: boolean; position: number };
 export type Task = {
   id: string;
@@ -24,6 +25,7 @@ export type Task = {
   picked_up_at: string | null;
   labelIds: string[];
   checklist: ChecklistItem[];
+  comments: Comment[];
 };
 export type ClaudeSession = { id: string; name: string; state: "open" | "closed" | "gone"; folder: string; machine: string };
 export type ProjectData = {
@@ -55,7 +57,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db
       .from("tasks")
       .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,task_labels(label_id),checklist_items(id,text,done,position)",
+        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,sessions(name))",
       )
       .eq("project_id", id)
       .order("position")
@@ -87,6 +89,15 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       picked_up_at: t.picked_up_at,
       labelIds: (t.task_labels ?? []).map((l: { label_id: string }) => l.label_id),
       checklist: [...(t.checklist_items ?? [])].sort((a: ChecklistItem, b: ChecklistItem) => a.position - b.position),
+      comments: (t.comments ?? [])
+        .map((c: any) => ({
+          id: c.id,
+          author: c.author_name,
+          session: c.sessions?.name ?? null,
+          body: c.body,
+          created_at: c.created_at,
+        }))
+        .sort((a: Comment, b: Comment) => a.created_at.localeCompare(b.created_at)),
     })),
     sessions: (must(sessions) as any[]).map((r) => ({
       id: r.id,
@@ -185,4 +196,8 @@ export async function removeMember(db: SupabaseClient, projectId: string, person
 
 export async function removeSession(db: SupabaseClient, session: ClaudeSession) {
   must(await db.from("sessions").delete().eq("id", session.id));
+}
+
+export async function addComment(db: SupabaseClient, task: Task, body: string) {
+  must(await db.from("comments").insert({ task_id: task.id, body }));
 }

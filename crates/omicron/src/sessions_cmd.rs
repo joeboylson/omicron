@@ -173,7 +173,7 @@ fn tasks_message(tasks: &[(String, omicron::board::Task)]) -> String {
             text.push_str(&format!("{}\n", t.notes));
         }
         text.push_str(&format!(
-            "Full task: `omicron tasks show '{project}' {n} --as-machine`. When it's done, mark it for review: `omicron tasks needs-review '{project}' {n} --as-machine`.\n",
+            "Full task: `omicron tasks show '{project}' {n} --as-machine`. When it's done, report on it and mark it for review: `omicron tasks comment '{project}' {n} \"<what you did>\" --review --as-machine`.\n",
             n = t.number
         ));
     }

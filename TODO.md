@@ -138,7 +138,12 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - Dropped: "reopen a closed session in the background". Omicron doesn't
   start sessions (decided 10 Nov 2026), so a task sent to a closed session
   waits until it's opened again.
-- [ ] Reports as task comments, the Needs review mark, and the Reviewed button.
+- [x] Reports as task comments: people and sessions comment on tasks
+      (`omicron tasks comment <P> <n> "text" [--review]`, or the task view
+      on the web page). From inside a tracked session the comment says which
+      session wrote it; the database checks the session is the machine's
+      own. With the Needs review mark and the Reviewed button, a session's
+      report goes: comment + review, someone reads it, Reviewed.
 - [ ] `omicron handoff`: handoff notes per session, picked up after `/clear`.
 
 ## 5. Chat
