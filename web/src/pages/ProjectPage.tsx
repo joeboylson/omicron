@@ -352,7 +352,12 @@ export function ProjectPage({ id }: { id: string }) {
           )}
         </DragOverlay>
       </DndContext>
-      <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload} onDelete={removeTask} />
+      <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload}
+        onDelete={removeTask}
+        onPatch={(taskId, change) =>
+          setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p))
+        }
+      />
       <Chat project={project} open={chatOpen && project.chatEnabled} onOpenChange={setChatOpen} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
     </main>

@@ -908,3 +908,25 @@ test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) =>
   await page.keyboard.press("Enter");
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
 });
+
+test("a change in a task shows at once, before it's saved", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Fix the gate");
+  // Saving tasks is slow today: two seconds.
+  let release;
+  const held = new Promise((r) => (release = r));
+  await page.route(/\/rest\/v1\/tasks\?/, async (route) => {
+    if (route.request().method() === "PATCH") await held;
+    await route.continue();
+  });
+  await page.getByRole("button", { name: /#1 Fix the gate/ }).click();
+  await pick(page, "Status", "Done");
+  await page.keyboard.press("Escape");
+  // Already in Done, while the save is still waiting.
+  await expect(column(page, "Done")).toContainText("Fix the gate", { timeout: 1000 });
+  release();
+  await page.reload();
+  await expect(column(page, "Done")).toContainText("Fix the gate");
+});

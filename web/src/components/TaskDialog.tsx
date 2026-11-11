@@ -48,6 +48,7 @@ export function TaskDialog({
   onClose,
   onChanged,
   onDelete,
+  onPatch,
 }: {
   project: ProjectData;
   task: Task | null;
@@ -55,6 +56,8 @@ export function TaskDialog({
   onChanged: () => void;
   /** Delete it (the page keeps an Undo for a few seconds). */
   onDelete: (task: Task) => void;
+  /** Show a change at once, before it's saved. */
+  onPatch: (taskId: string, change: Partial<Task>) => void;
 }) {
   return (
     <Dialog open={task !== null} onOpenChange={(open) => !open && onClose()}>
@@ -63,7 +66,7 @@ export function TaskDialog({
         // Don't jump into the title: on a phone that opens the keyboard.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {task && <TaskForm key={task.id} project={project} task={task} onChanged={onChanged} onDelete={onDelete} />}
+        {task && <TaskForm key={task.id} project={project} task={task} onChanged={onChanged} onDelete={onDelete} onPatch={onPatch} />}
       </DialogContent>
     </Dialog>
   );
@@ -74,11 +77,13 @@ function TaskForm({
   task,
   onChanged,
   onDelete,
+  onPatch,
 }: {
   project: ProjectData;
   task: Task;
   onChanged: () => void;
   onDelete: (task: Task) => void;
+  onPatch: (taskId: string, change: Partial<Task>) => void;
 }) {
   const { db, act } = useApp();
   const [title, setTitle] = useState(task.title);
@@ -112,7 +117,12 @@ function TaskForm({
   const change = async (work: () => Promise<unknown>) => {
     if (await act(work)) onChanged();
   };
-  const save = (c: Parameters<typeof updateTask>[3]) => change(() => updateTask(db, project, task, c));
+  // Shows at once (the page updates its copy), then saves; a failure says
+  // so and the reload puts it back.
+  const save = (c: Parameters<typeof updateTask>[3]) => {
+    onPatch(task.id, c);
+    return act(() => updateTask(db, project, task, c)).finally(onChanged);
+  };
 
   const done = project.statuses.find((s) => s.is_done);
   const isDone = done?.id === task.status_id;
