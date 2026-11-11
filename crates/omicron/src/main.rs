@@ -11,6 +11,7 @@ mod chat_cmd;
 mod dispatch_cmd;
 mod handoff_cmd;
 mod loops_cmd;
+mod picker;
 mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.

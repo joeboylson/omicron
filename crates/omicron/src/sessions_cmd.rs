@@ -30,6 +30,9 @@ pub enum Sessions {
         #[arg(long)]
         resume: Option<String>,
     },
+    /// Pick one of this machine's sessions from a full-screen list and jump
+    /// in (a closed one is reopened first)
+    Pick,
     /// Record the Claude session this runs in, under a Project
     Add {
         /// A name for it, like `parser-work`
@@ -151,6 +154,7 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             windows.save()?;
             println!("Removed session {name} from {}.", project.name);
         }
+        Sessions::Pick => crate::picker::pick()?,
         Sessions::GiveTasks { name, project, to, to_session } => {
             let board = sign_in(as_machine)?;
             let p = board.project(&project)?;
