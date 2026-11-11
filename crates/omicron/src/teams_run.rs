@@ -53,6 +53,11 @@ fn git(folder: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+/// Where a job's own worktree goes (whether or not it's been made).
+pub fn worktree(team: &TeamRow, number: i64) -> Result<PathBuf> {
+    Ok(omicron::config::home()?.join("teams").join(format!("{}-{}", team.name, &team.id[..8])).join(format!("job-{number}")))
+}
+
 /// Where a job's work happens: its own worktree (made the first time), or
 /// the folder itself when it isn't in git.
 pub fn job_folder(team: &TeamRow, job: &Job) -> Result<PathBuf> {
@@ -60,7 +65,7 @@ pub fn job_folder(team: &TeamRow, job: &Job) -> Result<PathBuf> {
     if !is_git(&folder) {
         return Ok(folder);
     }
-    let path = omicron::config::home()?.join("teams").join(format!("{}-{}", team.name, &team.id[..8])).join(format!("job-{}", job.number));
+    let path = worktree(team, job.number)?;
     if !path.exists() {
         std::fs::create_dir_all(path.parent().unwrap())?;
         let b = branch(job);
@@ -361,7 +366,7 @@ pub fn finish(number: i64) -> Result<String> {
                 board.update_job(&job, serde_json::json!({ "state": "working", "step": "builder", "note": format!("Merging clashed: {e}") }))?;
                 bail!("job #{number}'s branch clashes with the base: send it back to the builder to fix the clash, then finish it again");
             }
-            let path = omicron::config::home()?.join("teams").join(format!("{}-{}", team.name, &team.id[..8])).join(format!("job-{}", job.number));
+            let path = worktree(&team, job.number)?;
             let _ = git(&folder, &["worktree", "remove", "--force", &path.to_string_lossy()]);
             let _ = git(&folder, &["branch", "-d", &b]);
         }

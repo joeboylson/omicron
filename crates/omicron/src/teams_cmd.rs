@@ -39,6 +39,11 @@ pub enum Teams {
     Stop { team: String },
     /// The teams you can see
     List,
+    /// Look through a team's folder: its setup, and what each open job changed
+    View {
+        /// The team (the one whose folder you're in if left out)
+        team: Option<String>,
+    },
     /// Pick a team member running on this machine and jump into its terminal
     Pick {
         /// Only this team's members
@@ -216,6 +221,7 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
                 println!("{}\t{}\t{}\t{} open jobs\t{}", t.name, t.state, t.workflow, open, t.folder);
             }
         }
+        Teams::View { team } => crate::teams_view::view(team)?,
         Teams::Pick { team } => crate::picker::pick_team(team)?,
         Teams::AddJob { team, title, text } => {
             let board = sign_in(as_machine)?;

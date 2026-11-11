@@ -14,6 +14,7 @@ mod loops_cmd;
 mod picker;
 mod teams_cmd;
 mod teams_run;
+mod teams_view;
 mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.

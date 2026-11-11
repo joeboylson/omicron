@@ -181,20 +181,79 @@ pub fn pick_team(team: Option<String>) -> Result<()> {
 
 /// The full-screen part. None if they quit.
 pub fn choose(title: &str, rows: &[Row]) -> Result<Option<usize>> {
+    full_screen(|out| run(title, rows, out))
+}
+
+/// Raw keys on the alternate screen (so the terminal's contents come back
+/// after), put back however `f` ends.
+fn full_screen<T>(f: impl FnOnce(&mut std::io::Stdout) -> Result<T>) -> Result<T> {
     use nix::sys::termios;
     let stdin = std::io::stdin();
-    let saved = termios::tcgetattr(&stdin).context("the picker needs a terminal")?;
+    let saved = termios::tcgetattr(&stdin).context("this needs a terminal")?;
     let mut raw = saved.clone();
     termios::cfmakeraw(&mut raw);
     termios::tcsetattr(&stdin, termios::SetArg::TCSANOW, &raw)?;
     let mut out = std::io::stdout();
-    // The alternate screen, so the terminal's contents come back after.
     write!(out, "\x1b[?1049h\x1b[?25l")?;
-    let result = run(title, rows, &mut out);
+    let result = f(&mut out);
     let _ = write!(out, "\x1b[?25h\x1b[?1049l");
     let _ = out.flush();
     let _ = termios::tcsetattr(&std::io::stdin(), termios::SetArg::TCSANOW, &saved);
     result
+}
+
+/// The terminal's size, or 80 by 24 if it won't say.
+fn size() -> (usize, usize) {
+    let mut ws: nix::libc::winsize = unsafe { std::mem::zeroed() };
+    let ok = unsafe { nix::libc::ioctl(1, nix::libc::TIOCGWINSZ, &mut ws) } == 0;
+    if ok && ws.ws_row > 0 && ws.ws_col > 0 {
+        (ws.ws_col as usize, ws.ws_row as usize)
+    } else {
+        (80, 24)
+    }
+}
+
+/// Show some text full-screen: arrows, space and b (or PgDn/PgUp), g and G
+/// move; Esc or q goes back.
+pub fn page(title: &str, text: &str) -> Result<()> {
+    let lines: Vec<String> = text.lines().map(|l| l.replace('\t', "    ")).collect();
+    full_screen(|out| {
+        let mut top = 0usize;
+        let mut input = std::io::stdin();
+        loop {
+            let (cols, rows) = size();
+            let body = rows.saturating_sub(3).max(1);
+            let last = lines.len().saturating_sub(body);
+            top = top.min(last);
+            let mut screen = format!("\x1b[H\x1b[2J\x1b[1m{title}\x1b[0m\r\n\r\n");
+            for l in lines.iter().skip(top).take(body) {
+                let cut: String = l.chars().filter(|c| !c.is_control()).take(cols).collect();
+                let color = match cut.chars().next() {
+                    Some('+') if !cut.starts_with("+++") => "\x1b[32m",
+                    Some('-') if !cut.starts_with("---") => "\x1b[31m",
+                    Some('@') if cut.starts_with("@@") => "\x1b[36m",
+                    _ => "",
+                };
+                screen.push_str(&format!("{color}{cut}\x1b[0m\r\n"));
+            }
+            let end = (top + body).min(lines.len());
+            screen.push_str(&format!("\x1b[{rows};1H\x1b[2mLines {}–{end} of {} · ↑↓ space b move · Esc back\x1b[0m", top.min(end) + usize::from(end > 0), lines.len()));
+            out.write_all(screen.as_bytes())?;
+            out.flush()?;
+            let mut key = [0u8; 8];
+            let n = input.read(&mut key)?;
+            match &key[..n] {
+                [0x1b] | [0x03] | [b'q'] => return Ok(()),
+                [0x1b, b'[', b'A'] | [b'k'] => top = top.saturating_sub(1),
+                [0x1b, b'[', b'B'] | [b'j'] | [b'\r'] => top = (top + 1).min(last),
+                [b' '] | [0x1b, b'[', b'6', b'~'] => top = (top + body).min(last),
+                [b'b'] | [0x1b, b'[', b'5', b'~'] => top = top.saturating_sub(body),
+                [b'g'] => top = 0,
+                [b'G'] => top = last,
+                _ => {}
+            }
+        }
+    })
 }
 
 fn run(title: &str, list: &[Row], out: &mut std::io::Stdout) -> Result<Option<usize>> {
