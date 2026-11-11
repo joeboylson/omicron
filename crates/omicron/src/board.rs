@@ -47,6 +47,8 @@ pub struct Task {
     pub title: String,
     pub notes: String,
     pub status_id: String,
+    /// Its place within its status (lower is higher up).
+    pub position: f64,
     pub due_on: Option<String>,
     pub assignee: Option<String>,
     /// The Claude session it was sent to, if any.
@@ -152,6 +154,7 @@ fn task_from(v: &Value) -> Result<Task> {
         title: v["title"].as_str().unwrap_or("").to_string(),
         notes: v["notes"].as_str().unwrap_or("").to_string(),
         status_id: v["status_id"].as_str().unwrap_or("").to_string(),
+        position: v["position"].as_f64().unwrap_or(0.0),
         due_on: v["due_on"].as_str().map(String::from),
         assignee: v["assignee"]["display_name"].as_str().map(String::from),
         session: v["session"]["name"].as_str().map(String::from),
@@ -178,6 +181,15 @@ pub struct Loop {
     pub note: Option<String>,
     pub next_run_at: String,
     pub last_run_at: Option<String>,
+}
+
+/// Where to put a task in its status.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Place {
+    Top,
+    Bottom,
+    Before(i64),
+    After(i64),
 }
 
 /// A request to hand a task to its session (see `dispatch`).
@@ -643,13 +655,21 @@ impl Board {
         }
         let assignee = new.assignee.as_deref().map(|n| self.member_id(project, n)).transpose()?;
         let topic = new.topic.as_deref().map(|n| self.topic_id(project, n, true)).transpose()?;
+        // At the bottom of its status, as on the web page.
+        let position = self
+            .tasks(project)?
+            .iter()
+            .filter(|t| t.status_id == status.id)
+            .map(|t| t.position)
+            .fold(None, |m: Option<f64>, p| Some(m.map_or(p, |m| m.max(p))))
+            .map_or(0.0, |m| m + 1.0);
         let rows = self.send(
             "POST",
             "/rest/v1/tasks?select=id,number",
             json!({
                 "project_id": project.id, "title": new.title, "status_id": status.id,
                 "due_on": new.due_on, "assignee_person_id": assignee, "notes": new.notes,
-                "topic_id": topic,
+                "topic_id": topic, "position": position,
             }),
         )?;
         let id = rows[0]["id"].as_str().context("task wasn't made")?.to_string();
@@ -666,10 +686,52 @@ impl Board {
         Ok(())
     }
 
+    /// Move a task to a status (its own if None), at a place in it: the
+    /// bottom unless `place` says otherwise.
     pub fn move_task(&self, project: &Project, number: i64, status: &str) -> Result<Task> {
+        self.place_task(project, number, Some(status), Place::Bottom)
+    }
+
+    pub fn place_task(&self, project: &Project, number: i64, status: Option<&str>, place: Place) -> Result<Task> {
         let task = self.task(project, number)?;
-        let status = self.status_named(project, status)?;
-        self.update_task(&task, json!({ "status_id": status.id }))?;
+        let status_id = match status {
+            Some(name) => self.status_named(project, name)?.id,
+            None => task.status_id.clone(),
+        };
+        let mut others: Vec<Task> =
+            self.tasks(project)?.into_iter().filter(|t| t.status_id == status_id && t.id != task.id).collect();
+        others.sort_by(|a, b| a.position.total_cmp(&b.position).then(a.number.cmp(&b.number)));
+        // Ties (tasks that never had a place) can't have anything put
+        // between them: number the column first.
+        if others.windows(2).any(|w| w[0].position >= w[1].position) {
+            for (i, t) in others.iter_mut().enumerate() {
+                t.position = i as f64;
+                self.update_task(t, json!({ "position": t.position }))?;
+            }
+        }
+        let at = match place {
+            Place::Top => 0,
+            Place::Bottom => others.len(),
+            Place::Before(n) | Place::After(n) => {
+                let i = others.iter().position(|t| t.number == n).with_context(|| {
+                    if n == number {
+                        "a task can't be placed next to itself".to_string()
+                    } else {
+                        format!("#{n} isn't in that status")
+                    }
+                })?;
+                if matches!(place, Place::After(_)) { i + 1 } else { i }
+            }
+        };
+        let before = at.checked_sub(1).map(|i| others[i].position);
+        let after = others.get(at).map(|t| t.position);
+        let position = match (before, after) {
+            (None, None) => 0.0,
+            (None, Some(a)) => a - 1.0,
+            (Some(b), None) => b + 1.0,
+            (Some(b), Some(a)) => (b + a) / 2.0,
+        };
+        self.update_task(&task, json!({ "status_id": status_id, "position": position }))?;
         self.task(project, number)
     }
 

@@ -442,3 +442,22 @@ export async function listPeopleTable(db: SupabaseClient): Promise<PersonRow[]> 
     projectIds: (r.project_members ?? []).map((m: { project_id: string }) => m.project_id),
   }));
 }
+
+/** A position between two neighbours (either may be missing). */
+export function positionBetween(before: number | undefined, after: number | undefined): number {
+  if (before === undefined && after === undefined) return 0;
+  if (before === undefined) return after! - 1;
+  if (after === undefined) return before + 1;
+  return (before + after) / 2;
+}
+
+/** Move a task: to a status (and topic, when given) at a position. */
+export async function moveTask(
+  db: SupabaseClient,
+  task: Task,
+  to: { statusId: string; topicId?: string | null; position: number },
+) {
+  const row: Record<string, unknown> = { status_id: to.statusId, position: to.position };
+  if (to.topicId !== undefined) row.topic_id = to.topicId;
+  must(await db.from("tasks").update(row).eq("id", task.id));
+}

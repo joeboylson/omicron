@@ -399,3 +399,27 @@ fn comments_can_hold_images() {
     let err = s.request_as(&mac_login, "POST", "/rest/v1/comments", Some(json!({ "task_id": mine[0]["id"], "body": "x", "images": [format!("{}/y.png", Uuid::new_v4())] })));
     assert!(err.unwrap_err().to_string().contains("its own Project"));
 }
+
+#[test]
+fn tasks_can_be_placed_within_a_status() {
+    let s = supabase_or_skip!();
+    let (me, project) = person_with_project(&s, "Pat");
+    for t in ["One", "Two", "Three", "Four"] {
+        ok(&me, &["tasks", "add", &project, t]);
+    }
+    let order = || -> Vec<String> {
+        ok(&me, &["tasks", "list", &project]).lines().filter(|l| l.starts_with("  #")).map(|l| l.trim().to_string()).collect()
+    };
+    ok(&me, &["tasks", "move", &project, "4", "--top"]);
+    assert_eq!(order(), ["#4  Four", "#1  One", "#2  Two", "#3  Three"]);
+    ok(&me, &["tasks", "move", &project, "4", "--after", "2"]);
+    assert_eq!(order(), ["#1  One", "#2  Two", "#4  Four", "#3  Three"]);
+    ok(&me, &["tasks", "move", &project, "3", "--before", "1"]);
+    assert_eq!(order(), ["#3  Three", "#1  One", "#2  Two", "#4  Four"]);
+    // To another status: the bottom of it, unless told otherwise.
+    ok(&me, &["tasks", "move", &project, "1", "Done"]);
+    ok(&me, &["tasks", "move", &project, "2", "Done", "--top"]);
+    assert_eq!(order(), ["#3  Three", "#4  Four", "#2  Two", "#1  One"]);
+    assert!(fails(&me, &["tasks", "move", &project, "3", "--after", "1"]).contains("#1 isn't in that status"));
+    assert!(fails(&me, &["tasks", "move", &project, "3", "--top", "--bottom"]).contains("cannot be used with"));
+}

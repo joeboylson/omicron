@@ -631,3 +631,49 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await page.getByRole("button", { name: "Back to Projects" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
 });
+
+test("tasks move by dragging, within and between statuses, and with the keyboard", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Alpha");
+  for (const t of ["Bravo", "Charlie"]) {
+    await page.getByLabel("New task in To do").fill(t);
+    await page.getByRole("button", { name: "Add task", exact: true }).click();
+    await expect(column(page, "To do").getByRole("button", { name: new RegExp(t) })).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Cancel" }).click();
+  const titles = (status) => column(page, status).getByRole("button", { name: /^#\d+ / }).allTextContents();
+  const card = (t) => page.getByRole("button", { name: new RegExp(`^#\\d+ ${t}$`) });
+  async function drag(from, to, dy = -10) {
+    const a = await from.boundingBox();
+    const b = await to.boundingBox();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + dy, { steps: 15 });
+    await page.mouse.up();
+  }
+
+  // Within a status: Charlie to the top.
+  await drag(card("Charlie"), card("Alpha"), -20);
+  await expect.poll(async () => (await titles("To do")).map((t) => t.replace(/#\d+$/, "").trim())).toEqual(["Charlie", "Alpha", "Bravo"].map(String));
+  // To another status.
+  await drag(card("Alpha"), column(page, "Done"), 0);
+  await expect(column(page, "Done")).toContainText("Alpha");
+
+  // With the keyboard: Space picks Bravo up, the up arrow moves it, Space drops it.
+  await card("Bravo").focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Space");
+  await expect.poll(async () => (await titles("To do")).map((t) => t.replace(/#\d+$/, "").trim())).toEqual(["Bravo", "Charlie"]);
+
+  // Saved: the same after reloading.
+  await page.reload();
+  await expect.poll(async () => (await titles("To do")).map((t) => t.replace(/#\d+$/, "").trim())).toEqual(["Bravo", "Charlie"]);
+  await expect(column(page, "Done")).toContainText("Alpha");
+  // A click still opens a task.
+  await card("Charlie").click();
+  await expect(page.getByRole("dialog")).toContainText("Charlie");
+});

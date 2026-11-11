@@ -137,8 +137,26 @@ pub enum Tasks {
     },
     /// Give a task a topic (made if it doesn't exist), or `none` to take it off
     Topic { project: String, number: i64, topic: String },
-    /// Move a task to another status
-    Move { project: String, number: i64, status: String },
+    /// Move a task to another status (to the bottom), or to another place
+    /// in its own: omicron tasks move Omicron 7 --top
+    Move {
+        project: String,
+        number: i64,
+        /// The status (its own if left out)
+        status: Option<String>,
+        /// Put it at the top
+        #[arg(long, conflicts_with_all = ["bottom", "before", "after"])]
+        top: bool,
+        /// Put it at the bottom (where a move to another status goes anyway)
+        #[arg(long, conflicts_with_all = ["before", "after"])]
+        bottom: bool,
+        /// Put it just above this task (by number)
+        #[arg(long, conflicts_with = "after")]
+        before: Option<i64>,
+        /// Put it just below this task (by number)
+        #[arg(long)]
+        after: Option<i64>,
+    },
     /// Move a task to the Project's Done status
     Done { project: String, number: i64 },
     /// Add a label to a task
@@ -374,9 +392,16 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = board.add_task(&p, &NewTask { title, status, due_on: due, labels, assignee, notes, topic })?;
             changed(&p, t)
         }
-        Tasks::Move { project, number, status } => {
+        Tasks::Move { project, number, status, top, bottom: _, before, after } => {
+            use omicron::board::Place;
+            let place = match (top, before, after) {
+                (true, _, _) => Place::Top,
+                (_, Some(n), _) => Place::Before(n),
+                (_, _, Some(n)) => Place::After(n),
+                _ => Place::Bottom,
+            };
             let p = board.project(&project)?;
-            let t = board.move_task(&p, number, &status)?;
+            let t = board.place_task(&p, number, status.as_deref(), place)?;
             changed(&p, t)
         }
         Tasks::Done { project, number } => {

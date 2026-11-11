@@ -17,7 +17,8 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
       role="button"
       tabIndex={0}
       onClick={onOpen}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
+      // Enter opens it; Space picks it up to move it (on the board).
+      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), onOpen())}
       className="cursor-pointer p-3 text-[15px] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`#${task.number} ${task.title}`}
     >

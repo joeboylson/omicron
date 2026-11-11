@@ -2,7 +2,22 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronLeft, MessageCircle, Plus, Settings } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addTask, loadProject, type ProjectData, type Status, type Task } from "@/lib/data";
+import { addTask, loadProject, moveTask, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +40,18 @@ export function ProjectPage({ id }: { id: string }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
   const [collapsed, setCollapsed] = useStored<string[]>(`omicron.collapsedTopics.${id}`, []);
+  const [dragging, setDragging] = useState<Task | null>(null);
+  const sensors = useSensors(
+    // A small move starts a drag, so a click still opens the task.
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // On a phone, press and hold, so scrolling still works.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    // Space picks a card up (Enter opens it), arrows move it, Space drops it.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space"] },
+    }),
+  );
 
   const reload = useCallback(() => {
     act(async () => setProject(await loadProject(db, id)));
@@ -46,6 +73,34 @@ export function ProjectPage({ id }: { id: string }) {
 
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
+
+  const onDragStart = (e: DragStartEvent) => setDragging(project.tasks.find((t) => t.id === e.active.id) ?? null);
+  // Dropped: work out the column (a status, and a topic in topic rows) and
+  // the place in it, show it at once, then save.
+  const onDragEnd = (e: DragEndEvent) => {
+    setDragging(null);
+    const moved = project.tasks.find((t) => t.id === e.active.id);
+    if (!moved || !e.over) return;
+    const overTask = project.tasks.find((t) => t.id === e.over!.id);
+    const col = parseColumn(overTask ? String(e.over.data.current?.column) : String(e.over.id));
+    if (!col) return;
+    const inColumn = (t: Task) => t.status_id === col.statusId && (col.topicId === undefined || t.topic_id === col.topicId);
+    const others = project.tasks.filter((t) => inColumn(t) && t.id !== moved.id).sort((a, b) => a.position - b.position);
+    let at = overTask ? others.findIndex((t) => t.id === overTask.id) : others.length;
+    // Dragging down within the same column lands after the card it's over.
+    if (overTask && inColumn(moved) && moved.position < overTask.position) at += 1;
+    if (at < 0) at = others.length;
+    const position = positionBetween(others[at - 1]?.position, others[at]?.position);
+    if (inColumn(moved) && (others[at - 1]?.position ?? -Infinity) < moved.position && moved.position < (others[at]?.position ?? Infinity)) {
+      return; // Already there.
+    }
+    const topicId = col.topicId === undefined ? moved.topic_id : col.topicId;
+    setProject({
+      ...project,
+      tasks: project.tasks.map((t) => (t.id === moved.id ? { ...t, status_id: col.statusId, topic_id: topicId, position } : t)),
+    });
+    act(() => moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position })).then(reload);
+  };
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <NavBar
@@ -91,6 +146,18 @@ export function ProjectPage({ id }: { id: string }) {
           ))}
         </div>
       </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setDragging(null)}
+        accessibility={{
+          screenReaderInstructions: {
+            draggable: "To move this task, press Space. Use the arrow keys to move it, Space again to drop it, or Escape to cancel. Enter opens it.",
+          },
+        }}
+      >
       {groupBy === "status" ? (
         <div className={boardRow}>
           {project.statuses.map((s) => (
@@ -99,6 +166,7 @@ export function ProjectPage({ id }: { id: string }) {
               project={project}
               status={s}
               topicId={null}
+              grouped={false}
               label={s.name}
               tasks={project.tasks.filter((t) => t.status_id === s.id)}
               onOpen={(t) => setOpenTask(t.number)}
@@ -116,6 +184,14 @@ export function ProjectPage({ id }: { id: string }) {
           onSettings={() => setSettingsOpen(true)}
         />
       )}
+        <DragOverlay>
+          {dragging && (
+            <div className="rotate-1 cursor-grabbing shadow-xl">
+              <TaskCard project={project} task={dragging} onOpen={() => {}} />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
       <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload} />
       <Chat project={project} open={chatOpen && project.chatEnabled} onOpenChange={setChatOpen} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
@@ -200,6 +276,7 @@ function Lanes({
                     project={project}
                     status={s}
                     topicId={lane.topicId}
+                    grouped
                     label={`${s.name} in ${lane.name}`}
                     tasks={tasks.filter((t) => t.status_id === s.id)}
                     onOpen={onOpen}
@@ -219,6 +296,7 @@ function Column({
   project,
   status,
   topicId,
+  grouped,
   label,
   tasks,
   onOpen,
@@ -227,6 +305,8 @@ function Column({
   project: ProjectData;
   status: Status;
   topicId: string | null;
+  /** In topic rows: dropping here also sets the topic. */
+  grouped: boolean;
   /** What the column is called to screen readers (and tests). */
   label: string;
   tasks: Task[];
@@ -236,6 +316,8 @@ function Column({
   const { db, act } = useApp();
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
+  const column = columnId(status.id, topicId, grouped);
+  const { setNodeRef, isOver } = useDroppable({ id: column });
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,13 +344,13 @@ function Column({
           </Badge>
         )}
       </h2>
-      <ul className="flex flex-col gap-2">
-        {tasks.map((t) => (
-          <li key={t.id}>
-            <TaskCard project={project} task={t} onOpen={() => onOpen(t)} />
-          </li>
-        ))}
-      </ul>
+      <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+        <ul ref={setNodeRef} className={cn("flex min-h-2 flex-col gap-2 rounded-lg transition-colors", isOver && "bg-accent/60")}>
+          {tasks.map((t) => (
+            <SortableTask key={t.id} project={project} task={t} column={column} onOpen={() => onOpen(t)} />
+          ))}
+        </ul>
+      </SortableContext>
       {adding ? (
         <form onSubmit={add} className="mt-2 flex flex-col gap-2">
           <Input
@@ -294,5 +376,35 @@ function Column({
         </Button>
       )}
     </section>
+  );
+}
+
+/** A column's id: its status, and in topic rows its topic ("none" for no topic). */
+function columnId(statusId: string, topicId: string | null, grouped: boolean): string {
+  return grouped ? `col|${statusId}|${topicId ?? "none"}` : `col|${statusId}`;
+}
+
+function parseColumn(id: string): { statusId: string; topicId?: string | null } | null {
+  const [kind, statusId, topic] = id.split("|");
+  if (kind !== "col" || !statusId) return null;
+  return topic === undefined ? { statusId } : { statusId, topicId: topic === "none" ? null : topic };
+}
+
+/** A card that can be dragged to another place or column. */
+function SortableTask({ project, task, column, onOpen }: { project: ProjectData; task: Task; column: string; onOpen: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { column } });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn("touch-manipulation", isDragging && "opacity-40")}
+      {...attributes}
+      {...listeners}
+      // The card inside is the button; this is just its place in the list.
+      role="listitem"
+      tabIndex={-1}
+    >
+      <TaskCard project={project} task={task} onOpen={onOpen} />
+    </li>
   );
 }
