@@ -52,6 +52,10 @@ multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/e2e.sh              
 
 New VM: `dev/vm/setup.sh`, then `dev/supabase/install.sh`.
 
+No multipass? `bash dev/docker/setup.sh` makes an `omicron-dev` Docker container
+with the same paths. Run the same scripts with
+`docker exec -u ubuntu omicron-dev bash /home/ubuntu/omicron/dev/...`.
+
 ## How to work here
 
 - Keep every file for this project in this folder.

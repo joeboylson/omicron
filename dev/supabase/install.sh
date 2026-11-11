@@ -16,11 +16,16 @@ fi
 sudo apt-get install -y -q jq openssl >/dev/null
 
 if [ ! -f "$HOME/supabase/.env" ]; then
-  rm -rf "$HOME/supabase"
-  setup=$(mktemp)
-  curl -fsSL https://raw.githubusercontent.com/supabase/supabase/master/docker/setup.sh -o "$setup"
-  (cd "$HOME" && sh "$setup" -y --skip-deps --project-dir supabase)
-  rm -f "$setup"
+  # Supabase's script won't use a folder that already exists, and in the Docker
+  # setup ~/supabase is a mount point that can't be removed. So it sets up in a
+  # spare folder and the files are copied in.
+  work=$(mktemp -d)
+  curl -fsSL https://raw.githubusercontent.com/supabase/supabase/master/docker/setup.sh -o "$work/setup.sh"
+  (cd "$work" && sh setup.sh -y --skip-deps --project-dir supabase)
+  mkdir -p "$HOME/supabase"
+  find "$HOME/supabase" -mindepth 1 -delete
+  cp -a "$work/supabase/." "$HOME/supabase/"
+  rm -rf "$work"
 fi
 
 cd "$HOME/supabase"
