@@ -58,13 +58,21 @@ with the same paths. Run the same scripts with
 `bash dev/docker/systemd-test.sh` checks `omicron daemon start-at-login`
 against a real systemd.
 
-The real Omicron runs on this Mac (atlas), against the test Supabase for now:
+The real Omicron runs on this Mac (atlas), against the real Supabase:
 `bash dev/mac.sh` builds, installs `~/.local/bin/omicron`, and restarts the
 web page (127.0.0.1:9010, on the tailnet admin-only at
 https://atlas.taileedd95.ts.net:8451 through the home lab's gate) and the
 daemon, in the tmux sessions `omicron-serve` and `omicron-daemon`. Claude
 sessions get Omicron's hooks with `claude --settings
 ~/.omicron/claude/settings.json`; Claude Code's own settings are left alone.
+
+Two Supabases run in Colima (both inside `omicron-dev`'s reach):
+- **Test** (`~/supabase`, API 127.0.0.1:8000, tailnet :8450): tests use it and
+  `migrate.sh --reset` wipes it.
+- **Real** (`~/supabase-real`, API 127.0.0.1:8100, tailnet :8452): Omicron's
+  own data. `dev/supabase/install-real.sh` set it up; apply migrations with
+  `OMICRON_SUPABASE_DIR=~/supabase-real bash ~/omicron/dev/supabase/migrate.sh`.
+  It can't be reset.
 
 ## How to work here
 

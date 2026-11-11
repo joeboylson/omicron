@@ -2,10 +2,16 @@
 # Apply Omicron's migrations to the VM's Supabase. Run inside the VM:
 #   bash ~/omicron/dev/supabase/migrate.sh          # apply new migrations
 #   bash ~/omicron/dev/supabase/migrate.sh --reset  # drop Omicron's data and start over
+#   OMICRON_SUPABASE_DIR=~/supabase-real bash ~/omicron/dev/supabase/migrate.sh  # the real one
 set -euo pipefail
-cd "$HOME/supabase"
+dir=${OMICRON_SUPABASE_DIR:-$HOME/supabase}
+cd "$dir"
 psql() { sudo docker compose exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 
+if [ "${1:-}" = "--reset" ] && [ "$dir" != "$HOME/supabase" ]; then
+  echo "migrate: --reset only works on the test Supabase (~/supabase), never on $dir" >&2
+  exit 1
+fi
 if [ "${1:-}" = "--reset" ]; then
   psql <<'SQL'
 drop schema if exists public cascade;
@@ -35,7 +41,8 @@ psql -c "notify pgrst, 'reload schema'"
 # so whatever runs next doesn't hit "table not found".
 key=$(grep -E '^ANON_KEY=' .env | cut -d= -f2-)
 for _ in $(seq 30); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' -H "apikey: $key" "http://localhost:8000/rest/v1/projects?limit=0")
+  port=$(grep -E '^API_GW_HTTP_PORT=' .env | cut -d= -f2-)
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H "apikey: $key" "http://localhost:${port:-8000}/rest/v1/projects?limit=0")
   # 404 means the API doesn't know the table yet. Anything else (even "not
   # allowed") means it does.
   [ "$code" != 404 ] && [ "$code" != 000 ] && exit 0

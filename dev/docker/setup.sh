@@ -19,10 +19,11 @@ docker run -d --name omicron-dev --hostname omicron-dev --add-host omicron-dev:1
   -v "$repo":/home/ubuntu/omicron \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /home/ubuntu/supabase:/home/ubuntu/supabase \
+  -v /home/ubuntu/supabase-real:/home/ubuntu/supabase-real \
   -v omicron-dev-target:/home/ubuntu/target \
   -v omicron-dev-cargo:/home/ubuntu/.cargo/registry \
   -v omicron-dev-e2e:/home/ubuntu/omicron-e2e-deps \
   omicron-dev >/dev/null
-docker exec -u root omicron-dev chown ubuntu:ubuntu /home/ubuntu/supabase /home/ubuntu/target \
+docker exec -u root omicron-dev chown ubuntu:ubuntu /home/ubuntu/supabase /home/ubuntu/supabase-real /home/ubuntu/target \
   /home/ubuntu/.cargo/registry /home/ubuntu/omicron-e2e-deps
 echo "omicron-dev ready: $(docker exec -u ubuntu omicron-dev /home/ubuntu/.cargo/bin/cargo --version)"
