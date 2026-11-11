@@ -302,6 +302,12 @@ pub const REPORT_WORDS: usize = 500;
 fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     let input: Value = serde_json::from_str(input).context("the hook's input isn't JSON")?;
     let claude_id = input["session_id"].as_str().context("the hook's input has no session_id")?.to_string();
+    if let Hook::Stop = event {
+        // A team member whose conversation is getting full hands it over.
+        if let Some(reason) = crate::teams_run::handover_reason(&input)? {
+            return Ok(Some(json!({ "decision": "block", "reason": reason }).to_string()));
+        }
+    }
     let mut windows = Windows::load()?;
     // Stop and Prompt run every turn, in every window: they only read.
     let every_turn = matches!(event, Hook::Stop | Hook::Prompt);

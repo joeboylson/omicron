@@ -89,7 +89,13 @@ From legion's IMPROVEMENTS.md, the ones that change the design:
    add and list jobs, the workers' own commands, and the daemon running it.
 3. **#28** Link tasks to jobs (one or more), shown on the task.
 4. **#18** Workers in the session host, and a picker to jump into one.
-5. **#19** Open a team's folder in VS Code.
+5. **#19** Look through a team's folder in a viewer built into Omicron
+   (`omicron teams view`), not VS Code.
+6. **#34** Parts (`start-worker --part`, each part its own checkout off the
+   job's branch, merged back when handed off), the advisor (`"advisor": true`
+   in team.json; nudged at most every 10 minutes when jobs move; `omicron
+   teams suggest`), and handing over long conversations (`handover_at` of
+   `context_window`, checked when each turn ends; `omicron teams handover`).
 
 Other runners (OpenCode on a local model, as legion's harnesses did) come
 after Claude Code works end to end.

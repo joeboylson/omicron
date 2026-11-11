@@ -1,7 +1,9 @@
 //! `omicron teams`: teams of Claude sessions (the legion rewrite; plan in
 //! ref/TEAMS.md). A folder's setup lives in `.omicron-team/`, kept in git:
 //!
-//! - `team.json`: `name` and the `workflow` it follows.
+//! - `team.json`: `name`, the `workflow` it follows, whether an `advisor`
+//!   runs, and when a long conversation is handed over (`handover_at`, a
+//!   share of `context_window`).
 //! - `roles/<name>.md`: what each role does, in plain words.
 //! - `workflows/<name>.json`: `first` (the role a job starts with) and
 //!   `next` (which role each one hands to; `done` ends the job).
@@ -64,6 +66,10 @@ pub enum Teams {
         role: String,
         #[arg(long)]
         job: i64,
+        /// Work one part of the job, in its own checkout, alongside other
+        /// parts; merged into the job's branch when it's handed off
+        #[arg(long)]
+        part: Option<String>,
     },
     /// (Worker) pass your job on to a role, or `done`
     Handoff {
@@ -81,6 +87,16 @@ pub enum Teams {
     Finish { job: i64 },
     /// (Lead) stop a worker
     StopWorker { name: String },
+    /// (Advisor) suggest a speed-up to the lead
+    Suggest { idea: String },
+    /// (Team member) hand your long conversation over to a fresh one that
+    /// starts with this note
+    Handover {
+        #[arg(long)]
+        note: String,
+    },
+    #[command(hide = true)]
+    FreshStart { team: String, worker: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -88,10 +104,34 @@ pub struct TeamSetup {
     pub name: String,
     #[serde(default = "default_workflow")]
     pub workflow: String,
+    /// Run an advisor that suggests speed-ups to the lead (off by default).
+    #[serde(default)]
+    pub advisor: bool,
+    /// How full (0 to 1) a member's conversation gets before it's asked to
+    /// hand over to a fresh one.
+    #[serde(default = "default_handover_at")]
+    pub handover_at: f64,
+    /// How many tokens a conversation holds.
+    #[serde(default = "default_context_window")]
+    pub context_window: u64,
 }
 
 fn default_workflow() -> String {
     "default".into()
+}
+
+fn default_handover_at() -> f64 {
+    0.7
+}
+
+fn default_context_window() -> u64 {
+    200_000
+}
+
+impl TeamSetup {
+    pub fn new(name: &str) -> TeamSetup {
+        TeamSetup { name: name.into(), workflow: default_workflow(), advisor: false, handover_at: default_handover_at(), context_window: default_context_window() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -165,7 +205,7 @@ pub fn init(folder: &Path, name: &str) -> Result<Vec<PathBuf>> {
         }
         Ok(())
     };
-    write(dir.join("team.json"), serde_json::to_string_pretty(&TeamSetup { name: name.into(), workflow: default_workflow() })? + "\n")?;
+    write(dir.join("team.json"), serde_json::to_string_pretty(&TeamSetup::new(name))? + "\n")?;
     for (role, what) in ROLES {
         write(dir.join("roles").join(format!("{role}.md")), format!("# {role}\n\n{what}\n"))?;
     }
@@ -229,10 +269,16 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
             let job = board.add_job(&t, &title, &text)?;
             println!("Added job #{} to {}: {}", job.number, t.name, job.title);
         }
-        Teams::StartWorker { role, job } => {
-            let name = crate::teams_run::start_worker(&role, job)?;
-            println!("Started {name} on job #{job}.");
+        Teams::StartWorker { role, job, part } => {
+            let name = crate::teams_run::start_worker(&role, job, part.as_deref())?;
+            match part {
+                Some(p) => println!("Started {name} on a part of job #{job}: {p}"),
+                None => println!("Started {name} on job #{job}."),
+            }
         }
+        Teams::Suggest { idea } => println!("{}", crate::teams_run::suggest(&idea)?),
+        Teams::Handover { note } => println!("{}", crate::teams_run::handover(&note)?),
+        Teams::FreshStart { team, worker } => crate::teams_run::fresh_start(&team, &worker)?,
         Teams::Handoff { to, note } => println!("{}", crate::teams_run::handoff(&to, &note)?),
         Teams::Blocked { why } => println!("{}", crate::teams_run::blocked(&why)?),
         Teams::Ask { question } => println!("{}", crate::teams_run::ask(&question)?),
@@ -273,7 +319,7 @@ mod tests {
         assert_eq!(init(&dir, "web").unwrap().len(), 5);
         assert!(init(&dir, "web").unwrap().is_empty(), "a second init leaves it alone");
         let (setup, wf, roles) = read_setup(&dir).unwrap();
-        assert_eq!(setup, TeamSetup { name: "web".into(), workflow: "default".into() });
+        assert_eq!(setup, TeamSetup::new("web"));
         assert_eq!(wf.first, "planner");
         assert_eq!(roles, ["builder", "planner", "tester"]);
 
