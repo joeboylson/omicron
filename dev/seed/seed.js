@@ -342,6 +342,17 @@ async function project(owner, name, statusList, labelList) {
     const docsTask = await code.task(joe, "To do", "Document the hooks", { labels: ["docs"] });
     await sendTo(docsTask, "docs");
 
+    // The web-page session keeps going on its own: a loop, 20 runs of 10 minutes.
+    {
+      const [row] = await joe.call("GET", `/rest/v1/sessions?project_id=eq.${code.id}&name=eq.web-page&select=id`);
+      await joe.call("POST", "/rest/v1/loops", {
+        session_id: row.id,
+        prompt: "Keep going with the next task in Omicron's To do. Report on each one when it's done.",
+        every_seconds: 600,
+        times: 20,
+      });
+    }
+
     // Dispatch: the parser task typed into its session on studio; the docs
     // one never picked up (build-box's daemon wasn't running).
     const [typed] = await joe.call("POST", "/rest/v1/dispatches", { task_id: parserTask.id });

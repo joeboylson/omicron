@@ -55,6 +55,11 @@ let failing;
     await shot("4f-stopped-session");
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "detached" });
+    await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /web-page/ }).click();
+    await page.getByTestId("loop").waitFor();
+    await shot("4g-session-loop");
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();
     await page.getByTestId("dispatch").waitFor();

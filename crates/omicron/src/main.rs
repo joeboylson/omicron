@@ -10,6 +10,7 @@ mod board_cmd;
 mod chat_cmd;
 mod dispatch_cmd;
 mod handoff_cmd;
+mod loops_cmd;
 mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.
@@ -74,6 +75,9 @@ enum Command {
     /// A Project's topics: a second way to group tasks, as rows on the board
     #[command(subcommand)]
     Topics(board_cmd::Topics),
+    /// Loops: Omicron types a prompt into a session every so often
+    #[command(subcommand)]
+    Loops(loops_cmd::Loops),
     /// Tasks: add, move, finish, label, checklists
     #[command(subcommand)]
     Tasks(board_cmd::Tasks),
@@ -194,6 +198,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
         Command::Topics(cmd) => board_cmd::topics(cmd, cli.as_machine),
+        Command::Loops(cmd) => loops_cmd::loops(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Chat(cmd) => chat_cmd::chat(cmd, cli.as_machine),
@@ -488,7 +493,10 @@ fn daemon() -> Result<()> {
     };
     // Things this machine does when it hears about them, each in its own
     // thread so listening carries on. Each is safe to run twice.
+    // Sessions' loops on this machine, run when due.
+    let runner = loops_cmd::Runner::start(supabase.clone(), key.clone(), name.clone());
     let react = |row: &serde_json::Value| {
+        runner.heard(row);
         if row["table_name"] == "dispatches" && row["kind"] == "INSERT" {
             let (supabase, key, name, record) = (supabase.clone(), key.clone(), name.clone(), row["record"].clone());
             std::thread::spawn(move || {
@@ -503,6 +511,8 @@ fn daemon() -> Result<()> {
             Event::Listening => {
                 let session = supabase.sign_in_machine(&key)?;
                 catch_up(&supabase, &session, &mut state, &react)?;
+                // Loops changed while this wasn't listening are read afresh.
+                runner.reload()?;
                 eprintln!("omicron daemon: {name} is listening for changes");
             }
             Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),

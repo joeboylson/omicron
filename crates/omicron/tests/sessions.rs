@@ -532,14 +532,15 @@ fn a_new_session_starts_claude_in_the_host_and_records_it() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     let args = std::fs::read_to_string(mac.home.join("claude-args")).unwrap();
-    assert!(args.starts_with("--name parser --session-id "), "{args}");
+    assert!(args.starts_with("--session-id "), "{args}");
+    assert!(args.contains(" --name parser "), "{args}");
     assert!(args.contains(&format!("--settings {}", mac.home.join("claude/settings.json").display())), "{args}");
     let settings: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("claude/settings.json")).unwrap()).unwrap();
     assert!(settings["hooks"]["SessionStart"].is_array(), "Omicron's hooks are in its own settings file");
 
     // Recorded, with the session id it was started with, and the start hook
     // tied the window to the record.
-    let id = args.split_whitespace().nth(3).unwrap().to_string();
+    let id = args.split_whitespace().nth(1).unwrap().to_string();
     let r = record(&s, &project, "parser");
     assert_eq!((r["state"].as_str(), r["claude_session_id"].as_str()), (Some("open"), Some(id.as_str())));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -573,7 +574,8 @@ fn machine_with_claude(s: &Supabase) -> (Computer, String, String) {
     std::fs::write(
         bin.join("claude"),
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$OMICRON_HOME/claude-args\"\nid=\nsource=startup\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; --resume) id=\"$2\"; source=resume; shift;; esac; shift; done\nmkdir -p \"$CLAUDE_CONFIG_DIR/projects/work\" && touch \"$CLAUDE_CONFIG_DIR/projects/work/$id.jsonl\"\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"%s\"}}' \"$id\" \"$PWD\" \"$source\" | {} hook session-start\nwhile read -r line; do echo \"$line\" >> \"$OMICRON_HOME/typed\"; done\n",
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$OMICRON_HOME/claude-args\"\nid=\nsource=startup\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; --resume) id=\"$2\"; source=resume; shift;; esac; shift; done\nmkdir -p \"$CLAUDE_CONFIG_DIR/projects/work\" && touch \"$CLAUDE_CONFIG_DIR/projects/work/$id.jsonl\"\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"%s\"}}' \"$id\" \"$PWD\" \"$source\" | {} hook session-start\nwhile read -r line; do echo \"$line\" >> \"$OMICRON_HOME/typed\"; printf '{{\"session_id\":\"%s\",\"stop_hook_active\":false}}' \"$id\" | {} hook stop; done\n",
+            env!("CARGO_BIN_EXE_omicron"),
             env!("CARGO_BIN_EXE_omicron")
         ),
     )
@@ -631,7 +633,7 @@ fn dispatch_types_the_task_in_or_reopens_the_session_and_fails_when_asleep() {
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     wait_for("claude started", || mac.home.join("claude-args").exists());
-    let claude_id = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().nth(3).unwrap().to_string();
+    let claude_id = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().nth(1).unwrap().to_string();
 
     ok(&pat, None, &["tasks", "add", &project, "Fix the parser"]);
     // Not given to a session yet.
@@ -822,5 +824,170 @@ fn a_session_whose_conversation_was_deleted_is_gone_and_isnt_reopened() {
     let mut d = daemon(&mac, &path);
     let listed = ok(&pat, None, &["sessions", "list", "--project", &project]);
     assert!(listed.contains("docs\t") && listed.contains("(its conversation was deleted)"), "{listed}");
+    d.kill().unwrap();
+}
+
+fn typed_lines(c: &Computer) -> Vec<String> {
+    std::fs::read_to_string(c.home.join("typed")).unwrap_or_default().lines().map(String::from).collect()
+}
+
+#[test]
+fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name, path) = machine_with_claude(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let folder = mac.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
+        .env("PATH", &path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    wait_for("claude started", || mac.home.join("claude-args").exists());
+    let session_id = record(&s, &project, "parser");
+    let _ = session_id;
+    let mut d = daemon(&mac, &path);
+
+    // Bad starts are refused.
+    let o = run(&pat, None, &["loops", "start", "x", "--every", "30s", "--session", "parser", "--project", &project]);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("at most once a minute"));
+
+    let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--session", "parser", "--project", &project]);
+    assert!(started.starts_with("Started a loop for parser: every 10m, 0 of 2 runs done."), "{started}");
+    let o = run(&pat, None, &["loops", "start", "again", "--every", "10m", "--session", "parser", "--project", &project]);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("already has a loop running"));
+    let listed = ok(&pat, None, &["loops", "list", "--project", &project]);
+    assert!(listed.starts_with(&format!("parser\t{project}\tevery 10m\t0 of 2 runs done\tnext ")), "{listed}");
+    assert!(listed.trim_end().ends_with("Keep going with the next task"), "{listed}");
+
+    // Make it due now (instead of waiting 10 minutes): it's typed in, as one line.
+    let loop_id = s.admin_request("GET", "/rest/v1/loops?prompt=eq.Keep going with the next task&state=eq.running&select=id,sessions!inner(name,projects!inner(name))", None)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["sessions"]["projects"]["name"] == json!(project))
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let due_now = || {
+        s.admin_request("PATCH", &format!("/rest/v1/loops?id=eq.{loop_id}"), Some(json!({ "next_run_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    };
+    due_now();
+    wait_for("the first run", || typed_lines(&mac).len() == 1);
+    assert_eq!(typed_lines(&mac), ["Keep going with the next task"]);
+    wait_for("the run recorded", || ok(&pat, None, &["loops", "list", "--project", &project]).contains("1 of 2 runs done"));
+
+    // Busy (a turn in progress): the due run waits, then goes in when the turn ends.
+    let sid = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=session_id"), None).unwrap()[0]["session_id"].as_str().unwrap().to_string();
+    let busy = mac.home.join("run/busy").join(&sid);
+    std::fs::create_dir_all(busy.parent().unwrap()).unwrap();
+    std::fs::write(&busy, "").unwrap();
+    due_now();
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert_eq!(typed_lines(&mac).len(), 1, "it waits while the session is busy");
+    std::fs::remove_file(&busy).unwrap();
+    wait_for("the second run", || typed_lines(&mac).len() == 2);
+    // That was the last of 2: finished.
+    wait_for("the loop finished", || ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
+    let l = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=state,runs"), None).unwrap();
+    assert_eq!((l[0]["state"].as_str(), l[0]["runs"].as_i64()), (Some("finished"), Some(2)));
+
+    // The session isn't running (it ended, or the machine restarted): the
+    // next run reopens it in the host, resuming it, with the prompt first.
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
+    std::fs::remove_file(mac.home.join("claude-args")).unwrap();
+    ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--until", "+8h", "--session", "parser", "--project", &project]);
+    let next = s.admin_request("GET", "/rest/v1/loops?prompt=eq.Check in&state=eq.running&select=id,sessions!inner(projects!inner(name))", None).unwrap();
+    let id2 = next.as_array().unwrap().iter().find(|l| l["sessions"]["projects"]["name"] == json!(project)).unwrap()["id"].as_str().unwrap().to_string();
+    s.admin_request("PATCH", &format!("/rest/v1/loops?id=eq.{id2}"), Some(json!({ "next_run_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    wait_for("reopened", || mac.home.join("claude-args").exists());
+    let args: Vec<String> = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().map(String::from).collect();
+    assert_eq!(args[0], "--resume");
+    assert_eq!(args.last().unwrap(), "Check in");
+    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
+    wait_for("the run recorded", || ok(&pat, None, &["loops", "list", "--project", &project]).contains("(1 so far)"));
+    assert_eq!(ok(&pat, None, &["loops", "stop", "--session", "parser", "--project", &project]).trim(), "Stopped parser's loop (it ran 1 time).");
+    assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    d.kill().unwrap();
+}
+
+#[test]
+fn the_prompt_and_stop_hooks_mark_a_session_busy_and_free() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let mut w = window();
+    let claude = Uuid::new_v4().to_string();
+    hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/work", "source": "startup" }));
+    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+    let sid = s.admin_request("GET", &format!("/rest/v1/sessions?name=eq.parser&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let busy = mac.home.join("run/busy").join(&sid);
+    hook(&mac, w.id(), "prompt", json!({ "session_id": claude, "prompt": "hi" }));
+    assert!(busy.exists(), "a prompt marks it busy");
+    hook(&mac, w.id(), "stop", json!({ "session_id": claude, "stop_hook_active": false }));
+    assert!(!busy.exists(), "the end of the turn marks it free");
+    // Inside the session, loops start and stop for it without naming it.
+    assert!(ok(&mac, Some(w.id()), &["loops", "start", "Keep going", "--every", "10m"]).starts_with("Started a loop for parser"));
+    assert!(ok(&mac, Some(w.id()), &["loops", "stop"]).starts_with("Stopped parser's loop"));
+    w.kill().unwrap();
+}
+
+#[test]
+fn a_new_session_can_bring_in_an_old_conversation_and_keeps_it_on_reopen() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name, path) = machine_with_claude(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let folder = mac.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    // An old conversation on this machine.
+    let old = Uuid::new_v4().to_string();
+    let transcripts = mac.home.join("claude-code/projects/work");
+    std::fs::create_dir_all(&transcripts).unwrap();
+    std::fs::write(transcripts.join(format!("{old}.jsonl")), "").unwrap();
+    let new = |args: &[&str]| {
+        let mut all = vec!["sessions", "new", "build", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"];
+        all.extend_from_slice(args);
+        command(&mac, None, &all).env("PATH", &path).output().unwrap()
+    };
+    let o = new(&["--resume", &Uuid::new_v4().to_string()]);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("there's no conversation"), "{}", String::from_utf8_lossy(&o.stderr));
+
+    let o = new(&["--resume", &old]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    wait_for("claude started", || mac.home.join("claude-args").exists());
+    let args: Vec<String> = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().map(String::from).collect();
+    assert_eq!(args[..4], ["--resume".to_string(), old.clone(), "--name".into(), "build".into()]);
+    let r = s.admin_request("GET", &format!("/rest/v1/sessions?name=eq.build&select=claude_session_id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap();
+    assert_eq!(r[0]["claude_session_id"].as_str(), Some(old.as_str()));
+
+    // It crashes (ends without saying). It can still be given tasks, and
+    // Dispatch reopens the same conversation.
+    ok(&mac, None, &["sessions", "send", "build", "\u{4}"]);
+    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
+    std::fs::remove_file(mac.home.join("claude-args")).unwrap();
+    let mut d = daemon(&mac, &path);
+    ok(&pat, None, &["tasks", "add", &project, "Ship it"]);
+    ok(&pat, None, &["tasks", "send", &project, "1", "build"]);
+    assert!(ok(&pat, None, &["tasks", "dispatch", &project, "1"]).starts_with("Reopened build"));
+    wait_for("reopened", || mac.home.join("claude-args").exists());
+    let args = std::fs::read_to_string(mac.home.join("claude-args")).unwrap();
+    assert!(args.starts_with(&format!("--resume\n{old}\n")), "{args}");
+    ok(&mac, None, &["sessions", "send", "build", "\u{4}"]);
     d.kill().unwrap();
 }

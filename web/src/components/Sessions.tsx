@@ -1,6 +1,14 @@
-import { useState } from "react";
-import { Copy, Terminal } from "lucide-react";
-import { giveSessionTasks, type ClaudeSession, type HandoffNote, type ProjectData } from "@/lib/data";
+import { useEffect, useState } from "react";
+import { AlertCircle, Copy, Repeat, Terminal } from "lucide-react";
+import {
+  giveSessionTasks,
+  sayEvery,
+  stopLoop,
+  type ClaudeSession,
+  type HandoffNote,
+  type ProjectData,
+  type SessionLoop,
+} from "@/lib/data";
 import { useApp } from "@/lib/app";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Row, bare } from "@/components/Grouped";
@@ -38,6 +46,9 @@ export function Sessions({ project, onChanged }: { project: ProjectData; onChang
                   style={s.state === "open" ? { background: "var(--sys-green)" } : undefined}
                 />
                 <span className="font-medium">{s.name}</span>
+                {project.loops.some((l) => l.session_id === s.id) && (
+                  <Repeat className="h-3 w-3 text-[var(--sys-blue)]" aria-label="looping" />
+                )}
                 <span className="text-muted-foreground">
                   <span className="font-mono text-[11px]">{s.machine}</span> · {STATE_TEXT[s.state]}
                 </span>
@@ -72,6 +83,7 @@ function SessionNotes({
   const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
   const tasks = project.tasks.filter((t) => t.assignee_session_id === session.id && !done.has(t.status_id));
   const others = project.sessions.filter((s) => s.id !== session.id && s.state === "open");
+  const loop = project.loops.find((l) => l.session_id === session.id);
   const [copied, setCopied] = useState<number | null>(null);
   const copy = async (n: HandoffNote) => {
     // Pastes into any Claude session to continue from this note.
@@ -99,6 +111,7 @@ function SessionNotes({
           Stopped: {session.gone_why ?? "it stopped without saying"}.
         </p>
       )}
+      {loop && <LoopGroup loop={loop} machine={session.machine} onChanged={onChanged} />}
       {tasks.length > 0 && (
         <Group
           title="Open tasks"
@@ -201,5 +214,67 @@ function SessionNotes({
         )}
       </Group>
     </>
+  );
+}
+
+/** Re-render now and then, for times like "in 4 min". */
+function useNow(everyMs = 15000): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(t);
+  }, [everyMs]);
+  return now;
+}
+
+function inAbout(iso: string, now: number): string {
+  const minutes = Math.round((new Date(iso).getTime() - now) / 60000);
+  if (minutes <= 0) return "now";
+  if (minutes < 60) return `in ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `in ${hours} h`;
+  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** A session's running loop: what it types in, how often, until when, and Stop. */
+function LoopGroup({ loop, machine, onChanged }: { loop: SessionLoop; machine: string; onChanged: () => void }) {
+  const { db, act } = useApp();
+  const now = useNow();
+  const end =
+    loop.times !== null
+      ? `${loop.runs} of ${loop.times} runs done`
+      : loop.until
+        ? `until ${new Date(loop.until).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${loop.runs} run${loop.runs === 1 ? "" : "s"} so far`
+        : `until stopped · ${loop.runs} run${loop.runs === 1 ? "" : "s"} so far`;
+  return (
+    <Group title="Loop" note={`${machine} types this in when it's due and the session has finished its turn.`}>
+      <div className="grid gap-1.5 px-4 py-3" data-testid="loop">
+        <p className="flex items-center gap-2 text-[15px] sm:text-sm">
+          <Repeat className="h-4 w-4 shrink-0 text-[var(--sys-blue)]" aria-hidden />
+          <span className="font-mono">every {sayEvery(loop.every_seconds)}</span>
+          <span className="text-muted-foreground">· {end}</span>
+        </p>
+        <blockquote className="whitespace-pre-wrap break-words border-l-2 pl-3 text-[15px] sm:text-sm">{loop.prompt}</blockquote>
+        <p className="text-sm text-muted-foreground">
+          Next run {inAbout(loop.next_run_at, now)}
+          {loop.last_run_at && <> · last {new Date(loop.last_run_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</>}
+        </p>
+        {loop.note && (
+          <p role="status" className="flex items-start gap-1.5 text-sm">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-orange)]" aria-hidden />
+            <span>{loop.note[0].toUpperCase() + loop.note.slice(1)}.</span>
+          </p>
+        )}
+      </div>
+      <Row>
+        <Button
+          variant="ghost"
+          className="-ml-3 text-destructive hover:text-destructive"
+          onClick={() => act(() => stopLoop(db, loop)).then((ok) => ok && onChanged())}
+        >
+          Stop loop
+        </Button>
+      </Row>
+    </Group>
   );
 }

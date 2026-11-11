@@ -113,6 +113,28 @@ fn ancestors() -> Result<Vec<(u32, String)>> {
     Ok(chain)
 }
 
+/// Mark an Omicron session busy (a prompt went in) or free (its turn
+/// ended). Kept as a file per session in `~/.omicron/run/busy/`, so the
+/// daemon can tell when it's free to type a loop's prompt in.
+pub fn set_busy(session_id: &str, busy: bool) -> Result<()> {
+    let dir = crate::config::home()?.join("run/busy");
+    let file = dir.join(session_id);
+    if busy {
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(file, "")?;
+    } else {
+        match std::fs::remove_file(file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+pub fn is_busy(session_id: &str) -> bool {
+    crate::config::home().is_ok_and(|h| h.join("run/busy").join(session_id).exists())
+}
+
 /// Why a session is gone when its window stopped without saying.
 pub const STOPPED: &str = "it stopped without saying (a crash or a restart)";
 /// Why a session is gone when its conversation was deleted.

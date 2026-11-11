@@ -10,7 +10,9 @@ import { reportError } from "@/lib/report";
 export default function App() {
   const [session, setSession] = useState<{ db: SupabaseClient; me: Me } | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Where the error came from: a later action that works clears an
+  // action's error, but not one from elsewhere (that stays until dismissed).
+  const [error, setError] = useState<{ message: string; from: "action" | "uncaught" } | null>(null);
   const path = usePath();
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export default function App() {
   useEffect(() => {
     const show = (e: unknown) => {
       reportError("uncaught", e);
-      setError(e instanceof Error ? e.message : String(e));
+      setError({ message: e instanceof Error ? e.message : String(e), from: "uncaught" });
     };
     const onError = (e: ErrorEvent) => show(e.error ?? e.message);
     const onRejection = (e: PromiseRejectionEvent) => show(e.reason);
@@ -40,11 +42,11 @@ export default function App() {
   const act = useCallback(async (work: () => Promise<unknown>) => {
     try {
       await work();
-      setError(null);
+      setError((current) => (current?.from === "action" ? null : current));
       return true;
     } catch (e) {
       reportError("action", e);
-      setError(e instanceof Error ? e.message : String(e));
+      setError({ message: e instanceof Error ? e.message : String(e), from: "action" });
       return false;
     }
   }, []);
@@ -75,7 +77,7 @@ export default function App() {
             role="alert"
             className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2 border-t bg-background px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-sm shadow-lg"
           >
-            <span className="flex-1 text-destructive">{error}</span>
+            <span className="flex-1 text-destructive">{error.message}</span>
             <button aria-label="Dismiss" className="flex h-11 w-11 items-center justify-center" onClick={() => setError(null)}>
               <X className="h-4 w-4" />
             </button>

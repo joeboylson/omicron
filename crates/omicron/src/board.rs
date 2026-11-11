@@ -162,6 +162,24 @@ fn task_from(v: &Value) -> Result<Task> {
     })
 }
 
+/// A session's loop: a prompt typed into it every so often (see `loops`).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Loop {
+    pub id: String,
+    pub session_id: String,
+    pub machine_id: String,
+    pub prompt: String,
+    pub every_seconds: i64,
+    pub until: Option<String>,
+    pub times: Option<i64>,
+    pub runs: i64,
+    /// running, stopped or finished.
+    pub state: String,
+    pub note: Option<String>,
+    pub next_run_at: String,
+    pub last_run_at: Option<String>,
+}
+
 /// A request to hand a task to its session (see `dispatch`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dispatch {
@@ -858,6 +876,59 @@ impl Board {
     pub fn give_up_dispatch(&self, id: &str, why: &str) -> Result<bool> {
         let rows = self.send("POST", "/rest/v1/rpc/give_up_dispatch", json!({ "dispatch": id, "why": why }))?;
         Ok(rows.as_array().is_some_and(|r| !r.is_empty()))
+    }
+
+    /// Start a loop for a session (one running loop per session).
+    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: i64, until: Option<&str>, times: Option<i64>) -> Result<Loop> {
+        let rows = self
+            .send(
+                "POST",
+                "/rest/v1/loops",
+                json!({ "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times }),
+            )
+            .map_err(|e| {
+                if e.to_string().contains("loops_one_running") {
+                    anyhow!("that session already has a loop running. Stop it first (`omicron loops stop`).")
+                } else {
+                    e
+                }
+            })?;
+        Ok(serde_json::from_value(rows.get(0).cloned().context("the loop wasn't started")?)?)
+    }
+
+    /// Running loops, all or one session's.
+    pub fn loops(&self, session_id: Option<&str>) -> Result<Vec<Loop>> {
+        let only = session_id.map(|s| format!("&session_id=eq.{s}")).unwrap_or_default();
+        let rows = self.get(&format!("/rest/v1/loops?state=eq.running{only}&order=started_at"))?;
+        Ok(serde_json::from_value(rows)?)
+    }
+
+    /// This machine's running loops.
+    pub fn machine_loops(&self, machine_id: &str) -> Result<Vec<Loop>> {
+        let rows = self.get(&format!("/rest/v1/loops?state=eq.running&machine_id=eq.{machine_id}"))?;
+        Ok(serde_json::from_value(rows)?)
+    }
+
+    pub fn stop_loop(&self, id: &str) -> Result<bool> {
+        let rows = self.send("POST", "/rest/v1/rpc/stop_loop", json!({ "loop": id }))?;
+        Ok(rows.as_array().is_some_and(|r| !r.is_empty()))
+    }
+
+    /// Record a run (only the loop's machine, once per due time). Returns
+    /// the loop as it is now, or None if it wasn't this run's to record.
+    pub fn loop_ran(&self, id: &str, due: &str) -> Result<Option<Loop>> {
+        let rows = self.send("POST", "/rest/v1/rpc/loop_ran", json!({ "loop": id, "due": due }))?;
+        rows.get(0).map(|r| serde_json::from_value(r.clone())).transpose().map_err(Into::into)
+    }
+
+    pub fn loop_note(&self, id: &str, note: Option<&str>) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/loop_note", json!({ "loop": id, "note": note }))?;
+        Ok(())
+    }
+
+    pub fn finish_loop(&self, id: &str) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/finish_loop", json!({ "loop": id }))?;
+        Ok(())
     }
 
     /// Turn a Project's chat on or off.

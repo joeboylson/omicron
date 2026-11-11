@@ -550,3 +550,36 @@ test("a session taken out with its machine says why, and its tasks go to someone
   await expect(page.getByRole("button", { name: "#1 Write the parser" })).toContainText("RE");
   await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText("RE");
 });
+
+test("a session's loop shows on the page, live, and can be stopped there", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  const win = fakeWindow();
+  try {
+    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: "/work", source: "startup" });
+    omicron.addSession(win.pid, "parser", name);
+    const sessions = page.getByRole("region", { name: "Claude sessions" });
+    await expect(sessions).toContainText("parser");
+    await expect(sessions.getByLabel("looping")).toHaveCount(0);
+
+    // The session starts a loop for itself.
+    omicron.cliIn(win.pid, "loops", "start", "Keep going with the next task", "--every", "10m", "--times", "5");
+    await expect(sessions.getByLabel("looping")).toBeVisible();
+    await sessions.getByRole("button", { name: /parser/ }).click();
+    const loop = page.getByTestId("loop");
+    await expect(loop).toContainText("every 10m");
+    await expect(loop).toContainText("0 of 5 runs done");
+    await expect(loop).toContainText("Keep going with the next task");
+    await expect(loop).toContainText(/Next run in (9|10) min/);
+
+    // Stopped from the page: gone from the sheet and the strip, and the command agrees.
+    await page.getByRole("button", { name: "Stop loop" }).click();
+    await expect(loop).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(sessions.getByLabel("looping")).toHaveCount(0);
+    expect(omicron.cliIn(win.pid, "loops", "list", "--project", name, "--as-machine")).toContain("No loops are running.");
+  } finally {
+    win.kill();
+  }
+});

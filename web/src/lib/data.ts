@@ -77,6 +77,21 @@ export type ProjectData = {
   tasks: Task[];
   sessions: ClaudeSession[];
   handoffs: HandoffNote[];
+  /** Running loops, one per session at most. */
+  loops: SessionLoop[];
+};
+/** A prompt Omicron types into a session every so often. */
+export type SessionLoop = {
+  id: string;
+  session_id: string;
+  prompt: string;
+  every_seconds: number;
+  until: string | null;
+  times: number | null;
+  runs: number;
+  note: string | null;
+  next_run_at: string;
+  last_run_at: string | null;
 };
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
@@ -90,7 +105,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions, handoffs, topics] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops] = await Promise.all([
     db.from("projects").select("id,name,chat_enabled").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -111,6 +126,11 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .order("written_at", { ascending: false })
       .limit(100),
     db.from("topics").select("id,name,position").eq("project_id", id).order("position").order("name"),
+    db
+      .from("loops")
+      .select("id,session_id,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at")
+      .eq("project_id", id)
+      .eq("state", "running"),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -162,6 +182,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       gone_why: r.gone_why,
     })),
     handoffs: must(handoffs) as HandoffNote[],
+    loops: must(loops) as SessionLoop[],
   };
 }
 
@@ -393,4 +414,16 @@ export async function giveSessionTasks(db: SupabaseClient, project: ProjectData,
       .update({ assignee_person_id: to.person ?? null, assignee_session_id: to.session ?? null })
       .in("id", ids),
   );
+}
+
+export async function stopLoop(db: SupabaseClient, loop: SessionLoop) {
+  must(await db.rpc("stop_loop", { loop: loop.id }));
+}
+
+/** "10m", "1h30m", "90s". */
+export function sayEvery(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return [h && `${h}h`, m && `${m}m`, s && `${s}s`].filter(Boolean).join("");
 }

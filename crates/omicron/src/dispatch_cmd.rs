@@ -15,7 +15,6 @@ use anyhow::{bail, Context, Result};
 use omicron::board::{Board, Dispatch, SessionRecord, Task};
 use omicron::realtime::{self, Event, Listen, Next};
 use omicron::supa::{MachineKey, Supabase};
-use omicron::windows::Windows;
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -173,45 +172,13 @@ fn hand_over(board: &Board, machine: &str, d: &Dispatch) -> Result<String> {
         return Ok(format!("Typed the task into {name} on {machine}."));
     }
 
-    let mut windows = Windows::load()?;
-    let gone = windows.sweep();
-    if windows.windows.values().any(|w| w.session_id.as_deref() == Some(session.id.as_str())) {
-        bail!("{name} is open in a window Omicron doesn't host, so the task can't be typed in. Tell it to get its tasks (`omicron tasks mine`).");
-    }
-    for g in gone {
-        board.update_session(&g, serde_json::json!({ "state": "gone", "gone_why": omicron::windows::STOPPED }))?;
-    }
-
     // Closed: reopen it in the host with the task as its first message.
-    let folder = std::path::PathBuf::from(&session.folder);
-    if session.folder.is_empty() || !folder.is_dir() {
-        bail!("{name}'s folder ({}) isn't on {machine} any more", session.folder);
-    }
-    let settings = crate::sessions_cmd::omicron_claude_settings()?;
-    let mut command = vec!["claude".to_string()];
-    if session.state == "gone" && session.gone_why.as_deref() != Some(omicron::windows::STOPPED) {
-        bail!("{name} is gone ({}), so it can't be opened. Give the task to someone else.", session.gone_why.as_deref().unwrap_or("no reason saved"));
-    }
-    let claude_id = match &session.claude_session_id {
-        Some(id) if !omicron::windows::transcript_exists(id) => {
-            board.update_session(&session.id, serde_json::json!({ "state": "gone", "gone_why": omicron::windows::DELETED }))?;
-            bail!("{name}'s conversation was deleted on {machine}, so it can't be reopened. Give the task to someone else.");
+    crate::sessions_cmd::reopen(board, &session, machine, Some(&text)).map_err(|e| {
+        if e.to_string().contains("open in a window Omicron doesn't host") {
+            anyhow::anyhow!("{name} is open in a window Omicron doesn't host, so the task can't be typed in. Tell it to get its tasks (`omicron tasks mine`).")
+        } else {
+            e
         }
-        Some(id) => {
-            command.extend(["--resume".into(), id.clone()]);
-            id.clone()
-        }
-        None => {
-            let id = uuid::Uuid::new_v4().to_string();
-            command.extend(["--session-id".into(), id.clone()]);
-            board.update_session(&session.id, serde_json::json!({ "claude_session_id": id }))?;
-            id
-        }
-    };
-    command.extend(["--name".into(), name.clone(), "--settings".into(), settings.to_string_lossy().into_owned(), text]);
-    // So the start hook ties the new window to this session.
-    windows.links.insert(claude_id, session.id.clone());
-    windows.save()?;
-    omicron::host::start(name, &folder, &command, &[])?;
+    })?;
     Ok(format!("Reopened {name} on {machine} with the task. Jump in with `omicron sessions attach {name}`."))
 }
