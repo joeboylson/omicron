@@ -30,6 +30,26 @@ pub enum Sessions {
         #[arg(long)]
         project: String,
     },
+    /// Run a command in the background in Omicron's session host, to jump
+    /// into later with `attach`. Example: omicron sessions host work -- claude
+    Host {
+        name: String,
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Jump into a hosted session here. Ctrl-\ detaches.
+    Attach { name: String },
+    /// Type text into a hosted session (add \r to press Enter)
+    Send { name: String, text: String },
+    /// The hosted sessions running on this machine
+    Hosted,
+    /// The host process itself (started by `host`)
+    #[command(hide = true)]
+    HostRun {
+        name: String,
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
     /// Add Omicron's hooks to Claude Code's settings, so it can tell which
     /// window is which session
     SetupClaude {
@@ -95,6 +115,30 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             windows.save()?;
             println!("Removed session {name} from {}.", project.name);
         }
+        Sessions::Host { name, command } => {
+            let folder = std::env::current_dir()?;
+            omicron::host::start(&name, &folder, &command, &[])?;
+            println!("{name} is running. Jump in with `omicron sessions attach {name}`.");
+        }
+        Sessions::Attach { name } => {
+            if omicron::host::attach(&name)? {
+                eprintln!("{name} ended.");
+            }
+        }
+        Sessions::Send { name, text } => {
+            let text = text.replace("\\r", "\r").replace("\\n", "\n");
+            omicron::host::send(&name, &text)?;
+        }
+        Sessions::Hosted => {
+            let names = omicron::host::hosted()?;
+            if names.is_empty() {
+                println!("No hosted sessions are running on this machine.");
+            }
+            for n in names {
+                println!("{n}");
+            }
+        }
+        Sessions::HostRun { name, command } => omicron::host::host(&name, &command)?,
         Sessions::SetupClaude { settings } => {
             let path = match settings {
                 Some(p) => p,
