@@ -78,7 +78,18 @@ function TaskForm({
   const [sure, setSure] = useState(false);
   // Ticks show straight away, before the save comes back.
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
-  useEffect(() => setTicked({}), [task.checklist]);
+  // Once a reload shows the saved value, stop showing our own. A reload
+  // that lands before the save keeps it, so the box doesn't flicker back.
+  useEffect(
+    () =>
+      setTicked((t) => {
+        const left = Object.fromEntries(
+          Object.entries(t).filter(([id, done]) => task.checklist.some((c) => c.id === id && c.done !== done)),
+        );
+        return Object.keys(left).length === Object.keys(t).length ? t : left;
+      }),
+    [task.checklist],
+  );
 
   // Someone else changed it while it's open: show their version, unless
   // this field is being typed in.

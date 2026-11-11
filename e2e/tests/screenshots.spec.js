@@ -85,6 +85,8 @@ test("screenshots", async ({ browser, request }) => {
   const [{ id: parser }] = await call("GET", `/rest/v1/sessions?project_id=eq.${omicronProject.id}&name=eq.parser&select=id`);
   await call("PATCH", `/rest/v1/tasks?project_id=eq.${omicronProject.id}&number=eq.2`, { assignee_session_id: webPage });
   omicron.hook(windows[0].pid, "stop", { session_id: crypto.randomUUID(), stop_hook_active: false });
+  omicron.cliIn(windows[0].pid, "handoff", "write", "Started the sessions strip. Chips are done; tapping one should open its notes. Next: the sheet itself.");
+  omicron.cliIn(windows[0].pid, "handoff", "write", "Sessions strip and notes sheet are done and tested.\n\nNext: screenshots on the phone, then ask Joe about fading closed sessions.\nCheck first: git status, and that dev/e2e.sh passes.");
   omicron.cliIn(windows[0].pid, "tasks", "comment", omicronProject.id, "2", "Added the sessions strip above the columns, with open ones first. Screenshots in the PR.", "--review", "--as-machine");
   await call("POST", "/rest/v1/comments", { task_id: (await call("GET", `/rest/v1/tasks?project_id=eq.${omicronProject.id}&number=eq.2&select=id`))[0].id, body: "Nice. Can the closed ones fade a bit more?" });
   await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Parse the change list", assignee_session_id: parser });
@@ -126,6 +128,10 @@ test("screenshots", async ({ browser, request }) => {
       await expect(page.getByRole("list", { name: "Comments" })).toBeVisible();
       await page.getByRole("list", { name: "Comments" }).scrollIntoViewIfNeeded();
       await shoot(page, `${kind}-${scheme}-6-comments`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /web-page/ }).click();
+      await expect(page.getByRole("list", { name: "Handoff notes" })).toContainText("waiting");
+      await shoot(page, `${kind}-${scheme}-7-handoffs`);
       await context.close();
     }
   }

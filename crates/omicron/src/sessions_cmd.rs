@@ -206,6 +206,10 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         return Ok(Some(json!({ "decision": "block", "reason": tasks_message(&tasks) }).to_string()));
     }
     let mut pick_up = None;
+    // After /clear, the window's waiting handoff note goes to the new
+    // conversation. When the window closes, it's cancelled.
+    let mut handoff = None;
+    let mut cancel_handoff = None;
     // What to tell Supabase, if anything. Untracked windows never call it.
     let mut updates: Vec<(String, Value)> = gone.into_iter().map(|id| (id, json!({ "state": "gone" }))).collect();
     match event {
@@ -222,6 +226,9 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
                 windows.links.insert(claude_id.clone(), id.clone());
                 updates.push((id.clone(), json!({ "claude_session_id": claude_id, "folder": folder, "state": "open" })));
                 pick_up = Some(id.clone());
+                if input["source"] == "clear" {
+                    handoff = Some(id.clone());
+                }
             }
             windows.windows.insert(pid, Window { claude_session_id: claude_id, folder, session_id, clearing: false });
         }
@@ -234,7 +241,8 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
                 }
             } else if let Some(w) = windows.windows.remove(&pid) {
                 if let Some(id) = w.session_id {
-                    updates.push((id, json!({ "state": "closed" })));
+                    updates.push((id.clone(), json!({ "state": "closed" })));
+                    cancel_handoff = Some(id);
                 }
             }
         }
@@ -247,17 +255,33 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     for (id, change) in updates {
         board.update_session(&id, change)?;
     }
-    // A conversation starting gets the tasks waiting for it.
-    if let Some(id) = pick_up {
-        let tasks = board.pick_up_tasks(&id)?;
-        if !tasks.is_empty() {
-            return Ok(Some(
-                json!({ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": tasks_message(&tasks) } })
-                    .to_string(),
+    if let Some(id) = cancel_handoff {
+        board.cancel_waiting_handoff(&id)?;
+    }
+    // A conversation starting gets its handoff note and the tasks waiting
+    // for it.
+    let mut context = Vec::new();
+    if let Some(id) = handoff {
+        if let Some(note) = board.waiting_handoff(&id)? {
+            board.set_handoff_state(&note.id, "picked_up")?;
+            context.push(format!(
+                "{}\nPick up from here: check the real state first (git status, anything still running), then carry on.",
+                crate::handoff_cmd::note_text(&note)
             ));
         }
     }
-    Ok(None)
+    if let Some(id) = pick_up {
+        let tasks = board.pick_up_tasks(&id)?;
+        if !tasks.is_empty() {
+            context.push(tasks_message(&tasks));
+        }
+    }
+    if context.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        json!({ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": context.join("\n\n") } }).to_string(),
+    ))
 }
 
 #[cfg(test)]

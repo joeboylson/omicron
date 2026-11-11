@@ -368,3 +368,66 @@ fn a_session_reports_on_its_task_and_a_person_answers() {
     assert!(forged.is_err(), "{forged:?}");
     w.kill().unwrap();
 }
+
+/// Run a hook and return what it printed for Claude Code.
+fn hook_out(c: &Computer, window: u32, event: &str, input: Value) -> String {
+    let mut child = command(c, Some(window), &["hook", event]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(input.to_string().as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success());
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
+#[test]
+fn a_handoff_note_reaches_the_next_conversation_in_the_window() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let mut w = window();
+    let a = Uuid::new_v4().to_string();
+    hook(&mac, w.id(), "session-start", json!({ "session_id": a, "cwd": "/w", "source": "startup" }));
+    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+
+    // Written, then replaced by a newer one (piped in, as a skill would).
+    assert!(ok(&mac, Some(w.id()), &["handoff", "write", "First try."]).contains("Saved handoff note #1 for session parser"));
+    let mut child = command(&mac, Some(w.id()), &["handoff", "write"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(b"Parser half done.\nNext: error messages.\n").unwrap();
+    assert!(child.wait_with_output().unwrap().status.success());
+    let list = ok(&pat, None, &["handoff", "list", "--project", &project]);
+    assert_eq!(
+        list.lines().map(|l| l.split('\t').filter(|f| !f.contains(':')).collect::<Vec<_>>()).collect::<Vec<_>>(),
+        vec![
+            vec!["#2", project.as_str(), "parser", "waiting", "Parser half done."],
+            vec!["#1", project.as_str(), "parser", "replaced", "First try."]
+        ],
+        "{list}"
+    );
+
+    // /clear: the new conversation starts with the note, once.
+    hook(&mac, w.id(), "session-end", json!({ "session_id": a, "reason": "clear" }));
+    let out: Value = serde_json::from_str(&hook_out(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "clear" }))).unwrap();
+    let context = out["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    assert!(context.contains("Handoff note #2") && context.contains("Next: error messages."), "{context}");
+    assert!(ok(&pat, None, &["handoff", "list", "--project", &project]).lines().next().unwrap().contains("picked up"));
+    let b = Uuid::new_v4().to_string();
+    hook(&mac, w.id(), "session-end", json!({ "session_id": "x", "reason": "clear" }));
+    assert_eq!(hook_out(&mac, w.id(), "session-start", json!({ "session_id": b, "cwd": "/w", "source": "clear" })), "");
+
+    // A note left when the window closes is cancelled, but can still be
+    // picked up by hand, by anyone in the Project.
+    ok(&mac, Some(w.id()), &["handoff", "write", "Stopped at the tests."]);
+    hook(&mac, w.id(), "session-end", json!({ "session_id": b, "reason": "prompt_input_exit" }));
+    assert!(ok(&pat, None, &["handoff", "list", "--project", &project]).lines().next().unwrap().contains("cancelled"));
+    let shown = ok(&pat, None, &["handoff", "show", &project, "3", "--pickup"]);
+    assert!(shown.starts_with(&format!("Handoff note #3 in {project} from session parser, written ")), "{shown}");
+    assert!(shown.contains("Stopped at the tests."));
+    assert!(ok(&pat, None, &["handoff", "list", "--project", &project]).lines().next().unwrap().contains("picked up"));
+
+    // Outside a tracked session there's nothing to write a note for.
+    let o = run(&pat, None, &["handoff", "write", "x"]);
+    assert!(!o.status.success());
+    w.kill().unwrap();
+}

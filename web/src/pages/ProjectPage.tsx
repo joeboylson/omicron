@@ -54,7 +54,7 @@ export function ProjectPage({ id }: { id: string }) {
           </Button>
         }
       />
-      <Sessions sessions={project.sessions} />
+      <Sessions project={project.name} sessions={project.sessions} handoffs={project.handoffs} />
       <div className="flex flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:snap-none">
         {project.statuses.map((s) => (
           <Column

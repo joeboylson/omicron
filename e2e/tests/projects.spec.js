@@ -232,6 +232,15 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
     const sessions = page.getByRole("region", { name: "Claude sessions" });
     await expect(sessions).toContainText(`parser${machineName} · open`);
 
+    // Its handoff notes show when the session is tapped, live.
+    await sessions.getByRole("button", { name: /parser/ }).click();
+    await expect(page.getByRole("dialog")).toContainText("No notes yet.");
+    omicron.cliIn(win.pid, "handoff", "write", "Parser half done. Next: error messages.");
+    const notes = page.getByRole("list", { name: "Handoff notes" });
+    await expect(notes).toContainText("#1waiting");
+    await expect(notes).toContainText("Parser half done. Next: error messages.");
+    await page.keyboard.press("Escape");
+
     // It's closed: the page shows that without reloading.
     omicron.hook(win.pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
     await expect(sessions).toContainText(`parser${machineName} · closed`);

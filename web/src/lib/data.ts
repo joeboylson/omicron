@@ -27,6 +27,14 @@ export type Task = {
   checklist: ChecklistItem[];
   comments: Comment[];
 };
+export type HandoffNote = {
+  id: string;
+  number: number;
+  session_id: string | null;
+  state: "waiting" | "picked_up" | "replaced" | "cancelled";
+  written_at: string;
+  body: string;
+};
 export type ClaudeSession = { id: string; name: string; state: "open" | "closed" | "gone"; folder: string; machine: string };
 export type ProjectData = {
   id: string;
@@ -36,6 +44,7 @@ export type ProjectData = {
   members: Person[];
   tasks: Task[];
   sessions: ClaudeSession[];
+  handoffs: HandoffNote[];
 };
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
@@ -49,7 +58,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs] = await Promise.all([
     db.from("projects").select("id,name").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -63,6 +72,12 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .order("position")
       .order("number"),
     db.from("sessions").select("id,name,state,folder,machines(name)").eq("project_id", id).order("name"),
+    db
+      .from("handoffs")
+      .select("id,number,session_id,state,written_at,body")
+      .eq("project_id", id)
+      .order("written_at", { ascending: false })
+      .limit(100),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -106,6 +121,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       folder: r.folder,
       machine: r.machines?.name ?? "",
     })),
+    handoffs: must(handoffs) as HandoffNote[],
   };
 }
 

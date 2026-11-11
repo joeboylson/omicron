@@ -6,6 +6,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod board_cmd;
+mod handoff_cmd;
 mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.
@@ -69,6 +70,10 @@ enum Command {
     /// Claude sessions: record the one you're in, list them
     #[command(subcommand)]
     Sessions(sessions_cmd::Sessions),
+    /// Handoff notes: write where a session stopped; the next conversation
+    /// in its window (after /clear) starts with it
+    #[command(subcommand)]
+    Handoff(handoff_cmd::HandoffCmd),
     /// Claude Code hooks (set up by `omicron sessions setup-claude`)
     #[command(subcommand, hide = true)]
     Hook(sessions_cmd::Hook),
@@ -159,6 +164,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
+        Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Daemon { action: None } => daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {
             let file = omicron::login::this_service_file()?;

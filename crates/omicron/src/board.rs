@@ -152,10 +152,37 @@ pub struct Comment {
     pub at: String,
 }
 
+/// A handoff note (see `omicron handoff`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Handoff {
+    pub id: String,
+    pub number: i64,
+    pub project: String,
+    pub session: Option<String>,
+    pub state: String,
+    pub written_at: String,
+    pub body: String,
+}
+
+const HANDOFF_FIELDS: &str = "id,number,state,written_at,body,projects(name),sessions(name)";
+
+fn handoff_from(v: &Value) -> Handoff {
+    Handoff {
+        id: v["id"].as_str().unwrap_or("").to_string(),
+        number: v["number"].as_i64().unwrap_or(0),
+        project: v["projects"]["name"].as_str().unwrap_or("").to_string(),
+        session: v["sessions"]["name"].as_str().map(String::from),
+        state: v["state"].as_str().unwrap_or("").to_string(),
+        written_at: v["written_at"].as_str().unwrap_or("").to_string(),
+        body: v["body"].as_str().unwrap_or("").to_string(),
+    }
+}
+
 /// A Claude session's record (see `windows` for the local side).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionRecord {
     pub id: String,
+    pub project_id: String,
     pub name: String,
     pub project: String,
     pub machine: String,
@@ -164,11 +191,12 @@ pub struct SessionRecord {
     pub folder: String,
 }
 
-const SESSION_FIELDS: &str = "id,name,state,claude_session_id,folder,projects(name),machines(name)";
+const SESSION_FIELDS: &str = "id,project_id,name,state,claude_session_id,folder,projects(name),machines(name)";
 
 fn session_from(v: &Value) -> Result<SessionRecord> {
     Ok(SessionRecord {
         id: v["id"].as_str().context("session without id")?.to_string(),
+        project_id: v["project_id"].as_str().unwrap_or("").to_string(),
         name: v["name"].as_str().unwrap_or("").to_string(),
         project: v["projects"]["name"].as_str().unwrap_or("").to_string(),
         machine: v["machines"]["name"].as_str().unwrap_or("").to_string(),
@@ -496,6 +524,53 @@ impl Board {
     pub fn add_comment(&self, task: &Task, body: &str, session_id: Option<&str>) -> Result<()> {
         self.send("POST", "/rest/v1/comments", json!({ "task_id": task.id, "body": body, "session_id": session_id }))?;
         Ok(())
+    }
+
+    /// Save a handoff note for a session. It replaces the session's waiting
+    /// note, if there is one.
+    pub fn write_handoff(&self, session: &SessionRecord, body: &str) -> Result<Handoff> {
+        let rows = self.send(
+            "POST",
+            &format!("/rest/v1/handoffs?select={HANDOFF_FIELDS}"),
+            json!({ "project_id": session.project_id, "session_id": session.id, "body": body }),
+        )?;
+        Ok(handoff_from(rows.get(0).context("the note wasn't saved")?))
+    }
+
+    /// Handoff notes, newest first: one Project's, or all you can see.
+    pub fn handoffs(&self, project: Option<&Project>) -> Result<Vec<Handoff>> {
+        let only = project.map(|p| format!("&project_id=eq.{}", p.id)).unwrap_or_default();
+        let rows = self.get(&format!("/rest/v1/handoffs?select={HANDOFF_FIELDS}{only}&order=written_at.desc&limit=50"))?;
+        Ok(rows.as_array().into_iter().flatten().map(handoff_from).collect())
+    }
+
+    pub fn handoff(&self, project: &Project, number: i64) -> Result<Handoff> {
+        let rows = self.get(&format!("/rest/v1/handoffs?select={HANDOFF_FIELDS}&project_id=eq.{}&number=eq.{number}", project.id))?;
+        Ok(handoff_from(rows.get(0).with_context(|| format!("{} has no handoff note #{number}", project.name))?))
+    }
+
+    /// The session's waiting note, if any.
+    pub fn waiting_handoff(&self, session_id: &str) -> Result<Option<Handoff>> {
+        let rows = self.get(&format!("/rest/v1/handoffs?select={HANDOFF_FIELDS}&session_id=eq.{session_id}&state=eq.waiting"))?;
+        Ok(rows.get(0).map(handoff_from))
+    }
+
+    /// Change a note's state (picked_up, cancelled). Only the machine that
+    /// wrote it can.
+    pub fn set_handoff_state(&self, id: &str, state: &str) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/handoffs?id=eq.{id}"), json!({ "state": state }))?;
+        Ok(())
+    }
+
+    /// Cancel a session's waiting note (its window closed).
+    pub fn cancel_waiting_handoff(&self, session_id: &str) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/handoffs?session_id=eq.{session_id}&state=eq.waiting"), json!({ "state": "cancelled" }))?;
+        Ok(())
+    }
+
+    pub fn session_by_id(&self, id: &str) -> Result<SessionRecord> {
+        let rows = self.get(&format!("/rest/v1/sessions?select={SESSION_FIELDS}&id=eq.{id}"))?;
+        session_from(rows.get(0).context("this session's record is gone")?)
     }
 
     pub fn set_needs_review(&self, project: &Project, number: i64, on: bool) -> Result<Task> {

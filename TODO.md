@@ -144,7 +144,14 @@ Built in this order. Each part replaces an old tool only once it's ready.
       session wrote it; the database checks the session is the machine's
       own. With the Needs review mark and the Reviewed button, a session's
       report goes: comment + review, someone reads it, Reviewed.
-- [ ] `omicron handoff`: handoff notes per session, picked up after `/clear`.
+- [x] `omicron handoff write | list | show <P> <n> [--pickup]`: handoff notes
+      per session (rewrite of lethe), numbered per Project. A newer note
+      replaces the waiting one; after `/clear` the SessionStart hook gives it
+      to the new conversation; closing the window cancels it; anyone in the
+      Project can still pick one up by hand. Tapping a session on the web
+      page shows its notes, with a button to copy the pickup command.
+- [ ] A `/handoff` command for Claude Code (like lethe's `/lethe` skill) that
+      checks the real state, writes the note and says to type `/clear`.
 
 ## 5. Chat
 - [ ] `omicron chat`: one chat per Project, turned on or off per Project.
