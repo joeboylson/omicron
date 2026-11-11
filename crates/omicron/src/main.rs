@@ -71,6 +71,9 @@ enum Command {
     /// A Project's labels and their colors
     #[command(subcommand)]
     Labels(board_cmd::Labels),
+    /// A Project's topics: a second way to group tasks, as rows on the board
+    #[command(subcommand)]
+    Topics(board_cmd::Topics),
     /// Tasks: add, move, finish, label, checklists
     #[command(subcommand)]
     Tasks(board_cmd::Tasks),
@@ -185,6 +188,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
+        Command::Topics(cmd) => board_cmd::topics(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Chat(cmd) => chat_cmd::chat(cmd, cli.as_machine),

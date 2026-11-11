@@ -7,6 +7,8 @@ import { must } from "./omicron";
 export type ProjectSummary = { id: string; name: string; taskCount: number };
 export type Status = { id: string; name: string; position: number; is_done: boolean; color: string | null };
 export type Label = { id: string; name: string; color: string | null };
+/** A second way to group tasks: rows on the board, like "Joe's to-do". */
+export type Topic = { id: string; name: string; position: number };
 export type Person = { id: string; display_name: string };
 export type Comment = { id: string; author: string; session: string | null; body: string; created_at: string };
 export type ChecklistItem = { id: string; text: string; done: boolean; position: number };
@@ -20,6 +22,7 @@ export type Task = {
   needs_review: boolean;
   position: number;
   assignee_person_id: string | null;
+  topic_id: string | null;
   /** The Claude session it was sent to, and when the session picked it up. */
   assignee_session_id: string | null;
   picked_up_at: string | null;
@@ -59,6 +62,7 @@ export type ProjectData = {
   chatEnabled: boolean;
   statuses: Status[];
   labels: Label[];
+  topics: Topic[];
   members: Person[];
   tasks: Task[];
   sessions: ClaudeSession[];
@@ -76,7 +80,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions, handoffs] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs, topics] = await Promise.all([
     db.from("projects").select("id,name,chat_enabled").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -84,7 +88,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db
       .from("tasks")
       .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,sessions(name)),dispatches(id,state,result,error,created_at)",
+        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,sessions(name)),dispatches(id,state,result,error,created_at)",
       )
       .eq("project_id", id)
       .order("position")
@@ -96,6 +100,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .eq("project_id", id)
       .order("written_at", { ascending: false })
       .limit(100),
+    db.from("topics").select("id,name,position").eq("project_id", id).order("position").order("name"),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -105,6 +110,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     chatEnabled: p.chat_enabled,
     statuses: must(statuses) as Status[],
     labels: must(labels) as Label[],
+    topics: must(topics) as Topic[],
     members: (must(members) as any[])
       .map((m) => m.people as Person)
       .filter(Boolean)
@@ -120,6 +126,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       position: t.position,
       assignee_person_id: t.assignee_person_id,
       assignee_session_id: t.assignee_session_id,
+      topic_id: t.topic_id,
       picked_up_at: t.picked_up_at,
       labelIds: (t.task_labels ?? []).map((l: { label_id: string }) => l.label_id),
       checklist: [...(t.checklist_items ?? [])].sort((a: ChecklistItem, b: ChecklistItem) => a.position - b.position),
@@ -152,13 +159,35 @@ export async function renameProject(db: SupabaseClient, id: string, name: string
   must(await db.from("projects").update({ name }).eq("id", id));
 }
 
-export async function addTask(db: SupabaseClient, project: ProjectData, statusId: string, title: string) {
+export async function addTask(
+  db: SupabaseClient,
+  project: ProjectData,
+  statusId: string,
+  title: string,
+  topicId: string | null = null,
+) {
   const position = after(project.tasks.filter((t) => t.status_id === statusId));
-  must(await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position }));
+  must(await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId }));
+}
+
+export async function addTopic(db: SupabaseClient, project: ProjectData, name: string) {
+  must(await db.from("topics").insert({ project_id: project.id, name }));
+}
+
+export async function renameTopic(db: SupabaseClient, topic: Topic, name: string) {
+  must(await db.from("topics").update({ name }).eq("id", topic.id));
+}
+
+/** Its tasks are kept, without a topic. */
+export async function deleteTopic(db: SupabaseClient, topic: Topic) {
+  must(await db.from("topics").delete().eq("id", topic.id));
 }
 
 type TaskChange = Partial<
-  Pick<Task, "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id" | "assignee_session_id">
+  Pick<
+    Task,
+    "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id" | "assignee_session_id" | "topic_id"
+  >
 >;
 
 export async function updateTask(db: SupabaseClient, project: ProjectData, task: Task, change: TaskChange) {

@@ -51,6 +51,8 @@ pub struct Task {
     pub assignee: Option<String>,
     /// The Claude session it was sent to, if any.
     pub session: Option<String>,
+    /// Its topic's name, if it has one.
+    pub topic: Option<String>,
     pub needs_review: bool,
     pub labels: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
@@ -107,6 +109,8 @@ pub struct NewTask {
     /// A member's name.
     pub assignee: Option<String>,
     pub notes: String,
+    /// A topic name. A missing topic is made.
+    pub topic: Option<String>,
 }
 
 /// Encode a value for a URL query.
@@ -129,7 +133,7 @@ fn check_date(d: &str) -> Result<()> {
 }
 
 const TASK_FIELDS: &str = "id,number,title,notes,status_id,due_on,needs_review,position,\
-assignee:people(display_name),session:sessions(name),task_labels(labels(name)),checklist_items(id,text,done,position)";
+assignee:people(display_name),session:sessions(name),topic:topics(name),task_labels(labels(name)),checklist_items(id,text,done,position)";
 
 fn task_from(v: &Value) -> Result<Task> {
     let mut labels: Vec<String> = v["task_labels"]
@@ -151,6 +155,7 @@ fn task_from(v: &Value) -> Result<Task> {
         due_on: v["due_on"].as_str().map(String::from),
         assignee: v["assignee"]["display_name"].as_str().map(String::from),
         session: v["session"]["name"].as_str().map(String::from),
+        topic: v["topic"]["name"].as_str().map(String::from),
         needs_review: v["needs_review"].as_bool().unwrap_or(false),
         labels,
         checklist,
@@ -407,6 +412,59 @@ impl Board {
         Ok(made[0]["id"].as_str().context("label wasn't made")?.to_string())
     }
 
+    /// A Project's topics, in board order.
+    pub fn topics(&self, project: &Project) -> Result<Vec<String>> {
+        let rows = self.get(&format!("/rest/v1/topics?project_id=eq.{}&select=name&order=position,name", project.id))?;
+        Ok(rows.as_array().into_iter().flatten().filter_map(|r| r["name"].as_str().map(String::from)).collect())
+    }
+
+    pub fn add_topic(&self, project: &Project, name: &str) -> Result<()> {
+        if self.topics(project)?.iter().any(|t| t.eq_ignore_ascii_case(name)) {
+            bail!("{} already has a topic called {name}", project.name);
+        }
+        self.send("POST", "/rest/v1/topics", json!({ "project_id": project.id, "name": name.trim() }))?;
+        Ok(())
+    }
+
+    pub fn rename_topic(&self, project: &Project, name: &str, new_name: &str) -> Result<()> {
+        let id = self.topic_id(project, name, false)?;
+        self.send("PATCH", &format!("/rest/v1/topics?id=eq.{id}"), json!({ "name": new_name.trim() }))?;
+        Ok(())
+    }
+
+    /// Remove a topic. Its tasks are kept, without a topic.
+    pub fn remove_topic(&self, project: &Project, name: &str) -> Result<()> {
+        let id = self.topic_id(project, name, false)?;
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/topics?id=eq.{id}"), None)?;
+        Ok(())
+    }
+
+    /// Give a task a topic (made if missing), or take its topic off (None).
+    pub fn set_topic(&self, project: &Project, number: i64, topic: Option<&str>) -> Result<Task> {
+        let task = self.task(project, number)?;
+        let id = topic.map(|n| self.topic_id(project, n, true)).transpose()?;
+        self.update_task(&task, json!({ "topic_id": id }))?;
+        self.task(project, number)
+    }
+
+    fn topic_id(&self, project: &Project, name: &str, make: bool) -> Result<String> {
+        let rows = self.get(&format!("/rest/v1/topics?project_id=eq.{}&select=id,name", project.id))?;
+        if let Some(id) = rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|r| r["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(name.trim())))
+            .and_then(|r| r["id"].as_str())
+        {
+            return Ok(id.to_string());
+        }
+        if !make {
+            bail!("{} has no topic called {name}", project.name);
+        }
+        let made = self.send("POST", "/rest/v1/topics?select=id", json!({ "project_id": project.id, "name": name.trim() }))?;
+        Ok(made[0]["id"].as_str().context("topic wasn't made")?.to_string())
+    }
+
     fn member_id(&self, project: &Project, name: &str) -> Result<String> {
         let rows = self.get(&format!(
             "/rest/v1/project_members?project_id=eq.{}&select=person_id,people(display_name)",
@@ -539,12 +597,14 @@ impl Board {
             check_date(d)?;
         }
         let assignee = new.assignee.as_deref().map(|n| self.member_id(project, n)).transpose()?;
+        let topic = new.topic.as_deref().map(|n| self.topic_id(project, n, true)).transpose()?;
         let rows = self.send(
             "POST",
             "/rest/v1/tasks?select=id,number",
             json!({
                 "project_id": project.id, "title": new.title, "status_id": status.id,
                 "due_on": new.due_on, "assignee_person_id": assignee, "notes": new.notes,
+                "topic_id": topic,
             }),
         )?;
         let id = rows[0]["id"].as_str().context("task wasn't made")?.to_string();

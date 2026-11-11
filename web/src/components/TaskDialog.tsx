@@ -168,6 +168,26 @@ function TaskForm({
             </SelectContent>
           </Select>
         </Row>
+        {project.topics.length > 0 && (
+          <Row>
+            <Label htmlFor="task-topic" className="flex-1 font-normal">
+              Topic
+            </Label>
+            <Select value={task.topic_id ?? NOBODY} onValueChange={(v) => save({ topic_id: v === NOBODY ? null : v })}>
+              <SelectTrigger id="task-topic" className={cn(bare, "w-auto gap-1 text-muted-foreground")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value={NOBODY}>None</SelectItem>
+                {project.topics.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
+        )}
         <Row>
           <Label htmlFor="task-date" className="flex-1 font-normal">
             Date

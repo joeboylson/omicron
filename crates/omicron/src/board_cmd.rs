@@ -40,6 +40,50 @@ pub enum Labels {
     Color { project: String, label: String, color: String },
 }
 
+#[derive(Subcommand)]
+pub enum Topics {
+    /// List a Project's topics, in board order
+    List { project: String },
+    /// Add a topic (like "Joe's to-do")
+    Add { project: String, name: String },
+    /// Rename a topic
+    Rename { project: String, name: String, new_name: String },
+    /// Remove a topic. Its tasks are kept, without a topic.
+    Remove { project: String, name: String },
+}
+
+pub fn topics(cmd: Topics, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    match cmd {
+        Topics::List { project } => {
+            let p = board.project(&project)?;
+            let all = board.topics(&p)?;
+            if all.is_empty() {
+                println!("{} has no topics yet. Add one with `omicron topics add '{}' <name>`.", p.name, p.name);
+            }
+            for t in all {
+                println!("{t}");
+            }
+        }
+        Topics::Add { project, name } => {
+            let p = board.project(&project)?;
+            board.add_topic(&p, &name)?;
+            println!("Added the topic {name} to {}.", p.name);
+        }
+        Topics::Rename { project, name, new_name } => {
+            let p = board.project(&project)?;
+            board.rename_topic(&p, &name, &new_name)?;
+            println!("Renamed {name} to {new_name}.");
+        }
+        Topics::Remove { project, name } => {
+            let p = board.project(&project)?;
+            board.remove_topic(&p, &name)?;
+            println!("Removed the topic {name}. Its tasks are kept, without a topic.");
+        }
+    }
+    Ok(())
+}
+
 pub fn labels(cmd: Labels, as_machine: bool) -> Result<()> {
     let board = sign_in(as_machine)?;
     match cmd {
@@ -60,8 +104,12 @@ pub fn labels(cmd: Labels, as_machine: bool) -> Result<()> {
 
 #[derive(Subcommand)]
 pub enum Tasks {
-    /// Show a Project's tasks, grouped by status
-    List { project: String },
+    /// Show a Project's tasks, grouped by status (and by topic too, with --by-topic)
+    List {
+        project: String,
+        #[arg(long)]
+        by_topic: bool,
+    },
     /// Show one task in full
     Show { project: String, number: i64 },
     /// Add a task
@@ -83,7 +131,12 @@ pub enum Tasks {
         /// Notes: what it's about, in more detail
         #[arg(long, default_value = "")]
         notes: String,
+        /// Its topic (made if it doesn't exist)
+        #[arg(long)]
+        topic: Option<String>,
     },
+    /// Give a task a topic (made if it doesn't exist), or `none` to take it off
+    Topic { project: String, number: i64, topic: String },
     /// Move a task to another status
     Move { project: String, number: i64, status: String },
     /// Move a task to the Project's Done status
@@ -218,6 +271,9 @@ fn print_task(p: &Project, statuses: &[Status], t: &Task) {
     println!("{}", one_line(t));
     println!("  Project: {}", p.name);
     println!("  Status: {status}");
+    if let Some(topic) = &t.topic {
+        println!("  Topic: {topic}");
+    }
     if !t.notes.is_empty() {
         println!("  Notes: {}", t.notes);
     }
@@ -241,19 +297,44 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
         Ok(())
     };
     match cmd {
-        Tasks::List { project } => {
+        Tasks::List { project, by_topic } => {
             let p = board.project(&project)?;
             let statuses = board.statuses(&p)?;
             let tasks = board.tasks(&p)?;
-            for s in &statuses {
-                println!("{}", s.name);
-                let in_status: Vec<&Task> = tasks.iter().filter(|t| t.status_id == s.id).collect();
-                if in_status.is_empty() {
-                    println!("  (nothing)");
+            let print = |tasks: &[&Task], indent: &str| {
+                for s in &statuses {
+                    println!("{indent}{}", s.name);
+                    let in_status: Vec<&&Task> = tasks.iter().filter(|t| t.status_id == s.id).collect();
+                    if in_status.is_empty() {
+                        println!("{indent}  (nothing)");
+                    }
+                    for t in in_status {
+                        println!("{indent}  {}", one_line(t));
+                    }
                 }
-                for t in in_status {
-                    println!("  {}", one_line(t));
+            };
+            if !by_topic {
+                print(&tasks.iter().collect::<Vec<_>>(), "");
+                return Ok(());
+            }
+            let mut groups: Vec<(String, Vec<&Task>)> = board
+                .topics(&p)?
+                .into_iter()
+                .map(|name| {
+                    let in_topic = tasks.iter().filter(|t| t.topic.as_deref() == Some(name.as_str())).collect();
+                    (name, in_topic)
+                })
+                .collect();
+            let none: Vec<&Task> = tasks.iter().filter(|t| t.topic.is_none()).collect();
+            if !none.is_empty() || groups.is_empty() {
+                groups.push(("No topic".into(), none));
+            }
+            for (i, (name, in_topic)) in groups.iter().enumerate() {
+                if i > 0 {
+                    println!();
                 }
+                println!("== {name} ==");
+                print(in_topic, "");
             }
             Ok(())
         }
@@ -262,9 +343,15 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = board.task(&p, number)?;
             changed(&p, t)
         }
-        Tasks::Add { project, title, status, due, labels, assignee, notes } => {
+        Tasks::Topic { project, number, topic } => {
             let p = board.project(&project)?;
-            let t = board.add_task(&p, &NewTask { title, status, due_on: due, labels, assignee, notes })?;
+            let topic = Some(topic).filter(|t| !t.eq_ignore_ascii_case("none"));
+            let t = board.set_topic(&p, number, topic.as_deref())?;
+            changed(&p, t)
+        }
+        Tasks::Add { project, title, status, due, labels, assignee, notes, topic } => {
+            let p = board.project(&project)?;
+            let t = board.add_task(&p, &NewTask { title, status, due_on: due, labels, assignee, notes, topic })?;
             changed(&p, t)
         }
         Tasks::Move { project, number, status } => {

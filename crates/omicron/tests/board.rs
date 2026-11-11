@@ -294,3 +294,50 @@ fn statuses_and_labels_get_colors() {
     assert_eq!(ok(&me, &["labels", "list", &project]), "bills\nurgent [red]\n");
     assert!(fails(&me, &["statuses", "color", &project, "Done", "magenta"]).contains("isn't one of the colors"));
 }
+
+#[test]
+fn topics_group_tasks_into_rows() {
+    let s = supabase_or_skip!();
+    let (pat, project) = person_with_project(&s, "Pat");
+    assert!(ok(&pat, &["topics", "list", &project]).contains("has no topics yet"));
+    ok(&pat, &["topics", "add", &project, "Joe's to-do"]);
+    ok(&pat, &["topics", "add", &project, "Claire's to-do"]);
+    assert!(fails(&pat, &["topics", "add", &project, "joe's TO-DO"]).contains("already has a topic called"));
+    assert_eq!(ok(&pat, &["topics", "list", &project]), "Joe's to-do\nClaire's to-do\n");
+
+    ok(&pat, &["tasks", "add", &project, "Buy milk", "--topic", "Joe's to-do"]);
+    ok(&pat, &["tasks", "add", &project, "Book flights", "--status", "Done", "--topic", "claire's to-do"]);
+    ok(&pat, &["tasks", "add", &project, "Water plants"]);
+    assert!(ok(&pat, &["tasks", "show", &project, "1"]).contains("  Topic: Joe's to-do\n"));
+
+    // One row per topic, in order, each with the statuses; tasks with no
+    // topic last.
+    let rows = ok(&pat, &["tasks", "list", &project, "--by-topic"]);
+    assert_eq!(
+        rows,
+        "== Joe's to-do ==\nTo do\n  #1  Buy milk\nDone\n  (nothing)\n\n\
+         == Claire's to-do ==\nTo do\n  (nothing)\nDone\n  #2  Book flights\n\n\
+         == No topic ==\nTo do\n  #3  Water plants\nDone\n  (nothing)\n"
+    );
+
+    // Moved to another topic (made on the way), taken off, renamed, removed.
+    ok(&pat, &["tasks", "topic", &project, "3", "Garden"]);
+    assert_eq!(ok(&pat, &["topics", "list", &project]), "Joe's to-do\nClaire's to-do\nGarden\n");
+    ok(&pat, &["tasks", "topic", &project, "3", "none"]);
+    assert!(!ok(&pat, &["tasks", "show", &project, "3"]).contains("Topic:"));
+    ok(&pat, &["topics", "rename", &project, "Joe's to-do", "Joe"]);
+    assert!(ok(&pat, &["tasks", "show", &project, "1"]).contains("  Topic: Joe\n"));
+    ok(&pat, &["topics", "remove", &project, "Joe"]);
+    assert!(!ok(&pat, &["tasks", "show", &project, "1"]).contains("Topic:"));
+    assert!(fails(&pat, &["topics", "remove", &project, "Joe"]).contains("has no topic called Joe"));
+
+    // A topic from another Project can't be used.
+    let (_, other) = person_with_project(&s, "Sam");
+    let theirs = s.admin_request("POST", "/rest/v1/topics?select=id", Some(serde_json::json!({
+        "project_id": s.admin_request("GET", &format!("/rest/v1/projects?name=eq.{other}&select=id"), None).unwrap()[0]["id"],
+        "name": "Theirs",
+    }))).unwrap();
+    let task = s.admin_request("GET", &format!("/rest/v1/tasks?title=eq.Buy milk&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap();
+    let err = s.admin_request("PATCH", &format!("/rest/v1/tasks?id=eq.{}", task[0]["id"].as_str().unwrap()), Some(serde_json::json!({ "topic_id": theirs[0]["id"] })));
+    assert!(err.unwrap_err().to_string().contains("another Project"));
+}

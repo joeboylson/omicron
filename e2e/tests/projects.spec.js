@@ -181,7 +181,7 @@ test("statuses and members are set in Project settings", async ({ page, request 
   };
   const addStatus = async (dialog, name) => {
     await dialog.getByLabel("New status").fill(name);
-    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await dialog.getByRole("button", { name: "Add status" }).click();
     await expect(dialog.getByLabel(`Status name: ${name}`)).toBeVisible();
   };
 
@@ -388,4 +388,57 @@ test("opening the chat doesn't stop the Project page's live updates", async ({ p
   await rest(request, me.session, "POST", "/rest/v1/tasks", { project_id: projectId, status_id: todo.id, title: "Added while the page is open" });
   await expect(column(page, "To do").getByRole("button", { name: "#1 Added while the page is open" })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("topics group the board into rows, as well as by status", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Water the plants");
+
+  // Grouped by topic with no topics yet: one row, and how to add some.
+  await page.getByRole("radio", { name: "Status and topic" }).click();
+  await expect(page.getByText("No topics yet.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "No topic", exact: true })).toContainText("Water the plants");
+
+  await page.getByRole("button", { name: "Add topics in Project settings" }).click();
+  for (const topic of ["Joe's to-do", "Claire's to-do"]) {
+    await page.getByLabel("New topic").fill(topic);
+    await page.getByLabel("New topic").press("Enter");
+    await expect(page.getByRole("list", { name: "Topics" }).getByLabel(`Topic name: ${topic}`)).toHaveValue(topic);
+  }
+  await page.keyboard.press("Escape");
+
+  // A row per topic, in order, then the tasks without one.
+  const lanes = page.locator("main > div > section");
+  await expect(lanes).toHaveCount(3);
+  await expect(lanes.nth(0)).toHaveAttribute("aria-label", "Joe's to-do");
+  await expect(lanes.nth(2)).toHaveAttribute("aria-label", "No topic");
+
+  // A task added in a row gets that row's topic.
+  const joe = page.getByRole("region", { name: "Joe's to-do", exact: true });
+  await joe.getByRole("region", { name: "To do in Joe's to-do" }).getByRole("button", { name: "Add a task" }).click();
+  await page.getByLabel("New task in To do in Joe's to-do").fill("Fix the gate");
+  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await expect(joe).toContainText("Fix the gate");
+
+  // Moved to another topic from the task.
+  await page.getByRole("button", { name: /Water the plants/ }).click();
+  await pick(page, "Topic", "Claire's to-do");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Claire's to-do", exact: true })).toContainText("Water the plants");
+  // Nothing left without a topic: that row goes.
+  await expect(page.getByRole("region", { name: "No topic", exact: true })).toHaveCount(0);
+
+  // Rows fold away.
+  await joe.getByRole("button", { name: /Joe's to-do/ }).click();
+  await expect(joe.getByRole("region")).toHaveCount(0);
+  await expect(joe.getByRole("button", { name: /Joe's to-do/ })).toHaveAttribute("aria-expanded", "false");
+
+  // The choice is kept on reload; back to status only.
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "Status and topic" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Status", exact: true }).click();
+  await expect(column(page, "To do")).toContainText("Fix the gate");
+  await expect(column(page, "To do")).toContainText("Water the plants");
 });

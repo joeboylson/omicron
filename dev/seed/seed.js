@@ -146,6 +146,7 @@ async function project(owner, name, statusList, labelList) {
         notes: extra.notes ?? "",
         due_on: extra.due === undefined ? null : date(extra.due),
         assignee_person_id: extra.to?.id ?? null,
+        topic_id: extra.topic ?? this.topicFor?.(by) ?? null,
         position: position++,
       });
       for (const l of extra.labels ?? []) await by.call("POST", "/rest/v1/task_labels", { task_id: t.id, label_id: labelIds[l] });
@@ -176,6 +177,11 @@ async function project(owner, name, statusList, labelList) {
       ["shopping", "purple"],
     ]);
     await house.member(claire);
+    // Topics: a row each for Joe's and Claire's to-dos, by who added the task.
+    const [joeTopic] = await joe.call("POST", "/rest/v1/topics", { project_id: house.id, name: "Joe's to-do", position: 1 });
+    const [claireTopic] = await joe.call("POST", "/rest/v1/topics", { project_id: house.id, name: "Claire's to-do", position: 2 });
+    await joe.call("POST", "/rest/v1/topics", { project_id: house.id, name: "Together", position: 3 });
+    house.topicFor = (by) => (by === joe ? joeTopic.id : claireTopic.id);
     await house.task(joe, "To do", "Clean out the gutters", { due: 9, labels: ["outside"], notes: "Before the first big storm. Ladder is in the garage." });
     await house.task(claire, "To do", "Book the winter tyre swap", { to: joe, labels: ["car"], due: 5 });
     await house.task(claire, "To do", "Birthday present for Mia", {

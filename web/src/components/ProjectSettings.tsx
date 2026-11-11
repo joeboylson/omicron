@@ -4,7 +4,10 @@ import { useApp } from "@/lib/app";
 import {
   addMember,
   addStatus,
+  addTopic,
   deleteStatus,
+  deleteTopic,
+  renameTopic,
   listPeople,
   markDoneStatus,
   removeMember,
@@ -15,6 +18,7 @@ import {
   type Person,
   type ProjectData,
   type Status,
+  type Topic,
 } from "@/lib/data";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -40,6 +44,7 @@ export function ProjectSettings({
   const { db, act, me } = useApp();
   const [name, setName] = useState(project.name);
   const [newStatus, setNewStatus] = useState("");
+  const [newTopic, setNewTopic] = useState("");
   const [people, setPeople] = useState<Person[]>([]);
 
   useEffect(() => setName(project.name), [project.name]);
@@ -101,7 +106,41 @@ export function ProjectSettings({
                 aria-label="New status"
                 className={cn(bare, "px-0")}
               />
-              <Button type="submit" variant="ghost" size="sm" disabled={!newStatus.trim()}>
+              <Button type="submit" variant="ghost" size="sm" aria-label="Add status" disabled={!newStatus.trim()}>
+                Add
+              </Button>
+            </Row>
+          </form>
+        </Group>
+
+        <Group
+          title="Topics"
+          note="Topics group tasks into rows on the board, like “Joe's to-do”. Removing one keeps its tasks, without a topic."
+        >
+          {project.topics.length > 0 && (
+            <ul className="divide-y" aria-label="Topics">
+              {project.topics.map((t) => (
+                <TopicRow key={t.id} topic={t} count={project.tasks.filter((x) => x.topic_id === t.id).length} change={change} />
+              ))}
+            </ul>
+          )}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = newTopic.trim();
+              if (n) change(async () => (await addTopic(db, project, n), setNewTopic("")));
+            }}
+          >
+            <Row>
+              <Plus className="h-5 w-5 text-muted-foreground" aria-hidden />
+              <Input
+                value={newTopic}
+                onChange={(e) => setNewTopic(e.target.value)}
+                placeholder="New topic"
+                aria-label="New topic"
+                className={cn(bare, "px-0")}
+              />
+              <Button type="submit" variant="ghost" size="sm" aria-label="Add topic" disabled={!newTopic.trim()}>
                 Add
               </Button>
             </Row>
@@ -222,6 +261,50 @@ function StatusRow({
           aria-label={`Remove status ${status.name}`}
           disabled={status.is_done || inUse}
           onClick={() => change(() => deleteStatus(db, status))}
+        >
+          <Trash2 />
+        </Button>
+      </Row>
+    </li>
+  );
+}
+
+function TopicRow({
+  topic,
+  count,
+  change,
+}: {
+  topic: Topic;
+  count: number;
+  change: (work: () => Promise<unknown>) => Promise<void>;
+}) {
+  const { db } = useApp();
+  const [name, setName] = useState(topic.name);
+  useEffect(() => setName(topic.name), [topic.name]);
+  return (
+    <li>
+      <Row>
+        <Input
+          value={name}
+          aria-label={`Topic name: ${topic.name}`}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          onBlur={() => {
+            const n = name.trim();
+            if (!n) setName(topic.name);
+            else if (n !== topic.name) change(() => renameTopic(db, topic, n));
+          }}
+          className={cn(bare, "px-0")}
+        />
+        <span className="shrink-0 font-mono text-sm text-muted-foreground" aria-label={`${count} tasks`}>
+          {count}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-mr-2 shrink-0 text-destructive hover:text-destructive"
+          aria-label={`Remove topic ${topic.name}`}
+          onClick={() => change(() => deleteTopic(db, topic))}
         >
           <Trash2 />
         </Button>
