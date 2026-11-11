@@ -183,6 +183,33 @@ pub struct Loop {
     pub last_run_at: Option<String>,
 }
 
+/// A team (see `teams_cmd`), as Supabase keeps it.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct TeamRow {
+    pub id: String,
+    pub project_id: String,
+    pub machine_id: String,
+    pub name: String,
+    pub folder: String,
+    pub workflow: String,
+    pub state: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+}
+
+/// A team's job.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Job {
+    pub id: String,
+    pub team_id: String,
+    pub number: i64,
+    pub title: String,
+    pub text: String,
+    pub state: String,
+    pub step: Option<String>,
+    pub note: Option<String>,
+}
+
 /// Where to put a task in its status.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Place {
@@ -1018,6 +1045,46 @@ impl Board {
     pub fn finish_loop(&self, id: &str) -> Result<()> {
         self.send("POST", "/rest/v1/rpc/finish_loop", json!({ "loop": id }))?;
         Ok(())
+    }
+
+    /// Start a team on this machine (or start it again, if it's here).
+    pub fn start_team(&self, project: &Project, name: &str, folder: &str, workflow: &str, session_id: Option<&str>) -> Result<TeamRow> {
+        let me = self.session.user.id;
+        let body = json!({ "project_id": project.id, "name": name, "folder": folder, "workflow": workflow, "session_id": session_id, "state": "running" });
+        let here = self.get(&format!("/rest/v1/teams?machine_id=eq.{me}&name=eq.{}&select=id", enc(name)))?;
+        let rows = match here.get(0).and_then(|r| r["id"].as_str()) {
+            Some(id) => self.send("PATCH", &format!("/rest/v1/teams?id=eq.{id}"), body)?,
+            None => self.send("POST", "/rest/v1/teams", body)?,
+        };
+        Ok(serde_json::from_value(rows.get(0).cloned().context("the team wasn't saved")?)?)
+    }
+
+    pub fn teams(&self) -> Result<Vec<TeamRow>> {
+        Ok(serde_json::from_value(self.get("/rest/v1/teams?order=name")?)?)
+    }
+
+    /// A team by name (names are unique on each machine).
+    pub fn team(&self, name: &str) -> Result<TeamRow> {
+        let all: Vec<TeamRow> = self.teams()?.into_iter().filter(|t| t.name.eq_ignore_ascii_case(name)).collect();
+        match all.len() {
+            0 => bail!("no team called {name}"),
+            1 => Ok(all.into_iter().next().unwrap()),
+            _ => bail!("more than one machine has a team called {name}"),
+        }
+    }
+
+    pub fn update_team(&self, id: &str, change: Value) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/teams?id=eq.{id}"), change)?;
+        Ok(())
+    }
+
+    pub fn add_job(&self, team: &TeamRow, title: &str, text: &str) -> Result<Job> {
+        let rows = self.send("POST", "/rest/v1/jobs", json!({ "team_id": team.id, "title": title, "text": text }))?;
+        Ok(serde_json::from_value(rows[0].clone())?)
+    }
+
+    pub fn jobs(&self, team: &TeamRow) -> Result<Vec<Job>> {
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/jobs?team_id=eq.{}&order=number", team.id))?)?)
     }
 
     /// Turn a Project's chat on or off.

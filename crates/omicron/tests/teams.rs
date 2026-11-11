@@ -81,3 +81,59 @@ fn teams_jobs_and_workers_and_who_may_change_them() {
     let tables: std::collections::BTreeSet<&str> = lines.as_array().unwrap().iter().filter_map(|l| l["table_name"].as_str()).collect();
     assert_eq!(tables.into_iter().collect::<Vec<_>>(), ["jobs", "teams", "workers"]);
 }
+
+fn omicron(home: &std::path::Path, dir: &std::path::Path, args: &[&str]) -> (bool, String) {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_omicron"));
+    for (k, _) in std::env::vars() {
+        if k.starts_with("OMICRON_") {
+            cmd.env_remove(k);
+        }
+    }
+    let o = cmd.env("OMICRON_HOME", home).current_dir(dir).args(args).output().unwrap();
+    (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
+}
+
+#[test]
+fn a_folder_is_set_up_its_team_started_and_given_jobs() {
+    let Some(s) = admin() else {
+        eprintln!("skipped: no test Supabase set up");
+        return;
+    };
+    let pat = person(&s, "Pat");
+    let pname = format!("Code-{}", &Uuid::new_v4().simple().to_string()[..8]);
+    let project = call(&s, &pat, "POST", "/rest/v1/rpc/start_project", json!({ "name": pname })).unwrap();
+    // A machine with its own settings, in the Project.
+    let home = std::env::temp_dir().join(format!("omicron-teams-{}", Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&home).unwrap();
+    let key = s.register_machine(&format!("box-{}", &Uuid::new_v4().simple().to_string()[..8]), false).unwrap();
+    std::fs::write(home.join("config.json"), json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string()).unwrap();
+    call(&s, &pat, "POST", "/rest/v1/project_machines", json!({ "project_id": project["id"], "machine_id": key.machine_id })).unwrap();
+    let folder = home.join("webapp");
+    std::fs::create_dir_all(&folder).unwrap();
+    let team = format!("web-{}", &Uuid::new_v4().simple().to_string()[..6]);
+
+    let (ok, out) = omicron(&home, &folder, &["teams", "start", "--project", &pname]);
+    assert!(!ok && out.contains("run `omicron teams init` there"), "{out}");
+    let (ok, out) = omicron(&home, &folder, &["teams", "init", "--name", &team]);
+    assert!(ok && out.contains("three roles"), "{out}");
+    assert!(folder.join(".omicron-team/workflows/default.json").exists());
+    let (ok, out) = omicron(&home, &folder, &["teams", "start", "--project", &pname]);
+    assert!(ok, "{out}");
+    assert!(out.starts_with(&format!("Started {team} in {pname} on this machine (planner")), "{out}");
+
+    let (ok, out) = omicron(&home, &folder, &["teams", "add-job", &team, "Add a login page", "--text", "Email and password."]);
+    assert!(ok && out.trim() == format!("Added job #1 to {team}: Add a login page"), "{out}");
+    omicron(&home, &folder, &["teams", "add-job", &team, "Fix the footer"]);
+    let (_, out) = omicron(&home, &folder, &["teams", "jobs", &team]);
+    assert_eq!(out, "#1\twaiting\tAdd a login page\n#2\twaiting\tFix the footer\n");
+    let (_, out) = omicron(&home, &folder, &["teams", "list"]);
+    assert!(out.lines().any(|l| l.starts_with(&format!("{team}\trunning\tdefault\t2 open jobs\t"))), "{out}");
+
+    // Stopped, then started again: the same team, jobs kept.
+    omicron(&home, &folder, &["teams", "stop", &team]);
+    let (_, out) = omicron(&home, &folder, &["teams", "list"]);
+    assert!(out.contains(&format!("{team}\tstopped")), "{out}");
+    omicron(&home, &folder, &["teams", "start", "--project", &pname]);
+    let rows = s.admin_request("GET", &format!("/rest/v1/teams?name=eq.{team}&select=state"), None).unwrap();
+    assert_eq!(rows, json!([{ "state": "running" }]));
+}

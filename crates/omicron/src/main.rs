@@ -12,6 +12,7 @@ mod dispatch_cmd;
 mod handoff_cmd;
 mod loops_cmd;
 mod picker;
+mod teams_cmd;
 mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.
@@ -79,6 +80,9 @@ enum Command {
     /// Loops: Omicron types a prompt into a session every so often
     #[command(subcommand)]
     Loops(loops_cmd::Loops),
+    /// Teams of Claude sessions: set a folder up, start a team, give it jobs
+    #[command(subcommand)]
+    Teams(teams_cmd::Teams),
     /// Tasks: add, move, finish, label, checklists
     #[command(subcommand)]
     Tasks(board_cmd::Tasks),
@@ -206,6 +210,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
         Command::Topics(cmd) => board_cmd::topics(cmd, cli.as_machine),
         Command::Loops(cmd) => loops_cmd::loops(cmd, cli.as_machine),
+        Command::Teams(cmd) => teams_cmd::teams(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Chat(cmd) => chat_cmd::chat(cmd, cli.as_machine),
