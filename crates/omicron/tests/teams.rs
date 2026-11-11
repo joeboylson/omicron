@@ -1,0 +1,83 @@
+//! Teams in Supabase: teams, jobs and workers, and who may change what.
+//! Runs only when the test Supabase is set up (see `dev/supabase/test.sh`).
+
+use omicron::identity::TailscalePerson;
+use omicron::supa::{Session, Supabase};
+use serde_json::{json, Value};
+use uuid::Uuid;
+
+fn admin() -> Option<Supabase> {
+    let s = Supabase::from_env().ok()?;
+    s.secret_key.as_ref()?;
+    Some(s)
+}
+
+fn person(s: &Supabase, name: &str) -> Session {
+    let login = format!("{}-{}@example.com", name.to_lowercase(), &Uuid::new_v4().simple().to_string()[..8]);
+    s.sign_in_person(&TailscalePerson { login, display_name: name.into() }).unwrap()
+}
+
+fn machine(s: &Supabase) -> (Session, Uuid) {
+    let key = s.register_machine(&format!("box-{}", &Uuid::new_v4().simple().to_string()[..8]), false).unwrap();
+    (s.sign_in_machine(&key).unwrap(), key.machine_id)
+}
+
+fn call(s: &Supabase, who: &Session, method: &str, path: &str, body: Value) -> anyhow::Result<Value> {
+    s.request_as(who, method, path, if body.is_null() { None } else { Some(body) })
+}
+
+#[test]
+fn teams_jobs_and_workers_and_who_may_change_them() {
+    let Some(s) = admin() else {
+        eprintln!("skipped: no test Supabase set up");
+        return;
+    };
+    let pat = person(&s, "Pat");
+    let project = call(&s, &pat, "POST", "/rest/v1/rpc/start_project", json!({ "name": format!("Code-{}", Uuid::new_v4()) })).unwrap();
+    let pid = project["id"].as_str().unwrap().to_string();
+    let (mac, mac_id) = machine(&s);
+    call(&s, &pat, "POST", "/rest/v1/project_machines", json!({ "project_id": pid, "machine_id": mac_id })).unwrap();
+
+    // Only machines run teams.
+    assert!(call(&s, &pat, "POST", "/rest/v1/teams", json!({ "project_id": pid, "name": "web", "folder": "/code/web" })).is_err());
+    let team = call(&s, &mac, "POST", "/rest/v1/teams", json!({ "project_id": pid, "name": "web", "folder": "/code/web", "workflow": "feature" })).unwrap();
+    let tid = team[0]["id"].as_str().unwrap().to_string();
+    assert_eq!(team[0]["machine_id"], json!(mac_id));
+    assert_eq!(team[0]["state"], "running");
+
+    // People add jobs; numbers count up within the team.
+    let one = call(&s, &pat, "POST", "/rest/v1/jobs", json!({ "team_id": tid, "title": "Add a login page", "number": 99 })).unwrap();
+    let two = call(&s, &mac, "POST", "/rest/v1/jobs", json!({ "team_id": tid, "title": "Fix the footer" })).unwrap();
+    assert_eq!((one[0]["number"].as_i64(), two[0]["number"].as_i64()), (Some(1), Some(2)));
+    assert_eq!(one[0]["project_id"], json!(pid));
+    let job1 = one[0]["id"].as_str().unwrap().to_string();
+
+    // The machine runs the workers; people don't.
+    assert!(call(&s, &pat, "POST", "/rest/v1/workers", json!({ "team_id": tid, "name": "builder", "role": "builder" })).is_err());
+    let w = call(&s, &mac, "POST", "/rest/v1/workers", json!({ "team_id": tid, "name": "builder-2", "role": "builder", "state": "busy", "job_id": job1 })).unwrap();
+    assert_eq!(w[0]["project_id"], json!(pid));
+    assert!(call(&s, &mac, "POST", "/rest/v1/workers", json!({ "team_id": tid, "name": "Not A Name", "role": "x" })).is_err());
+
+    // Moving a job along; finishing stamps the time, and its number stays.
+    let moved = call(&s, &mac, "PATCH", &format!("/rest/v1/jobs?id=eq.{job1}"), json!({ "state": "working", "step": "builder", "number": 7 })).unwrap();
+    assert_eq!((moved[0]["number"].as_i64(), moved[0]["step"].as_str()), (Some(1), Some("builder")));
+    let done = call(&s, &mac, "PATCH", &format!("/rest/v1/jobs?id=eq.{job1}"), json!({ "state": "done", "note": "On main." })).unwrap();
+    assert!(done[0]["finished_at"].is_string());
+    assert!(call(&s, &mac, "PATCH", &format!("/rest/v1/jobs?id=eq.{job1}"), json!({ "state": "lost" })).is_err());
+
+    // Another machine in the Project sees the team but can't run its workers.
+    let (other, other_id) = machine(&s);
+    call(&s, &pat, "POST", "/rest/v1/project_machines", json!({ "project_id": pid, "machine_id": other_id })).unwrap();
+    assert_eq!(call(&s, &other, "GET", &format!("/rest/v1/teams?id=eq.{tid}&select=name"), Value::Null).unwrap()[0]["name"], "web");
+    let changed = call(&s, &other, "PATCH", &format!("/rest/v1/workers?team_id=eq.{tid}"), json!({ "state": "gone" })).unwrap();
+    assert_eq!(changed, json!([]), "the rules hide another machine's workers from changes");
+
+    // Someone outside the Project sees nothing.
+    let sam = person(&s, "Sam");
+    assert_eq!(call(&s, &sam, "GET", &format!("/rest/v1/jobs?team_id=eq.{tid}"), Value::Null).unwrap(), json!([]));
+
+    // Every change is on the change list, so it shows up live.
+    let lines = s.admin_request("GET", &format!("/rest/v1/changes?project_id=eq.{pid}&table_name=in.(teams,jobs,workers)&select=table_name"), None).unwrap();
+    let tables: std::collections::BTreeSet<&str> = lines.as_array().unwrap().iter().filter_map(|l| l["table_name"].as_str()).collect();
+    assert_eq!(tables.into_iter().collect::<Vec<_>>(), ["jobs", "teams", "workers"]);
+}
