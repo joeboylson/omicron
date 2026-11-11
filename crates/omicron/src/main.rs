@@ -166,6 +166,11 @@ enum People {
 }
 
 fn main() {
+    // When what we print is cut short (`omicron tasks list | head`), stop
+    // quietly like other command-line tools, instead of crashing.
+    unsafe {
+        nix::libc::signal(nix::libc::SIGPIPE, nix::libc::SIG_DFL);
+    }
     if let Err(e) = run(Cli::parse()) {
         eprintln!("omicron: {e:#}");
         std::process::exit(1);
