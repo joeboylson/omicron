@@ -140,6 +140,32 @@ fn task_from(v: &Value) -> Result<Task> {
     })
 }
 
+/// A Claude session's record (see `windows` for the local side).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionRecord {
+    pub id: String,
+    pub name: String,
+    pub project: String,
+    pub machine: String,
+    pub state: String,
+    pub claude_session_id: Option<String>,
+    pub folder: String,
+}
+
+const SESSION_FIELDS: &str = "id,name,state,claude_session_id,folder,projects(name),machines(name)";
+
+fn session_from(v: &Value) -> Result<SessionRecord> {
+    Ok(SessionRecord {
+        id: v["id"].as_str().context("session without id")?.to_string(),
+        name: v["name"].as_str().unwrap_or("").to_string(),
+        project: v["projects"]["name"].as_str().unwrap_or("").to_string(),
+        machine: v["machines"]["name"].as_str().unwrap_or("").to_string(),
+        state: v["state"].as_str().unwrap_or("").to_string(),
+        claude_session_id: v["claude_session_id"].as_str().map(String::from),
+        folder: v["folder"].as_str().unwrap_or("").to_string(),
+    })
+}
+
 impl Board {
     fn get(&self, path: &str) -> Result<Value> {
         self.supabase.request_as(&self.session, "GET", path, None)
@@ -163,6 +189,42 @@ impl Board {
             [] => bail!("no Project called {name_or_id} (or you aren't in it)"),
             _ => bail!("more than one Project is called {name_or_id}. Use its id."),
         }
+    }
+
+    /// Sessions in one Project, or in every Project this login can see.
+    pub fn sessions(&self, project: Option<&Project>) -> Result<Vec<SessionRecord>> {
+        let only = project.map(|p| format!("&project_id=eq.{}", p.id)).unwrap_or_default();
+        let rows = self.get(&format!("/rest/v1/sessions?select={SESSION_FIELDS}{only}&order=name"))?;
+        rows.as_array().map(|a| a.iter().map(session_from).collect()).unwrap_or(Ok(Vec::new()))
+    }
+
+    pub fn session(&self, project: &Project, name: &str) -> Result<SessionRecord> {
+        self.sessions(Some(project))?
+            .into_iter()
+            .find(|s| s.name.eq_ignore_ascii_case(name))
+            .with_context(|| format!("no session called {name} in {}", project.name))
+    }
+
+    /// Add a session for this machine (only machines can).
+    pub fn add_session(&self, project: &Project, name: &str, claude_session_id: &str, folder: &str) -> Result<SessionRecord> {
+        let rows = self.send(
+            "POST",
+            &format!("/rest/v1/sessions?select={SESSION_FIELDS}"),
+            json!({ "project_id": project.id, "name": name, "claude_session_id": claude_session_id, "folder": folder }),
+        )?;
+        session_from(rows.get(0).context("the session wasn't added")?)
+    }
+
+    /// Change a session's fields. Running it twice is fine.
+    pub fn update_session(&self, id: &str, change: Value) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/sessions?id=eq.{id}"), change)?;
+        Ok(())
+    }
+
+    pub fn remove_session(&self, project: &Project, name: &str) -> Result<()> {
+        let s = self.session(project, name)?;
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/sessions?id=eq.{}", s.id), None)?;
+        Ok(())
     }
 
     pub fn start_project(&self, name: &str) -> Result<Project> {

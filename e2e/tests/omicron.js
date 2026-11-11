@@ -72,11 +72,32 @@ async function startOmicron() {
     url,
     me,
     cli: (...args) => execFileSync(need("OMICRON_BIN"), args, { env, encoding: "utf8" }),
+    /**
+     * Run a Claude Code hook as if from the window with process id `window`.
+     * The hook gets `input` as JSON, like Claude Code sends it.
+     */
+    hook: (window, event, input) =>
+      execFileSync(need("OMICRON_BIN"), ["hook", event], {
+        env: { ...env, OMICRON_CLAUDE_PID: String(window) },
+        input: JSON.stringify(input),
+        encoding: "utf8",
+      }),
+    /** `omicron sessions add` from inside the window with process id `window`. */
+    addSession: (window, name, project) =>
+      execFileSync(need("OMICRON_BIN"), ["sessions", "add", name, "--project", project], {
+        env: { ...env, OMICRON_CLAUDE_PID: String(window) },
+        encoding: "utf8",
+      }),
     stop: () => {
       child.kill();
       fs.rmSync(home, { recursive: true, force: true });
     },
   };
+}
+
+/** A running process to stand in for a Claude Code window. Kill it when done. */
+function fakeWindow() {
+  return spawn("sleep", ["600"]);
 }
 
 /** A Supabase login for `login`, as the Web Machine hands one out. */
@@ -116,4 +137,4 @@ async function visitAs(page, omicron, login, name) {
   );
 }
 
-module.exports = { startOmicron, unique, need, sessionFor, rest, visitAs };
+module.exports = { startOmicron, unique, need, sessionFor, rest, visitAs, fakeWindow };

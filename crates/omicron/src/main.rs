@@ -6,6 +6,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod board_cmd;
+mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.
 #[derive(Parser)]
@@ -65,6 +66,12 @@ enum Command {
     /// People: link Tailscale identities
     #[command(subcommand)]
     People(People),
+    /// Claude sessions: record the one you're in, list them
+    #[command(subcommand)]
+    Sessions(sessions_cmd::Sessions),
+    /// Claude Code hooks (set up by `omicron sessions setup-claude`)
+    #[command(subcommand, hide = true)]
+    Hook(sessions_cmd::Hook),
 }
 
 #[derive(Subcommand)]
@@ -150,6 +157,8 @@ fn run(cli: Cli) -> Result<()> {
             let supabase = Config::load()?.supabase()?;
             omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
         }
+        Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
+        Command::Hook(event) => sessions_cmd::hook(event),
         Command::Daemon { action: None } => daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {
             let file = omicron::login::this_service_file()?;
@@ -335,6 +344,17 @@ fn daemon() -> Result<()> {
             return Ok(());
         }
         bail!(why);
+    }
+    // Claude windows that ended while nobody was watching (a crash, a
+    // restart): their sessions are gone.
+    let mut windows = omicron::windows::Windows::load()?;
+    let gone = windows.sweep();
+    if !gone.is_empty() {
+        let board = omicron::board::Board { supabase: supabase.clone(), session: first.clone() };
+        for id in gone {
+            board.update_session(&id, json!({ "state": "gone" }))?;
+        }
+        windows.save()?;
     }
     let mut state = State::load()?;
     let stop = std::sync::atomic::AtomicBool::new(false);

@@ -113,10 +113,21 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - [ ] Labels: rename, remove, colors (the `color` column is unused).
 
 ## 4. Claude sessions
-- [ ] `omicron sessions`: start a new session (pick Project, give a name), or
-      add one that's already open. Picker to jump into one.
+- [x] Decided (10 Nov 2026): Omicron doesn't start or host sessions. It keeps
+      a record of the ones you open yourself. Tasks reach a session by the
+      session pulling them (a hook), not by typing into it. ccsm keeps running
+      next to Omicron for now.
+- [x] `omicron sessions add <name> --project <P>` (run inside the session),
+      `list`, `remove`, and `setup-claude` (adds Omicron's SessionStart and
+      SessionEnd hooks to Claude Code's settings). The record follows `/clear`,
+      a normal close, `claude --resume`, and a window that dies (marked gone
+      by the next hook or daemon start). Hooks never fail Claude and never
+      call Supabase for windows Omicron doesn't track. Shown on each Project's
+      page, live. Tests in `tests/sessions.rs` and `e2e/tests/projects.spec.js`.
+- [ ] Try the hooks with real Claude Code (tested so far with the same JSON
+      Claude Code sends, from a stand-in window process).
+- [ ] Picker to jump into a session (needs a way in: tmux, or the Claude app).
 - [ ] Keep the name in sync with `/rename`.
-- [ ] Handle cleared, closed, and gone sessions.
 - [ ] Dispatch: send a task to a session; reopen a closed one in the
       background if its machine is awake; error if the machine is asleep.
 - [ ] Reports as task comments, the Needs review mark, and the Reviewed button.

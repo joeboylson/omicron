@@ -2,7 +2,8 @@
 // The Projects and tasks part of the web page, against a real `omicron serve`
 // and Supabase.
 const { test, expect } = require("@playwright/test");
-const { startOmicron, unique, sessionFor, rest, visitAs } = require("./omicron");
+const crypto = require("node:crypto");
+const { startOmicron, unique, sessionFor, rest, visitAs, fakeWindow } = require("./omicron");
 
 let omicron;
 let machineName;
@@ -215,4 +216,26 @@ test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);
   await expect(page.getByText("This Project doesn't exist, or you're not a member of it.")).toBeVisible();
+});
+
+test("a Project's Claude sessions show, and follow the session live", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await expect(page.getByRole("region", { name: "Claude sessions" })).toHaveCount(0);
+
+  // A Claude Code window on the machine starts, and adds itself.
+  const win = fakeWindow();
+  try {
+    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: "/work/code", source: "startup" });
+    omicron.addSession(win.pid, "parser", name);
+    const sessions = page.getByRole("region", { name: "Claude sessions" });
+    await expect(sessions).toContainText(`parser${machineName} · open`);
+
+    // It's closed: the page shows that without reloading.
+    omicron.hook(win.pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
+    await expect(sessions).toContainText(`parser${machineName} · closed`);
+  } finally {
+    win.kill();
+  }
 });

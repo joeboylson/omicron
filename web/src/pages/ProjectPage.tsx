@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
+import { Sessions } from "@/components/Sessions";
 
 export function ProjectPage({ id }: { id: string }) {
   const { db, act } = useApp();
@@ -48,6 +49,7 @@ export function ProjectPage({ id }: { id: string }) {
           <Settings />
         </Button>
       </div>
+      <Sessions sessions={project.sessions} />
       <div className="flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 sm:snap-none">
         {project.statuses.map((s) => (
           <Column

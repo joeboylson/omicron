@@ -22,6 +22,7 @@ export type Task = {
   labelIds: string[];
   checklist: ChecklistItem[];
 };
+export type ClaudeSession = { id: string; name: string; state: "open" | "closed" | "gone"; folder: string; machine: string };
 export type ProjectData = {
   id: string;
   name: string;
@@ -29,6 +30,7 @@ export type ProjectData = {
   labels: Label[];
   members: Person[];
   tasks: Task[];
+  sessions: ClaudeSession[];
 };
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
@@ -42,7 +44,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions] = await Promise.all([
     db.from("projects").select("id,name").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -55,6 +57,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .eq("project_id", id)
       .order("position")
       .order("number"),
+    db.from("sessions").select("id,name,state,folder,machines(name)").eq("project_id", id).order("name"),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -79,6 +82,13 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       assignee_person_id: t.assignee_person_id,
       labelIds: (t.task_labels ?? []).map((l: { label_id: string }) => l.label_id),
       checklist: [...(t.checklist_items ?? [])].sort((a: ChecklistItem, b: ChecklistItem) => a.position - b.position),
+    })),
+    sessions: (must(sessions) as any[]).map((r) => ({
+      id: r.id,
+      name: r.name,
+      state: r.state,
+      folder: r.folder,
+      machine: r.machines?.name ?? "",
     })),
   };
 }
@@ -164,4 +174,8 @@ export async function addMember(db: SupabaseClient, projectId: string, personId:
 
 export async function removeMember(db: SupabaseClient, projectId: string, personId: string) {
   must(await db.from("project_members").delete().eq("project_id", projectId).eq("person_id", personId));
+}
+
+export async function removeSession(db: SupabaseClient, session: ClaudeSession) {
+  must(await db.from("sessions").delete().eq("id", session.id));
 }

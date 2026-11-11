@@ -4,7 +4,8 @@
 // Saved to ~/omicron-e2e-results/screenshots on the test machine.
 const { test, expect, devices } = require("@playwright/test");
 const path = require("node:path");
-const { startOmicron, unique, sessionFor, rest, visitAs } = require("./omicron");
+const crypto = require("node:crypto");
+const { startOmicron, unique, sessionFor, rest, visitAs, fakeWindow } = require("./omicron");
 
 test.skip(!process.env.OMICRON_SCREENSHOTS, "set OMICRON_SCREENSHOTS=1 to take screenshots");
 
@@ -69,6 +70,16 @@ test("screenshots", async ({ browser, request }) => {
   const machine = unique("mac-mini");
   omicron.cli("machines", "register", machine, "--all-projects");
   omicron.cli("tasks", "needs-review", omicronProject.id, "1", "--as-machine");
+  // Three Claude sessions on the Omicron Project: two open, one closed.
+  await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Sessions on the web page" });
+  const windows = [];
+  for (const [name, folder] of [["web-page", "~/omicron/web"], ["parser", "~/omicron"], ["handoff", "~/omicron"]]) {
+    const win = fakeWindow();
+    windows.push(win);
+    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: folder, source: "startup" });
+    omicron.addSession(win.pid, name, omicronProject.id);
+  }
+  omicron.hook(windows[2].pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
   // The house task gets it too, so it shows on the main screenshot.
   omicron.cli("tasks", "needs-review", project.id, String(gate.number), "--as-machine");
 
@@ -98,7 +109,13 @@ test("screenshots", async ({ browser, request }) => {
       await page.getByRole("button", { name: "Project settings" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await shoot(page, `${kind}-${scheme}-4-settings`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Back to Projects" }).click();
+      await page.getByRole("link", { name: /^Omicron\s*\d+ tasks?$/ }).click();
+      await expect(page.getByRole("region", { name: "Claude sessions" })).toContainText("handoff");
+      await shoot(page, `${kind}-${scheme}-5-sessions`);
       await context.close();
     }
   }
+  for (const w of windows) w.kill();
 });
