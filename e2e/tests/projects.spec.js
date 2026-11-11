@@ -265,12 +265,14 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     const card = page.getByRole("button", { name: "#1 Write the parser" });
     await card.click();
     await pick(page, "Given to", "parser");
-    await expect(page.getByTestId("pickup")).toHaveText(/Waiting for the session/);
+    await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
 
-    // The session's turn ends: it's told, and the page sees it was picked up.
-    const out = JSON.parse(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false }));
-    expect(out.decision).toBe("block");
-    expect(out.reason).toContain(`#1 in ${name}: Write the parser`);
+    // The end of the session's turn doesn't hand it over...
+    expect(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false })).toBe("");
+    await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    // ...the session gets it when told to get its tasks.
+    const mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
+    expect(mine).toContain(`#1 in ${name}: Write the parser (new)`);
     await expect(page.getByTestId("pickup")).toHaveText("Picked up by the session.");
 
     // It reports back and asks for review; the page shows it live.

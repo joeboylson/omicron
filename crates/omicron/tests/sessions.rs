@@ -236,7 +236,7 @@ fn only_the_sessions_machine_can_change_it() {
 }
 
 #[test]
-fn a_task_sent_to_a_session_is_handed_over_once() {
+fn a_session_gets_its_tasks_only_when_told() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
@@ -265,25 +265,9 @@ fn a_task_sent_to_a_session_is_handed_over_once() {
     assert!(sent.contains("sent to session parser"), "{sent}");
     ok(&pat, None, &["tasks", "send", &project, "2", "parser"]);
 
-    // At the end of its turn, the session is told, and carries on.
-    let out: Value = serde_json::from_str(&stop(&mac)).unwrap();
-    assert_eq!(out["decision"], "block");
-    let reason = out["reason"].as_str().unwrap();
-    assert!(reason.contains(&format!("#1 in {project}: Write the parser")), "{reason}");
-    assert!(reason.contains("comment") && reason.contains("--review"), "{reason}");
-    assert!(!reason.contains("Already finished"), "finished tasks aren't handed over: {reason}");
-    // Only once.
-    assert_eq!(stop(&mac), "");
-
-    // Sent again: new again. This time a new conversation (/clear) gets it
-    // when it starts.
-    let (other, other_name) = machine(&s);
-    ok(&pat, None, &["machines", "add", &other_name, &project]);
-    let mut w2 = window();
-    hook(&other, w2.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
-    ok(&other, Some(w2.id()), &["sessions", "add", "helper", "--project", &project]);
-    ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
-    ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
+    // Sessions don't start tasks on their own: the end of a turn, and a new
+    // conversation, say nothing about it.
+    assert_eq!(stop(&mac), "", "the end of a turn doesn't hand tasks over");
     hook(&mac, w.id(), "session-end", json!({ "session_id": claude, "reason": "clear" }));
     let mut child = command(&mac, Some(w.id()), &["hook", "session-start"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     child
@@ -292,9 +276,29 @@ fn a_task_sent_to_a_session_is_handed_over_once() {
         .unwrap()
         .write_all(json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "clear" }).to_string().as_bytes())
         .unwrap();
-    let out: Value = serde_json::from_slice(&child.wait_with_output().unwrap().stdout).unwrap();
-    assert_eq!(out["hookSpecificOutput"]["hookEventName"], "SessionStart");
-    assert!(out["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("Write the parser"));
+    assert_eq!(String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout), "", "nor does a new conversation");
+
+    // Told to get its tasks: it gets the open ones, new ones marked.
+    let mine = ok(&mac, Some(w.id()), &["tasks", "mine"]);
+    assert!(mine.contains(&format!("#1 in {project}: Write the parser (new)")), "{mine}");
+    assert!(mine.contains("comment") && mine.contains("--review"), "{mine}");
+    assert!(!mine.contains("Already finished"), "finished tasks aren't listed: {mine}");
+    // Asked again: still its task, no longer new.
+    let again = ok(&mac, Some(w.id()), &["tasks", "mine"]);
+    assert!(again.contains(&format!("#1 in {project}: Write the parser\n")), "{again}");
+    // Outside a tracked session there's no "mine".
+    assert!(!run(&mac, None, &["tasks", "mine"]).status.success());
+
+    // Given to another session and back: new again.
+    let (other, other_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &other_name, &project]);
+    let mut w2 = window();
+    hook(&other, w2.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
+    ok(&other, Some(w2.id()), &["sessions", "add", "helper", "--project", &project]);
+    ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
+    assert!(ok(&mac, Some(w.id()), &["tasks", "mine"]).starts_with("Nothing is given to this session"));
+    ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
+    assert!(ok(&mac, Some(w.id()), &["tasks", "mine"]).contains("Write the parser (new)"));
 
     // Another machine can't take a session's tasks.
     ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
@@ -312,7 +316,7 @@ fn a_task_sent_to_a_session_is_handed_over_once() {
         .to_string();
     let taken = s.request_as(&login, "POST", "/rest/v1/rpc/pick_up_tasks", Some(json!({ "session": parser_id }))).unwrap();
     assert_eq!(taken, json!([]));
-    assert!(stop(&mac).contains("Write the parser"));
+    assert!(ok(&mac, Some(w.id()), &["tasks", "mine"]).contains("Write the parser (new)"));
     w.kill().unwrap();
     w2.kill().unwrap();
 }

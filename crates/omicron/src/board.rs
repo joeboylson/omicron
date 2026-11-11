@@ -547,13 +547,26 @@ impl Board {
     }
 
     /// Put the Needs review mark on (`true`, machines only) or take it off.
-    /// Send a task to a Claude session in the same Project. The session
-    /// picks it up at its next turn.
+    /// Give a task to a Claude session in the same Project. The session gets
+    /// it when told to get its tasks (`omicron tasks mine`) or by Dispatch.
     pub fn send_task(&self, project: &Project, number: i64, session: &str) -> Result<Task> {
         let task = self.task(project, number)?;
         let s = self.session(project, session)?;
         self.update_task(&task, json!({ "assignee_session_id": s.id, "assignee_person_id": null }))?;
         self.task(project, number)
+    }
+
+    /// The tasks given to a session that aren't done, oldest first, with
+    /// their Project's name.
+    pub fn session_tasks(&self, session_id: &str) -> Result<Vec<(String, Task)>> {
+        let rows = self.get(&format!(
+            "/rest/v1/tasks?assignee_session_id=eq.{session_id}&select={TASK_FIELDS},projects(name),statuses!inner(is_done)&statuses.is_done=eq.false&order=created_at"
+        ))?;
+        rows.as_array()
+            .into_iter()
+            .flatten()
+            .map(|v| Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?)))
+            .collect()
     }
 
     /// Take the tasks sent to a session that it hasn't picked up yet, marking

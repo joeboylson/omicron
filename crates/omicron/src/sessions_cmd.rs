@@ -234,14 +234,16 @@ pub fn hook(event: Hook) -> Result<()> {
     Ok(())
 }
 
-/// What a session is told about tasks sent to it.
-fn tasks_message(tasks: &[(String, omicron::board::Task)]) -> String {
+/// What a session is told about the tasks given to it. `new` marks the ones
+/// it hadn't been given before.
+pub fn tasks_message(tasks: &[(String, omicron::board::Task)], new: &[String]) -> String {
     let mut text = format!(
-        "Omicron: {} sent to this session.\n",
-        if tasks.len() == 1 { "a task was".to_string() } else { format!("{} tasks were", tasks.len()) }
+        "Omicron: {} given to this session.\n",
+        if tasks.len() == 1 { "1 task is".to_string() } else { format!("{} tasks are", tasks.len()) }
     );
     for (project, t) in tasks {
-        text.push_str(&format!("\n#{} in {project}: {}\n", t.number, t.title));
+        let mark = if new.contains(&t.id) { " (new)" } else { "" };
+        text.push_str(&format!("\n#{} in {project}: {}{mark}\n", t.number, t.title));
         if !t.notes.is_empty() {
             text.push_str(&format!("{}\n", t.notes));
         }
@@ -271,13 +273,12 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         let Some(id) = windows.windows.get(&pid).and_then(|w| w.session_id.clone()) else {
             return Ok(None);
         };
+        // Tasks aren't handed over here: a session only gets them when told
+        // (`omicron tasks mine`) or by Dispatch. Chat that names it is a
+        // message, and is passed on.
         let board = sign_in(true)?;
-        let tasks = board.pick_up_tasks(&id)?;
         let (project, mentions) = board.take_chat_mentions(&id)?;
         let mut reason = Vec::new();
-        if !tasks.is_empty() {
-            reason.push(tasks_message(&tasks));
-        }
         if !mentions.is_empty() {
             let mut text = format!("Omicron: you were named in {project}'s chat.\n");
             for m in &mentions {
@@ -357,12 +358,7 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
             ));
         }
     }
-    if let Some(id) = pick_up {
-        let tasks = board.pick_up_tasks(&id)?;
-        if !tasks.is_empty() {
-            context.push(tasks_message(&tasks));
-        }
-    }
+    let _ = pick_up;
     if context.is_empty() {
         return Ok(None);
     }
@@ -482,5 +478,24 @@ fn new_session(name: Option<String>, project: Option<String>, folder: Option<Pat
         return Ok(());
     }
     omicron::host::attach(&name)?;
+    Ok(())
+}
+
+/// `omicron tasks mine`: "go get your tasks". Everything given to the
+/// session this runs in that isn't done, marking the new ones picked up.
+pub fn tasks_mine() -> Result<()> {
+    let windows = Windows::load()?;
+    let session_id = this_window(&windows)?
+        .and_then(|pid| windows.windows.get(&pid))
+        .and_then(|w| w.session_id.clone())
+        .context("run this inside a Claude session Omicron tracks (`omicron sessions add` or `omicron sessions new`)")?;
+    let board = sign_in(true)?;
+    let new: Vec<String> = board.pick_up_tasks(&session_id)?.into_iter().map(|(_, t)| t.id).collect();
+    let tasks = board.session_tasks(&session_id)?;
+    if tasks.is_empty() {
+        println!("Nothing is given to this session right now.");
+    } else {
+        print!("{}", tasks_message(&tasks, &new));
+    }
     Ok(())
 }

@@ -228,7 +228,7 @@ function TaskForm({
             <span data-testid="pickup">
               {task.picked_up_at
                 ? "Picked up by the session."
-                : "Waiting for the session to pick it up at the end of its turn."}
+                : "Waiting until the session is told to get its tasks, or it's dispatched."}
             </span>
           </Row>
         )}

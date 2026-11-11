@@ -98,9 +98,11 @@ pub enum Tasks {
     NeedsReview { project: String, number: i64 },
     /// Take the Needs review mark off a task
     Reviewed { project: String, number: i64 },
-    /// Send a task to a Claude session in the Project. It picks the task up
-    /// at its next turn.
+    /// Give a task to a Claude session in the Project. The session gets it
+    /// when told to get its tasks, or by Dispatch.
     Send { project: String, number: i64, session: String },
+    /// In a Claude session: the tasks given to it ("go get your tasks")
+    Mine,
     /// Comment on a task. From inside a Claude session, the comment says
     /// which session wrote it.
     Comment {
@@ -312,6 +314,7 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = if review { board.set_needs_review(&p, number, true)? } else { t };
             changed(&p, t)
         }
+        Tasks::Mine => crate::sessions_cmd::tasks_mine(),
         Tasks::Send { project, number, session } => {
             let p = board.project(&project)?;
             let t = board.send_task(&p, number, &session)?;
