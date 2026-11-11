@@ -11,6 +11,8 @@ import { KeysPage } from "@/pages/KeysPage";
 import { applyAppearance, loadAppearance } from "@/lib/theme";
 import { reportError } from "@/lib/report";
 import { ToastProvider } from "@/lib/toast";
+import { CommandMenu } from "@/components/CommandMenu";
+import { GlobalCommands } from "@/components/GlobalCommands";
 
 export default function App() {
   const [session, setSession] = useState<{ db: SupabaseClient; me: Me } | null>(null);
@@ -80,6 +82,8 @@ export default function App() {
   return (
     <AppContext.Provider value={app}>
       <ToastProvider>
+        <GlobalCommands />
+        <CommandMenu />
       <div className="flex min-h-dvh flex-col">
         {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : path === "/settings" ? <SettingsPage /> : path === "/keys" ? <KeysPage /> : <ProjectsPage />}
         {error && (

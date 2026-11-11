@@ -78,6 +78,24 @@ export function SettingsPage() {
             ))}
           </div>
         </Group>
+        <Group title="Keyboard">
+          <dl className="divide-y text-[15px] sm:text-sm">
+            {[
+              ["⌘K or Ctrl-K", "Commands: go anywhere, open a task, change the theme"],
+              ["c", "New task (on a Project)"],
+              ["/", "Search tasks (on a Project)"],
+              ["Space, then arrows", "Move a task on the board; Space drops it"],
+              ["Enter", "Open the task that has focus"],
+            ].map(([k, what]) => (
+              <div key={k} className="flex min-h-11 items-center gap-3 px-4">
+                <dt className="w-36 shrink-0">
+                  <kbd className="rounded border px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+                </dt>
+                <dd className="text-muted-foreground">{what}</dd>
+              </div>
+            ))}
+          </dl>
+        </Group>
       </main>
     </>
   );

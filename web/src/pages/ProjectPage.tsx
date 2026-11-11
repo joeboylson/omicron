@@ -32,6 +32,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
 import { Chat } from "@/components/Chat";
 import { useToast } from "@/lib/toast";
+import { typing, useCommands } from "@/lib/commands";
 
 export function ProjectPage({ id }: { id: string }) {
   const { db, act, me } = useApp();
@@ -43,6 +44,9 @@ export function ProjectPage({ id }: { id: string }) {
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
   const [collapsed, setCollapsed] = useStored<string[]>(`omicron.collapsedTopics.${id}`, []);
   const [dragging, setDragging] = useState<Task | null>(null);
+  const searchBox = useRef<HTMLInputElement>(null);
+  // Bumped to open "Add a task" in the first column (c, or the menu).
+  const [addSignal, setAddSignal] = useState(0);
   // Search and filters (not kept: a fresh look each visit).
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<{ mine: boolean; review: boolean; due: boolean; label: string | null }>({
@@ -69,6 +73,42 @@ export function ProjectPage({ id }: { id: string }) {
   useEffect(reload, [reload]);
   useChanges(db, id, reload);
   let project = loaded;
+  const ready = loaded ?? null;
+  useCommands(
+    "project",
+    ready
+      ? [
+          { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => setAddSignal((n) => n + 1) },
+          { id: "search", label: "Search tasks", group: ready.name, shortcut: "/", keywords: "find filter", run: () => searchBox.current?.focus() },
+          { id: "settings", label: "Project settings", group: ready.name, run: () => setSettingsOpen(true) },
+          ...(ready.chatEnabled ? [{ id: "chat", label: "Chat", group: ready.name, run: () => setChatOpen(true) }] : []),
+          { id: "group-status", label: "Group by status", group: ready.name, keywords: "columns", run: () => setGroupBy("status") },
+          { id: "group-topic", label: "Group by status and topic", group: ready.name, keywords: "rows lanes", run: () => setGroupBy("topic") },
+          ...ready.tasks.map((t) => ({
+            id: `task-${t.id}`,
+            label: `#${t.number} ${t.title}`,
+            group: "Tasks",
+            keywords: "open task",
+            run: () => setOpenTask(t.number),
+          })),
+        ]
+      : [],
+  );
+  // Single-key shortcuts, when not typing and nothing else is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e) || document.querySelector('[role="dialog"]')) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        searchBox.current?.focus();
+      } else if (e.key === "c") {
+        e.preventDefault();
+        setAddSignal((n) => n + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const toast = useToast();
   // Deleted tasks hide at once and are deleted for good a few seconds
   // later, unless Undo is pressed (or straight away if the page closes).
@@ -183,6 +223,7 @@ export function ProjectPage({ id }: { id: string }) {
         <div className="relative w-full sm:w-56">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
+            ref={searchBox}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -275,9 +316,10 @@ export function ProjectPage({ id }: { id: string }) {
       >
       {groupBy === "status" ? (
         <div className={boardRow}>
-          {project.statuses.map((s) => (
+          {project.statuses.map((s, i) => (
             <Column
               key={s.id}
+              addSignal={i === 0 ? addSignal : 0}
               project={project}
               status={s}
               topicId={null}
@@ -293,6 +335,7 @@ export function ProjectPage({ id }: { id: string }) {
         <Lanes
           project={project}
           matches={matches}
+          addSignal={addSignal}
           collapsed={collapsed}
           onToggle={(key) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key])}
           onOpen={(t) => setOpenTask(t.number)}
@@ -343,6 +386,7 @@ const NO_TOPIC = "none";
 function Lanes({
   project,
   matches,
+  addSignal,
   collapsed,
   onToggle,
   onOpen,
@@ -352,6 +396,7 @@ function Lanes({
   project: ProjectData;
   /** Search and filters: which tasks show. */
   matches: (t: Task) => boolean;
+  addSignal: number;
   collapsed: string[];
   onToggle: (key: string) => void;
   onOpen: (t: Task) => void;
@@ -389,8 +434,9 @@ function Lanes({
             </h2>
             {open && (
               <div className={cn(boardRow, "pb-1")}>
-                {project.statuses.map((s) => (
+                {project.statuses.map((s, i) => (
                   <Column
+                    addSignal={i === 0 && lane === lanes[0] ? addSignal : 0}
                     key={s.id}
                     project={project}
                     status={s}
@@ -416,6 +462,7 @@ function Column({
   status,
   topicId,
   grouped,
+  addSignal,
   label,
   tasks,
   onOpen,
@@ -426,6 +473,8 @@ function Column({
   topicId: string | null;
   /** In topic rows: dropping here also sets the topic. */
   grouped: boolean;
+  /** Bumped to open "Add a task" here. */
+  addSignal: number;
   /** What the column is called to screen readers (and tests). */
   label: string;
   tasks: Task[];
@@ -436,6 +485,9 @@ function Column({
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
   const column = columnId(status.id, topicId, grouped);
+  useEffect(() => {
+    if (addSignal > 0) setAdding(true);
+  }, [addSignal]);
   const { setNodeRef, isOver } = useDroppable({ id: column });
 
   const add = async (e: React.FormEvent) => {

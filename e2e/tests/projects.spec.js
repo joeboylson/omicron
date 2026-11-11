@@ -869,3 +869,41 @@ test("search and filters narrow the board", async ({ page, request }) => {
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(cards()).toHaveCount(3);
 });
+
+test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Garden");
+  await startProjectIn(page, name);
+  await page.goto(omicron.url);
+  await expect(page.getByTestId("me")).toBeVisible();
+
+  // Go to a Project by typing its name.
+  await page.keyboard.press("Control+k");
+  const menu = page.getByRole("dialog", { name: "Commands" });
+  await expect(menu).toBeVisible();
+  await page.getByRole("combobox", { name: "Command" }).fill(name);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+
+  // c adds a task; / searches.
+  await page.keyboard.press("c");
+  await expect(page.getByLabel("New task in To do")).toBeFocused();
+  await page.keyboard.type("Plant tulips");
+  await page.keyboard.press("Enter");
+  await expect(column(page, "To do")).toContainText("Plant tulips");
+  await page.keyboard.press("Escape");
+  await page.locator("body").click({ position: { x: 5, y: 300 } });
+  await page.keyboard.press("/");
+  await expect(page.getByLabel("Search tasks")).toBeFocused();
+
+  // Open a task from the menu by its number; switch the theme from it.
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Command" }).fill("#1");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toContainText("Plant tulips");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Command" }).fill("dark");
+  await page.keyboard.press("Enter");
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+});
