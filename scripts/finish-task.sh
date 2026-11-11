@@ -16,6 +16,6 @@ for line in $(omicron tasks show "$project" "$n" | grep -oE '^  [0-9]+\. \[ \]' 
 done
 args=()
 for img in "$@"; do args+=(--image "$img"); done
-omicron tasks comment "$project" "$n" "$report Commit $(git rev-parse --short HEAD)." --review --as-machine "${args[@]}" >/dev/null
+omicron tasks comment "$project" "$n" "$report Commit $(git rev-parse --short HEAD)." --review --as-machine ${args[@]+"${args[@]}"} >/dev/null
 omicron tasks move "$project" "$n" Review | sed -n 1,3p
 echo "(ticked $items checklist items)"
