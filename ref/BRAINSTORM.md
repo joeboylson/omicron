@@ -19,7 +19,7 @@
 ### Tasks
 - A task works the same way whether it goes to a person or to a Claude session. The only difference is who it's given to.
 - A task has a title, who it's given to, a status, a date (when it'll get done), labels, and checklists.
-- Tasks don't link to legion missions. Legion only runs through a Claude session, so it belongs on the session instead ("you manage this squad").
+- ~~Tasks don't link to legion missions.~~ **Changed 11 Nov 2026:** a task can link to one or more team jobs. The session handles the task; the team handles the job. A task still isn't a job.
 
 - Each Project has its own labels.
 
@@ -196,6 +196,10 @@ Plain words most people know, no military terms. Each one is chosen so it doesn'
 - Sessions follow this doc (11 Nov): Omicron starts sessions and Dispatch opens them. A sent task waits until I tell the session to get its tasks or press Dispatch; sessions never start tasks on their own.
 - **Where Omicron's sessions run:** not tmux and not Claude's remote-control. Omicron hosts them itself, like `dtach`: a small detached `omicron` host process per session owns its terminal (a pseudo-terminal) and a socket in `~/.omicron/run/`. `omicron sessions attach <name>` (or the picker) connects to it; a key detaches. It survives the daemon restarting. Dispatch reopens a closed session with the task as Claude's first message; for an open one the host types the task in.
 - Reports follow rules: `/s` style, no jargon, no made-up terms, at most 500 words.
+
+### User settings and API keys (11 Nov 2026)
+- Each person has settings. First one: appearance (Light, Dark, or match the system), saved in the database so it follows them between devices.
+- A page to create API keys. Keys are only for machines, so making one registers a machine and shows its key once.
 
 ### The web page is a product, not a proof of concept (11 Nov 2026)
 - Make the UI and UX as mature as possible, following what the biggest and most-loved apps do (Trello, Linear, Things, Apple's Reminders, plus Apple's Human Interface Guidelines). It should feel familiar and easy from the first minute.
