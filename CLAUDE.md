@@ -74,6 +74,13 @@ Two Supabases run in Colima (both inside `omicron-dev`'s reach):
   `OMICRON_SUPABASE_DIR=~/supabase-real bash ~/omicron/dev/supabase/migrate.sh`.
   It can't be reset.
 
+To click around in made-up data, `docker exec -u ubuntu omicron-dev bash
+/home/ubuntu/omicron/dev/seed/seed.sh` wipes the test Supabase and fills it
+(people, five Projects, machines, Claude sessions, handoff notes, chat); the
+dev web page on this Mac (http://127.0.0.1:9011, from `dev/mac.sh`) shows it,
+signed in as Joe. Tests run on the same Supabase, so reseed after them.
+`dev/seed/shots.js` takes screenshots of it.
+
 ## How to work here
 
 - Keep every file for this project in this folder.

@@ -60,6 +60,11 @@ pub struct WebMachine {
     pub extra_hosts: Vec<String>,
 }
 
+/// Was the page opened at localhost (rather than a tailnet name)?
+fn is_localhost(host: &str) -> bool {
+    allowed_host(host, &[])
+}
+
 /// Is this `Host` header one of ours?
 pub fn allowed_host(host: &str, extra: &[String]) -> bool {
     let host = host.trim().to_ascii_lowercase();
@@ -125,7 +130,14 @@ impl WebMachine {
                 200,
                 "application/json",
                 json!({
-                    "supabase_url": self.public_supabase_url.as_deref().unwrap_or(&self.supabase.url),
+                    // A visit from this machine itself uses the address this
+                    // machine reaches Supabase at; anyone else gets the
+                    // public one.
+                    "supabase_url": if is_localhost(&host) {
+                        self.supabase.url.as_str()
+                    } else {
+                        self.public_supabase_url.as_deref().unwrap_or(&self.supabase.url)
+                    },
                     "supabase_key": self.supabase.key,
                 })
                 .to_string()
