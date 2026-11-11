@@ -494,6 +494,21 @@ fn daemon() -> Result<()> {
     };
     // Things this machine does when it hears about them, each in its own
     // thread so listening carries on. Each is safe to run twice.
+    // /rename in a tracked session renames it here too (reads transcripts,
+    // which are local files).
+    {
+        let (supabase, key) = (supabase.clone(), key.clone());
+        std::thread::spawn(move || {
+            let mut follower = omicron::names::Follower::default();
+            loop {
+                let board = || Ok(omicron::board::Board { supabase: supabase.clone(), session: supabase.sign_in_machine(&key)? });
+                if let Err(e) = follower.check(board) {
+                    eprintln!("omicron daemon: following /rename: {e:#}");
+                }
+                std::thread::sleep(std::time::Duration::from_secs(3));
+            }
+        });
+    }
     // Sessions' loops on this machine, run when due.
     let runner = loops_cmd::Runner::start(supabase.clone(), key.clone(), name.clone());
     let react = |row: &serde_json::Value| {

@@ -991,3 +991,36 @@ fn a_new_session_can_bring_in_an_old_conversation_and_keeps_it_on_reopen() {
     ok(&mac, None, &["sessions", "send", "build", "\u{4}"]);
     d.kill().unwrap();
 }
+
+#[test]
+fn rename_in_claude_renames_the_session_and_its_host_keeps_answering() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name, path) = machine_with_claude(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let folder = mac.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
+        .env("PATH", &path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    wait_for("claude started", || mac.home.join("claude-args").exists());
+    let claude_id = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().nth(1).unwrap().to_string();
+    let mut d = daemon(&mac, &path);
+
+    // /rename writes a custom-title line into the transcript.
+    let transcript = mac.home.join(format!("claude-code/projects/work/{claude_id}.jsonl"));
+    let mut t = std::fs::OpenOptions::new().append(true).open(&transcript).unwrap();
+    writeln!(t, "{}", json!({ "type": "custom-title", "customTitle": "Parser Work", "sessionId": claude_id })).unwrap();
+    drop(t);
+    wait_for("renamed", || ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("parser-work\t"));
+    // Still running in the host, under its new name.
+    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser-work");
+    ok(&mac, None, &["sessions", "send", "parser-work", "hello\r"]);
+    wait_for("typed in under the new name", || typed_lines(&mac).iter().any(|l| l == "hello"));
+    ok(&mac, None, &["sessions", "send", "parser-work", "\u{4}"]);
+    d.kill().unwrap();
+}

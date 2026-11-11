@@ -4,6 +4,7 @@ pub mod config;
 pub mod host;
 pub mod identity;
 pub mod login;
+pub mod names;
 pub mod realtime;
 pub mod supa;
 pub mod web;
