@@ -25,6 +25,7 @@ async function newPerson(page, request, name = "Robin Example") {
 
 async function startProjectIn(page, name) {
   await page.goto(omicron.url);
+  await page.getByRole("button", { name: "New Project" }).first().click();
   await page.getByLabel("New Project name").fill(name);
   await page.getByRole("button", { name: "Start Project" }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
@@ -700,4 +701,23 @@ test("labels are renamed and removed in Project settings", async ({ page, reques
   await expect(page.getByRole("list", { name: "Labels" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(card).not.toContainText("groceries");
+});
+
+test("a new Project starts in a modal, and Cancel or Escape leaves nothing behind", async ({ page, request }) => {
+  await newPerson(page, request);
+  await page.goto(omicron.url);
+  await page.getByRole("button", { name: "New Project" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "New Project" });
+  await expect(dialog).toBeVisible();
+  // The name box has focus, and Start waits for a name.
+  await expect(dialog.getByLabel("New Project name")).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Start Project" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  const name = unique("Kitchen");
+  await page.getByRole("button", { name: "New Project" }).first().click();
+  await page.getByLabel("New Project name").fill(name);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 });

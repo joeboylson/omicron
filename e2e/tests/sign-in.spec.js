@@ -106,6 +106,7 @@ test("each machine's Claude accounts show on the Projects page, live", async ({ 
   await page.goto(omicron.url);
   await expect(page.getByTestId("me")).toBeVisible();
   // Only people in a Project see machines.
+  await page.getByRole("button", { name: "New Project" }).first().click();
   await page.getByLabel("New Project name").fill(unique("Desk"));
   await page.getByRole("button", { name: "Start Project" }).click();
   await page.getByRole("button", { name: "Back to Projects" }).click();
