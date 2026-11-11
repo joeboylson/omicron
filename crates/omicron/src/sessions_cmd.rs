@@ -102,7 +102,9 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             };
             let exe = std::env::current_exe()?.canonicalize()?;
             add_hooks(&path, &exe.to_string_lossy())?;
+            let skill = add_skill(path.parent().context("the settings file has no folder")?)?;
             println!("Added Omicron's hooks to {}. Restart open Claude Code sessions to pick them up.", path.display());
+            println!("Added the /omicron-handoff command ({}).", skill.display());
         }
     }
     Ok(())
@@ -132,6 +134,18 @@ pub fn add_hooks(path: &std::path::Path, exe: &str) -> Result<()> {
     }
     std::fs::write(path, serde_json::to_string_pretty(&settings)? + "\n")?;
     Ok(())
+}
+
+/// The /omicron-handoff skill, next to the settings file. Replaced each time,
+/// so it follows the program's version.
+const HANDOFF_SKILL: &str = include_str!("claude/omicron-handoff.md");
+
+pub fn add_skill(claude_dir: &std::path::Path) -> Result<PathBuf> {
+    let dir = claude_dir.join("skills/omicron-handoff");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("SKILL.md");
+    std::fs::write(&path, HANDOFF_SKILL)?;
+    Ok(path)
 }
 
 fn is_ours(group: &Value) -> bool {
@@ -308,5 +322,7 @@ mod tests {
         assert_eq!(start[1]["hooks"][0]["command"], "'/new place/omicron' hook session-start");
         assert_eq!(v["hooks"]["SessionEnd"].as_array().unwrap().len(), 1);
         assert_eq!(v["hooks"]["Stop"][0]["hooks"][0]["command"], "'/new place/omicron' hook stop");
+        let skill = add_skill(&dir).unwrap();
+        assert!(std::fs::read_to_string(skill).unwrap().starts_with("---\nname: omicron-handoff\n"));
     }
 }

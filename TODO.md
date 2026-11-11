@@ -150,8 +150,10 @@ Built in this order. Each part replaces an old tool only once it's ready.
       to the new conversation; closing the window cancels it; anyone in the
       Project can still pick one up by hand. Tapping a session on the web
       page shows its notes, with a button to copy the pickup command.
-- [ ] A `/handoff` command for Claude Code (like lethe's `/lethe` skill) that
-      checks the real state, writes the note and says to type `/clear`.
+- [x] `/omicron-handoff` for Claude Code (installed by `omicron sessions
+      setup-claude`, next to the hooks): checks the real state, writes the
+      note with `omicron handoff write`, and says to type `/clear`. Named so
+      it doesn't replace the existing `handoff` and `lethe` skills.
 
 ## 5. Chat
 - [ ] `omicron chat`: one chat per Project, turned on or off per Project.
