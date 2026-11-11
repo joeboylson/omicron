@@ -282,6 +282,12 @@ fn a_session_gets_its_tasks_only_when_told() {
     let mine = ok(&mac, Some(w.id()), &["tasks", "mine"]);
     assert!(mine.contains(&format!("#1 in {project}: Write the parser (new)")), "{mine}");
     assert!(mine.contains("comment") && mine.contains("--review"), "{mine}");
+    // With how to write the report.
+    assert!(mine.contains("No jargon and no made-up terms") && mine.contains("At most 500 words"), "{mine}");
+    // A report over 500 words is refused, and nothing is saved.
+    let long = vec!["word"; 501].join(" ");
+    let o = run(&mac, Some(w.id()), &["tasks", "comment", &project, "1", &long, "--review"]);
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("at most 500 words; this one is 501"));
     assert!(!mine.contains("Already finished"), "finished tasks aren't listed: {mine}");
     // Asked again: still its task, no longer new.
     let again = ok(&mac, Some(w.id()), &["tasks", "mine"]);

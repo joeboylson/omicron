@@ -1,6 +1,6 @@
 //! `omicron projects`, `omicron statuses` and `omicron tasks`.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use omicron::board::{Board, NewTask, Project, Status, Task};
 use omicron::config::Config;
@@ -303,6 +303,13 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             changed(&p, t)
         }
         Tasks::Comment { project, number, text, review } => {
+            let words = text.split_whitespace().count();
+            if review && words > crate::sessions_cmd::REPORT_WORDS {
+                bail!(
+                    "a report is at most {} words; this one is {words}. Cut it down to what changed and what's left.",
+                    crate::sessions_cmd::REPORT_WORDS
+                );
+            }
             let p = board.project(&project)?;
             let t = board.task(&p, number)?;
             // Inside a Claude session that Omicron tracks, as its machine.

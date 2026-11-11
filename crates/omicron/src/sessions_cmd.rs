@@ -252,8 +252,15 @@ pub fn tasks_message(tasks: &[(String, omicron::board::Task)], new: &[String]) -
             n = t.number
         ));
     }
+    text.push_str(REPORT_RULES);
     text
 }
+
+/// How a session writes its report, said with every task handed over.
+pub const REPORT_RULES: &str = "\nHow to write the report: short and plain, like a /s answer. No jargon and no made-up terms; say what changed and what's left in everyday words. At most 500 words (longer reports are refused).\n";
+
+/// The most words a report (a comment marked for review) may have.
+pub const REPORT_WORDS: usize = 500;
 
 /// Returns what to print for Claude Code, if anything.
 fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
