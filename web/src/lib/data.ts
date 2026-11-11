@@ -427,3 +427,18 @@ export function sayEvery(seconds: number): string {
   const s = seconds % 60;
   return [h && `${h}h`, m && `${m}m`, s && `${s}s`].filter(Boolean).join("");
 }
+
+/** Someone in the people table: their logins and the Projects (that you can see) they're in. */
+export type PersonRow = { id: string; display_name: string; logins: string[]; projectIds: string[] };
+
+export async function listPeopleTable(db: SupabaseClient): Promise<PersonRow[]> {
+  const rows = must(
+    await db.from("people").select("id,display_name,tailscale_identities(login),project_members(project_id)").order("display_name"),
+  ) as any[];
+  return rows.map((r) => ({
+    id: r.id,
+    display_name: r.display_name,
+    logins: (r.tailscale_identities ?? []).map((t: { login: string }) => t.login).sort(),
+    projectIds: (r.project_members ?? []).map((m: { project_id: string }) => m.project_id),
+  }));
+}

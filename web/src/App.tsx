@@ -5,6 +5,7 @@ import { AppContext, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
+import { PeoplePage } from "@/pages/PeoplePage";
 import { reportError } from "@/lib/report";
 
 export default function App() {
@@ -71,7 +72,7 @@ export default function App() {
   return (
     <AppContext.Provider value={app}>
       <div className="flex min-h-dvh flex-col">
-        {projectId ? <ProjectPage key={projectId} id={projectId} /> : <ProjectsPage />}
+        {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : <ProjectsPage />}
         {error && (
           <div
             role="alert"

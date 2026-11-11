@@ -583,3 +583,38 @@ test("a session's loop shows on the page, live, and can be stopped there", async
     win.kill();
   }
 });
+
+test("the People page: everyone, their Projects, and adding or taking them out", async ({ page, request }) => {
+  await newPerson(page, request, "Robin Example");
+  const garden = unique("Garden");
+  const house = unique("House");
+  await startProjectIn(page, garden);
+  await startProjectIn(page, house);
+  // Someone who has signed in but isn't in any Project yet.
+  const sam = await sessionFor(request, omicron, `${unique("sam")}@example.com`, "Sam Example");
+  void sam;
+
+  await page.goto(omicron.url);
+  await page.getByRole("button", { name: "People" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
+  await page.getByLabel("Search people").fill("sam example");
+  const row = page.getByRole("list", { name: "People" }).getByRole("listitem", { name: "Sam Example" }).first();
+  await expect(row).toContainText("No Projects you're in.");
+
+  // Added to a Project: it shows at once.
+  await row.getByLabel("Add Sam Example to a Project").click();
+  await page.getByRole("option", { name: garden }).click();
+  const projects = row.getByRole("group", { name: "Sam Example's Projects" });
+  await expect(projects).toContainText(garden);
+  await expect(projects).not.toContainText(house);
+
+  // Taken out again.
+  await row.getByRole("button", { name: `Take Sam Example out of ${garden}` }).click();
+  await expect(row).toContainText("No Projects you're in.");
+
+  // Search narrows the list; back goes to Projects.
+  await page.getByLabel("Search people").fill("nobody-like-this");
+  await expect(page.getByText("Nobody matches")).toBeVisible();
+  await page.getByRole("button", { name: "Back to Projects" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+});

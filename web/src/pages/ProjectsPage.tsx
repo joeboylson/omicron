@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { listMachineAccounts, listProjects, startProject, type MachineSummary, type ProjectSummary } from "@/lib/data";
@@ -42,6 +42,10 @@ export function ProjectsPage() {
       title="Projects"
       titleClassName="mx-auto w-full max-w-3xl"
       right={
+        <>
+        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => go("/people")}>
+          <Users className="h-4 w-4" aria-hidden /> People
+        </Button>
         <span
           className="truncate px-2 text-sm text-muted-foreground"
           data-testid="me"
@@ -51,6 +55,7 @@ export function ProjectsPage() {
         >
           {me.displayName}
         </span>
+        </>
       }
     />
     <main className="mx-auto w-full max-w-3xl px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
