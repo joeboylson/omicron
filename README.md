@@ -17,7 +17,9 @@ You need:
 
 - A **Supabase** project (supabase.com, or self-hosted).
 - **Tailscale** on every computer, with the people who'll use it on your tailnet.
-- To build it: **Rust** (rustup.rs), **Node 20+**, and **psql**.
+- To build it: **Rust** (rustup.rs; open a new terminal after, so `cargo` is
+  on your `PATH`), **Node 20+**, and **psql** (`brew install libpq`, or
+  `apt install postgresql-client`).
 - For Claude sessions: **Claude Code** (`claude`) on the machines that run them.
 
 ### 1. The database
@@ -29,7 +31,9 @@ In Supabase, open **Project Settings**, and note:
 - the **connection string**, under Database.
 
 Then make Omicron's tables (run it again after updating Omicron; it only
-applies what's new):
+applies what's new). On self-hosted Supabase, port 5432 is its connection
+pooler, which wants the user as `postgres.<POOLER_TENANT_ID>` (from its
+`.env`):
 
 ```sh
 bash scripts/migrate.sh "postgresql://postgres:<password>@<host>:5432/postgres"
