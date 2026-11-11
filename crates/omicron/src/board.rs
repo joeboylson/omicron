@@ -152,6 +152,24 @@ pub struct Comment {
     pub at: String,
 }
 
+/// A message in a Project's chat.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatMessage {
+    pub author: String,
+    pub session: Option<String>,
+    pub body: String,
+    pub at: String,
+}
+
+fn chat_from(v: &Value) -> ChatMessage {
+    ChatMessage {
+        author: v["author_name"].as_str().unwrap_or("").to_string(),
+        session: v["sessions"]["name"].as_str().map(String::from),
+        body: v["body"].as_str().unwrap_or("").to_string(),
+        at: v["created_at"].as_str().unwrap_or("").to_string(),
+    }
+}
+
 /// A handoff note (see `omicron handoff`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Handoff {
@@ -571,6 +589,63 @@ impl Board {
     pub fn session_by_id(&self, id: &str) -> Result<SessionRecord> {
         let rows = self.get(&format!("/rest/v1/sessions?select={SESSION_FIELDS}&id=eq.{id}"))?;
         session_from(rows.get(0).context("this session's record is gone")?)
+    }
+
+    /// Turn a Project's chat on or off.
+    pub fn set_chat(&self, project: &Project, on: bool) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/projects?id=eq.{}", project.id), json!({ "chat_enabled": on }))?;
+        Ok(())
+    }
+
+    pub fn chat_enabled(&self, project: &Project) -> Result<bool> {
+        let rows = self.get(&format!("/rest/v1/projects?id=eq.{}&select=chat_enabled", project.id))?;
+        Ok(rows[0]["chat_enabled"].as_bool().unwrap_or(false))
+    }
+
+    /// The newest `limit` messages, oldest first.
+    pub fn chat(&self, project: &Project, limit: usize) -> Result<Vec<ChatMessage>> {
+        let rows = self.get(&format!(
+            "/rest/v1/chat_messages?project_id=eq.{}&select=author_name,body,created_at,sessions(name)&order=created_at.desc&limit={limit}",
+            project.id
+        ))?;
+        let mut msgs: Vec<ChatMessage> = rows.as_array().into_iter().flatten().map(chat_from).collect();
+        msgs.reverse();
+        Ok(msgs)
+    }
+
+    pub fn send_chat(&self, project: &Project, body: &str, session_id: Option<&str>) -> Result<()> {
+        if !self.chat_enabled(project)? {
+            bail!("chat is off for {}. Turn it on with `omicron chat on '{}'`.", project.name, project.name);
+        }
+        self.send("POST", "/rest/v1/chat_messages", json!({ "project_id": project.id, "body": body, "session_id": session_id }))?;
+        Ok(())
+    }
+
+    /// Messages that name a session (`@name`) since it last read, not its
+    /// own, marking them read. Returns (Project name, messages).
+    pub fn take_chat_mentions(&self, session_id: &str) -> Result<(String, Vec<ChatMessage>)> {
+        let rows = self.get(&format!("/rest/v1/sessions?id=eq.{session_id}&select=name,project_id,chat_read_at,projects(name)"))?;
+        let s = rows.get(0).context("this session's record is gone")?;
+        let (name, project_id) = (s["name"].as_str().unwrap_or(""), s["project_id"].as_str().unwrap_or(""));
+        let since = s["chat_read_at"].as_str().unwrap_or("");
+        let rows = self.get(&format!(
+            "/rest/v1/chat_messages?project_id=eq.{project_id}&created_at=gt.{}&select=author_name,body,created_at,session_id,sessions(name)&order=created_at",
+            since.replace('+', "%2B")
+        ))?;
+        let rows: Vec<&Value> = rows.as_array().into_iter().flatten().collect();
+        let Some(last) = rows.last() else { return Ok((String::new(), Vec::new())) };
+        // Read up to here, whether or not they named it.
+        self.send("PATCH", &format!("/rest/v1/sessions?id=eq.{session_id}"), json!({ "chat_read_at": last["created_at"] }))?;
+        let mention = format!("@{}", name.to_lowercase());
+        let mine = rows
+            .iter()
+            .filter(|m| m["session_id"].as_str() != Some(session_id))
+            .filter(|m| {
+                m["body"].as_str().unwrap_or("").to_lowercase().split(|c: char| c.is_whitespace() || ",.:;!?()".contains(c)).any(|w| w == mention)
+            })
+            .map(|m| chat_from(m))
+            .collect();
+        Ok((s["projects"]["name"].as_str().unwrap_or("").to_string(), mine))
     }
 
     pub fn set_needs_review(&self, project: &Project, number: i64, on: bool) -> Result<Task> {

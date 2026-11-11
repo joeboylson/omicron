@@ -36,9 +36,11 @@ export type HandoffNote = {
   body: string;
 };
 export type ClaudeSession = { id: string; name: string; state: "open" | "closed" | "gone"; folder: string; machine: string };
+export type ChatMessage = { id: string; author: string; session: string | null; body: string; created_at: string };
 export type ProjectData = {
   id: string;
   name: string;
+  chatEnabled: boolean;
   statuses: Status[];
   labels: Label[];
   members: Person[];
@@ -59,7 +61,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
   const [project, statuses, labels, members, tasks, sessions, handoffs] = await Promise.all([
-    db.from("projects").select("id,name").eq("id", id).maybeSingle(),
+    db.from("projects").select("id,name,chat_enabled").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
     db.from("project_members").select("people(id,display_name)").eq("project_id", id),
@@ -84,6 +86,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
   return {
     id: p.id,
     name: p.name,
+    chatEnabled: p.chat_enabled,
     statuses: must(statuses) as Status[],
     labels: must(labels) as Label[],
     members: (must(members) as any[])
@@ -216,4 +219,26 @@ export async function removeSession(db: SupabaseClient, session: ClaudeSession) 
 
 export async function addComment(db: SupabaseClient, task: Task, body: string) {
   must(await db.from("comments").insert({ task_id: task.id, body }));
+}
+
+export async function loadChat(db: SupabaseClient, projectId: string): Promise<ChatMessage[]> {
+  const rows = must(
+    await db
+      .from("chat_messages")
+      .select("id,author_name,body,created_at,sessions(name)")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ) as any[];
+  return rows
+    .map((r) => ({ id: r.id, author: r.author_name, session: r.sessions?.name ?? null, body: r.body, created_at: r.created_at }))
+    .reverse();
+}
+
+export async function sendChat(db: SupabaseClient, projectId: string, body: string) {
+  must(await db.from("chat_messages").insert({ project_id: projectId, body }));
+}
+
+export async function setChat(db: SupabaseClient, projectId: string, on: boolean) {
+  must(await db.from("projects").update({ chat_enabled: on }).eq("id", projectId));
 }

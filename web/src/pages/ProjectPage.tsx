@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Plus, Settings } from "lucide-react";
+import { ChevronLeft, MessageCircle, Plus, Settings } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addTask, loadProject, type ProjectData, type Status, type Task } from "@/lib/data";
@@ -11,6 +11,7 @@ import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
+import { Chat } from "@/components/Chat";
 
 export function ProjectPage({ id }: { id: string }) {
   const { db, act } = useApp();
@@ -18,6 +19,7 @@ export function ProjectPage({ id }: { id: string }) {
   const [project, setProject] = useState<ProjectData | null | undefined>(undefined);
   const [openTask, setOpenTask] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const reload = useCallback(() => {
     act(async () => setProject(await loadProject(db, id)));
@@ -49,9 +51,14 @@ export function ProjectPage({ id }: { id: string }) {
           </Button>
         }
         right={
-          <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
-            <Settings />
-          </Button>
+          <>
+            <Button variant="ghost" size="icon" aria-label="Chat" onClick={() => setChatOpen(true)}>
+              <MessageCircle />
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
+              <Settings />
+            </Button>
+          </>
         }
       />
       <Sessions project={project.name} sessions={project.sessions} handoffs={project.handoffs} />
@@ -68,6 +75,7 @@ export function ProjectPage({ id }: { id: string }) {
         ))}
       </div>
       <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload} />
+      <Chat project={project} open={chatOpen} onOpenChange={setChatOpen} onChanged={reload} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
     </main>
   );

@@ -431,3 +431,43 @@ fn a_handoff_note_reaches_the_next_conversation_in_the_window() {
     assert!(!o.status.success());
     w.kill().unwrap();
 }
+
+#[test]
+fn a_projects_chat_reaches_the_sessions_it_names() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let mut w = window();
+    let claude = Uuid::new_v4().to_string();
+    hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/w", "source": "startup" }));
+    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+    let stop = || hook_out(&mac, w.id(), "stop", json!({ "session_id": claude, "stop_hook_active": false }));
+
+    // Off until someone turns it on.
+    let o = run(&pat, None, &["chat", "send", &project, "hello"]);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("chat is off"), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(ok(&pat, None, &["chat", "on", &project]).trim(), format!("Chat is on for {project}."));
+
+    ok(&pat, None, &["chat", "send", &project, "Morning all."]);
+    assert_eq!(stop(), "", "a message that doesn't name the session isn't sent to it");
+    ok(&pat, None, &["chat", "send", &project, "@parser can you check the error messages?"]);
+    let out: Value = serde_json::from_str(&stop()).unwrap();
+    let reason = out["reason"].as_str().unwrap();
+    assert!(reason.contains(&format!("named in {project}'s chat")) && reason.contains("Pat: @parser can you check"), "{reason}");
+    assert_eq!(stop(), "", "only once");
+
+    // The session answers from its window; its own messages don't come back.
+    ok(&mac, Some(w.id()), &["chat", "send", &project, "On it. @parser note to self.", "--as-machine"]);
+    assert_eq!(stop(), "");
+    let read = ok(&pat, None, &["chat", "read", &project]);
+    let lines: Vec<&str> = read.lines().collect();
+    assert_eq!(lines.len(), 3, "{read}");
+    assert!(lines[2].contains(&format!("{mac_name} (session parser): On it.")), "{read}");
+
+    ok(&pat, None, &["chat", "off", &project]);
+    assert!(!run(&pat, None, &["chat", "send", &project, "x"]).status.success());
+    w.kill().unwrap();
+}

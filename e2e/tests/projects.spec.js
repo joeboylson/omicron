@@ -293,3 +293,34 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     win.kill();
   }
 });
+
+test("a Project's chat: turned on, a session named in it answers, live", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  const win = fakeWindow();
+  try {
+    const claude = crypto.randomUUID();
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
+    omicron.addSession(win.pid, "parser", name);
+
+    await page.getByRole("button", { name: "Chat" }).click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet).toContainText("Chat is off for this Project.");
+    await sheet.getByRole("button", { name: "Turn on chat" }).click();
+    await sheet.getByLabel("New message").fill("@parser how far did you get?");
+    await sheet.getByLabel("New message").press("Enter");
+    const messages = sheet.getByRole("list", { name: "Messages" });
+    await expect(messages).toContainText("@parser how far did you get?");
+
+    // The session is told at the end of its turn, and answers.
+    const out = JSON.parse(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false }));
+    expect(out.reason).toContain("@parser how far did you get?");
+    omicron.cliIn(win.pid, "chat", "send", name, "Half way: parser done, errors next.", "--as-machine");
+    await expect(messages.getByRole("listitem")).toHaveCount(2);
+    await expect(messages.getByRole("listitem").last()).toContainText(`${machineName}parser`);
+    await expect(messages.getByRole("listitem").last()).toContainText("Half way: parser done, errors next.");
+  } finally {
+    win.kill();
+  }
+});

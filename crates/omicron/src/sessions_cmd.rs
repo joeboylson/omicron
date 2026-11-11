@@ -212,12 +212,26 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         let Some(id) = windows.windows.get(&pid).and_then(|w| w.session_id.clone()) else {
             return Ok(None);
         };
-        let tasks = sign_in(true)?.pick_up_tasks(&id)?;
-        if tasks.is_empty() {
+        let board = sign_in(true)?;
+        let tasks = board.pick_up_tasks(&id)?;
+        let (project, mentions) = board.take_chat_mentions(&id)?;
+        let mut reason = Vec::new();
+        if !tasks.is_empty() {
+            reason.push(tasks_message(&tasks));
+        }
+        if !mentions.is_empty() {
+            let mut text = format!("Omicron: you were named in {project}'s chat.\n");
+            for m in &mentions {
+                text.push_str(&format!("\n{}", crate::chat_cmd::line(m)));
+            }
+            text.push_str(&format!("\n\nAnswer with `omicron chat send '{project}' \"...\" --as-machine`, or read more with `omicron chat read '{project}' --as-machine`.\n"));
+            reason.push(text);
+        }
+        if reason.is_empty() {
             return Ok(None);
         }
         // Blocking the stop makes Claude carry on, with this as the reason.
-        return Ok(Some(json!({ "decision": "block", "reason": tasks_message(&tasks) }).to_string()));
+        return Ok(Some(json!({ "decision": "block", "reason": reason.join("\n\n") }).to_string()));
     }
     let mut pick_up = None;
     // After /clear, the window's waiting handoff note goes to the new

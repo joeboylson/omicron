@@ -85,6 +85,11 @@ test("screenshots", async ({ browser, request }) => {
   const [{ id: parser }] = await call("GET", `/rest/v1/sessions?project_id=eq.${omicronProject.id}&name=eq.parser&select=id`);
   await call("PATCH", `/rest/v1/tasks?project_id=eq.${omicronProject.id}&number=eq.2`, { assignee_session_id: webPage });
   omicron.hook(windows[0].pid, "stop", { session_id: crypto.randomUUID(), stop_hook_active: false });
+  await call("PATCH", `/rest/v1/projects?id=eq.${omicronProject.id}`, { chat_enabled: true });
+  await call("POST", "/rest/v1/chat_messages", { project_id: omicronProject.id, body: "@web-page how's the sessions strip going?" });
+  omicron.cliIn(windows[0].pid, "chat", "send", omicronProject.id, "Chips are done and open their handoff notes. Screenshots next.", "--as-machine");
+  await call("POST", "/rest/v1/chat_messages", { project_id: omicronProject.id, body: "Great. @parser can you pick up #3 after that?" });
+  omicron.cliIn(windows[1].pid, "chat", "send", omicronProject.id, "Yes, starting on the change list parser now.", "--as-machine");
   omicron.cliIn(windows[0].pid, "handoff", "write", "Started the sessions strip. Chips are done; tapping one should open its notes. Next: the sheet itself.");
   omicron.cliIn(windows[0].pid, "handoff", "write", "Sessions strip and notes sheet are done and tested.\n\nNext: screenshots on the phone, then ask Joe about fading closed sessions.\nCheck first: git status, and that dev/e2e.sh passes.");
   omicron.cliIn(windows[0].pid, "tasks", "comment", omicronProject.id, "2", "Added the sessions strip above the columns, with open ones first. Screenshots in the PR.", "--review", "--as-machine");
@@ -132,6 +137,10 @@ test("screenshots", async ({ browser, request }) => {
       await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /web-page/ }).click();
       await expect(page.getByRole("list", { name: "Handoff notes" })).toContainText("waiting");
       await shoot(page, `${kind}-${scheme}-7-handoffs`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Chat" }).click();
+      await expect(page.getByRole("list", { name: "Messages" }).getByRole("listitem")).toHaveCount(4);
+      await shoot(page, `${kind}-${scheme}-8-chat`);
       await context.close();
     }
   }

@@ -156,7 +156,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       it doesn't replace the existing `handoff` and `lethe` skills.
 
 ## 5. Chat
-- [ ] `omicron chat`: one chat per Project, turned on or off per Project.
+- [x] `omicron chat on | off | read | send`: one chat per Project, for people
+      and Claude sessions, off until a member turns it on. A message naming a
+      session (`@parser`) reaches it at the end of its next turn (Stop hook),
+      once; a session's own messages say which session wrote them. On the
+      web page: a chat sheet from the Project's top bar, live.
 
 ## 6. Machines and accounts
 - [ ] `omicron machines`: pick a machine for a new terminal tab.
