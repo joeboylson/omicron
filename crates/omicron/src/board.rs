@@ -106,6 +106,7 @@ pub struct NewTask {
     pub labels: Vec<String>,
     /// A member's name.
     pub assignee: Option<String>,
+    pub notes: String,
 }
 
 /// Encode a value for a URL query.
@@ -310,12 +311,22 @@ impl Board {
     }
 
     /// Add a status at the end. `done` makes it the Project's Done status.
+    /// Add a status. A new Done status goes at the end; any other goes just
+    /// before the Done status, so Done stays last (as on the web page).
     pub fn add_status(&self, project: &Project, name: &str, done: bool) -> Result<Status> {
-        let last = self.statuses(project)?.iter().map(|s| s.position).fold(0.0, f64::max);
+        let all = self.statuses(project)?;
+        let last = all.iter().map(|s| s.position).fold(0.0, f64::max);
+        let position = match all.iter().find(|s| s.is_done) {
+            Some(d) if !done => {
+                let before = all.iter().filter(|s| !s.is_done && s.position < d.position).map(|s| s.position).fold(f64::MIN, f64::max);
+                if before == f64::MIN { d.position - 1.0 } else { (before + d.position) / 2.0 }
+            }
+            _ => last + 1.0,
+        };
         let rows = self.send(
             "POST",
             "/rest/v1/statuses?select=id,name,position,is_done,color",
-            json!({ "project_id": project.id, "name": name, "position": last + 1.0, "is_done": done }),
+            json!({ "project_id": project.id, "name": name, "position": position, "is_done": done }),
         )?;
         Ok(serde_json::from_value(rows[0].clone())?)
     }
@@ -505,7 +516,7 @@ impl Board {
             "/rest/v1/tasks?select=id,number",
             json!({
                 "project_id": project.id, "title": new.title, "status_id": status.id,
-                "due_on": new.due_on, "assignee_person_id": assignee,
+                "due_on": new.due_on, "assignee_person_id": assignee, "notes": new.notes,
             }),
         )?;
         let id = rows[0]["id"].as_str().context("task wasn't made")?.to_string();

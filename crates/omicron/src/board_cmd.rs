@@ -80,6 +80,9 @@ pub enum Tasks {
         /// Give it to a member, by name
         #[arg(long = "to")]
         assignee: Option<String>,
+        /// Notes: what it's about, in more detail
+        #[arg(long, default_value = "")]
+        notes: String,
     },
     /// Move a task to another status
     Move { project: String, number: i64, status: String },
@@ -253,9 +256,9 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = board.task(&p, number)?;
             changed(&p, t)
         }
-        Tasks::Add { project, title, status, due, labels, assignee } => {
+        Tasks::Add { project, title, status, due, labels, assignee, notes } => {
             let p = board.project(&project)?;
-            let t = board.add_task(&p, &NewTask { title, status, due_on: due, labels, assignee })?;
+            let t = board.add_task(&p, &NewTask { title, status, due_on: due, labels, assignee, notes })?;
             changed(&p, t)
         }
         Tasks::Move { project, number, status } => {

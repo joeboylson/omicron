@@ -134,6 +134,8 @@ fn moving_and_finishing_tasks() {
     let s = supabase_or_skip!();
     let (me, project) = person_with_project(&s, "Pat");
     ok(&me, &["statuses", "add", &project, "Doing"]);
+    ok(&me, &["statuses", "add", &project, "Review"]);
+    assert_eq!(ok(&me, &["statuses", "list", &project]), "To do\nDoing\nReview\nDone (Done)\n", "new statuses go before Done");
     ok(&me, &["tasks", "add", &project, "Paint"]);
     assert!(ok(&me, &["tasks", "move", &project, "1", "doing"]).contains("Status: Doing"));
     assert!(ok(&me, &["tasks", "done", &project, "1"]).contains("Status: Done"));
