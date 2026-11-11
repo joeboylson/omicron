@@ -165,7 +165,7 @@ impl WebMachine {
 
     fn session(&self, request: &Request) -> Result<(u16, &'static str, Vec<u8>)> {
         let peer: IpAddr = request.remote_addr().map(|a| a.ip()).context("no address for this visit")?;
-        let visit = match identity::visitor(peer, |name| request_header(request, name), identity::local_person) {
+        let visit = match identity::visitor(peer, |name| request_header(request, name), identity::gate_secret().as_deref(), identity::local_person) {
             Ok(v) => v,
             Err(e) => return Ok((403, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes())),
         };

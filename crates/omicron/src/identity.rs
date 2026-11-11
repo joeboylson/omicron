@@ -117,14 +117,36 @@ fn local_status() -> Result<String> {
     Ok(json)
 }
 
+/// The header the gate in front of the page adds, carrying the gate secret.
+pub const GATE_HEADER: &str = "Omicron-Gate-Secret";
+
+/// The gate secret, if this Web Machine has one: `~/.omicron/gate-secret`.
+/// With it, a visit that says who it's from (a Tailscale login) must also
+/// carry the secret, which only the gate in front of the page adds. Without
+/// it, anything on this machine (or in a VM or container it runs) could
+/// claim to be anyone.
+pub fn gate_secret() -> Option<String> {
+    let text = std::fs::read_to_string(crate::config::home().ok()?.join("gate-secret")).ok()?;
+    let secret = text.trim().to_string();
+    (!secret.is_empty()).then_some(secret)
+}
+
+/// Compare without stopping at the first difference, so timing doesn't
+/// give the secret away.
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 /// Work out who a visitor is.
 ///
 /// `peer` is the address the connection came from. `header` looks up a
-/// request header by name. `local` gives this machine's person; it's only
-/// called for visits from this machine.
+/// request header by name. `gate` is the gate secret, if there is one.
+/// `local` gives this machine's person; it's only called for visits from
+/// this machine.
 pub fn visitor(
     peer: IpAddr,
     header: impl Fn(&str) -> Option<String>,
+    gate: Option<&str>,
     local: impl FnOnce() -> Result<TailscalePerson>,
 ) -> Result<Visit> {
     // The page only listens on localhost, so anything else is a mistake in
@@ -134,9 +156,40 @@ pub fn visitor(
     }
     match header("Tailscale-User-Login").filter(|l| !l.trim().is_empty()) {
         Some(login) => {
+            if let Some(secret) = gate {
+                if !header(GATE_HEADER).is_some_and(|given| same(given.trim(), secret)) {
+                    bail!("refused a visit as {login}: it didn't come through the gate");
+                }
+            }
             let display_name = header("Tailscale-User-Name").unwrap_or_else(|| login.clone());
             Ok(Visit::Tailnet(TailscalePerson { login, display_name }))
         }
         None => Ok(Visit::Local(local()?)),
+    }
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn visit(headers: &[(&str, &str)], gate: Option<&str>) -> Result<Visit> {
+        let h: HashMap<String, String> = headers.iter().map(|(k, v)| (k.to_lowercase(), v.to_string())).collect();
+        let me = || Ok(TailscalePerson { login: "me@x".into(), display_name: "Me".into() });
+        visitor("127.0.0.1".parse().unwrap(), |n| h.get(&n.to_lowercase()).cloned(), gate, me)
+    }
+
+    #[test]
+    fn a_login_needs_the_gate_secret_when_there_is_one() {
+        // No secret set: as before.
+        assert!(matches!(visit(&[("Tailscale-User-Login", "pat@x")], None).unwrap(), Visit::Tailnet(_)));
+        // With one: a made-up login is refused, a gated one passes.
+        let err = visit(&[("Tailscale-User-Login", "pat@x")], Some("s3cret")).unwrap_err();
+        assert!(err.to_string().contains("didn't come through the gate"));
+        assert!(visit(&[("Tailscale-User-Login", "pat@x"), (GATE_HEADER, "wrong!")], Some("s3cret")).is_err());
+        let ok = visit(&[("Tailscale-User-Login", "pat@x"), (GATE_HEADER, "s3cret")], Some("s3cret")).unwrap();
+        assert!(matches!(ok, Visit::Tailnet(p) if p.login == "pat@x"));
+        // This machine's own visits (no login) are still this machine's person.
+        assert!(matches!(visit(&[], Some("s3cret")).unwrap(), Visit::Local(_)));
     }
 }
