@@ -6,9 +6,10 @@ import { listProjects, startProject, type ProjectSummary } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { NavBar } from "@/components/NavBar";
 
 export function ProjectsPage() {
-  const { db, act } = useApp();
+  const { db, act, me } = useApp();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [name, setName] = useState("");
 
@@ -30,8 +31,23 @@ export function ProjectsPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-3xl p-4">
-      <h1 className="mb-4 text-2xl font-semibold">Projects</h1>
+    <>
+    <NavBar
+      title="Projects"
+      titleClassName="mx-auto w-full max-w-3xl"
+      right={
+        <span
+          className="truncate px-2 text-sm text-muted-foreground"
+          data-testid="me"
+          data-person-id={me.personId}
+          data-via={me.via}
+          title={me.login}
+        >
+          {me.displayName}
+        </span>
+      }
+    />
+    <main className="mx-auto w-full max-w-3xl px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
       {projects === null ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : projects.length === 0 ? (
@@ -47,11 +63,11 @@ export function ProjectsPage() {
                   go(`/p/${p.id}`);
                 }}
               >
-                <Card className="transition-colors hover:bg-accent">
+                <Card className="transition-colors hover:bg-accent active:bg-accent">
                   <CardHeader className="p-4">
-                    <CardTitle className="text-lg">{p.name}</CardTitle>
+                    <CardTitle className="text-[17px] font-semibold tracking-normal sm:text-lg">{p.name}</CardTitle>
                     <CardDescription>
-                      {p.taskCount} {p.taskCount === 1 ? "task" : "tasks"}
+                      <span className="font-mono">{p.taskCount}</span> {p.taskCount === 1 ? "task" : "tasks"}
                     </CardDescription>
                   </CardHeader>
                 </Card>
@@ -67,5 +83,6 @@ export function ProjectsPage() {
         </Button>
       </form>
     </main>
+    </>
   );
 }

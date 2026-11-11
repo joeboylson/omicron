@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { signIn, type Me } from "@/lib/omicron";
-import { AppContext, go, usePath, type AppState } from "@/lib/app";
+import { AppContext, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
@@ -47,36 +47,18 @@ export default function App() {
   return (
     <AppContext.Provider value={app}>
       <div className="flex min-h-dvh flex-col">
-        <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur">
-          <a
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              go("/");
-            }}
-            className="font-semibold"
-          >
-            Omicron
-          </a>
-          <span
-            className="ml-auto truncate text-sm text-muted-foreground"
-            data-testid="me"
-            data-person-id={app.me.personId}
-            data-via={app.me.via}
-            title={app.me.login}
-          >
-            {app.me.displayName}
-          </span>
-        </header>
+        {projectId ? <ProjectPage key={projectId} id={projectId} /> : <ProjectsPage />}
         {error && (
-          <div role="alert" className="flex items-start gap-2 border-b border-destructive/50 bg-destructive/10 px-4 py-2 text-sm">
-            <span className="flex-1">{error}</span>
-            <button aria-label="Dismiss" onClick={() => setError(null)}>
+          <div
+            role="alert"
+            className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2 border-t bg-background px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-sm shadow-lg"
+          >
+            <span className="flex-1 text-destructive">{error}</span>
+            <button aria-label="Dismiss" className="flex h-11 w-11 items-center justify-center" onClick={() => setError(null)}>
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
-        {projectId ? <ProjectPage key={projectId} id={projectId} /> : <ProjectsPage />}
       </div>
     </AppContext.Provider>
   );

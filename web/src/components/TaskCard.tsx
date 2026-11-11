@@ -15,12 +15,12 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
-      className="cursor-pointer p-3 text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="cursor-pointer p-3 text-[15px] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`#${task.number} ${task.title}`}
     >
       <div className="flex items-start gap-2">
         <span className={cn("flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
-        <span className="text-xs text-muted-foreground">#{task.number}</span>
+        <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
       </div>
       {(task.needs_review || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
@@ -43,7 +43,9 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
           {task.checklist.length > 0 && (
             <span className="flex items-center gap-1">
               <CheckSquare className="h-3.5 w-3.5" />
-              {ticked}/{task.checklist.length}
+              <span className="font-mono">
+                {ticked}/{task.checklist.length}
+              </span>
             </span>
           )}
           {assignee && (

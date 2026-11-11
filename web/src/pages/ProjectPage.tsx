@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Plus, Settings } from "lucide-react";
+import { ChevronLeft, Plus, Settings } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addTask, loadProject, type ProjectData, type Status, type Task } from "@/lib/data";
@@ -10,6 +10,7 @@ import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
+import { NavBar } from "@/components/NavBar";
 
 export function ProjectPage({ id }: { id: string }) {
   const { db, act } = useApp();
@@ -40,17 +41,21 @@ export function ProjectPage({ id }: { id: string }) {
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
   return (
     <main className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 px-4 py-3">
-        <Button variant="ghost" size="icon" aria-label="Back to Projects" onClick={() => go("/")}>
-          <ArrowLeft />
-        </Button>
-        <h1 className="truncate text-xl font-semibold">{project.name}</h1>
-        <Button variant="ghost" size="icon" className="ml-auto" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
-          <Settings />
-        </Button>
-      </div>
+      <NavBar
+        title={project.name}
+        left={
+          <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
+            <ChevronLeft /> Projects
+          </Button>
+        }
+        right={
+          <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
+            <Settings />
+          </Button>
+        }
+      />
       <Sessions sessions={project.sessions} />
-      <div className="flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 sm:snap-none">
+      <div className="flex flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:snap-none">
         {project.statuses.map((s) => (
           <Column
             key={s.id}
@@ -98,11 +103,11 @@ function Column({
   return (
     <section
       aria-label={status.name}
-      className="flex w-[85vw] shrink-0 snap-center flex-col rounded-lg bg-muted/60 p-2 sm:w-72"
+      className="flex w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
     >
-      <h2 className="flex items-center gap-2 px-1 pb-2 text-sm font-semibold">
+      <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
         {status.name}
-        <span className="font-normal text-muted-foreground">{tasks.length}</span>
+        <span className="font-mono font-normal text-muted-foreground">{tasks.length}</span>
         {status.is_done && (
           <Badge variant="outline" className="ml-auto font-normal">
             Done

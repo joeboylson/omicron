@@ -3,9 +3,15 @@ import animate from "tailwindcss-animate";
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
+  // Hover looks only where there's a pointer, not after a tap (Apple HIG).
+  future: { hoverOnlyWhenSupported: true },
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["'Geist Variable'", "system-ui", "sans-serif"],
+        mono: ["'Geist Mono Variable'", "ui-monospace", "monospace"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

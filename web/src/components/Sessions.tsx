@@ -11,7 +11,7 @@ export function Sessions({ sessions }: { sessions: ClaudeSession[] }) {
   const order = { open: 0, closed: 1, gone: 2 };
   const sorted = [...sessions].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
   return (
-    <section aria-label="Claude sessions" className="flex items-center gap-2 overflow-x-auto px-4 pb-3 text-sm">
+    <section aria-label="Claude sessions" className="flex items-center gap-2 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-3 text-sm">
       <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       <ul className="flex gap-2">
         {sorted.map((s) => (
@@ -26,7 +26,7 @@ export function Sessions({ sessions }: { sessions: ClaudeSession[] }) {
               />
               <span className="font-medium">{s.name}</span>
               <span className="text-muted-foreground">
-                {s.machine} · {STATE_TEXT[s.state]}
+                <span className="font-mono text-[11px]">{s.machine}</span> · {STATE_TEXT[s.state]}
               </span>
             </Badge>
           </li>

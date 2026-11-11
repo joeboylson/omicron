@@ -17,9 +17,10 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Group, Row, bare } from "@/components/Grouped";
+import { cn } from "@/lib/utils";
 
 export function ProjectSettings({
   project,
@@ -49,93 +50,102 @@ export function ProjectSettings({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
-        <DialogHeader>
+      <DialogContent
+        className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="text-left">
           <DialogTitle>Project settings</DialogTitle>
           <DialogDescription>Changes save as you make them.</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-1.5">
-          <Label htmlFor="project-name">Name</Label>
-          <Input
-            id="project-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              const n = name.trim();
-              if (!n) setName(project.name);
-              else if (n !== project.name) change(() => renameProject(db, project.id, n));
-            }}
-          />
-        </div>
+        <Group title={<label htmlFor="project-name">Name</label>}>
+          <Row>
+            <Input
+              id="project-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => {
+                const n = name.trim();
+                if (!n) setName(project.name);
+                else if (n !== project.name) change(() => renameProject(db, project.id, n));
+              }}
+              className={cn(bare, "px-0")}
+            />
+          </Row>
+        </Group>
 
-        <section className="grid gap-2" aria-label="Statuses">
-          <Label>Statuses</Label>
-          <p className="text-xs text-muted-foreground">
-            One status is the Done status. A status with tasks in it can't be removed.
-          </p>
-          <ul className="grid gap-1.5">
+        <Group title="Statuses" note="One status is the Done status. A status with tasks in it can't be removed.">
+          <ul className="divide-y">
             {project.statuses.map((s) => (
-              <StatusRow
-                key={s.id}
-                status={s}
-                inUse={project.tasks.some((t) => t.status_id === s.id)}
-                change={change}
-              />
+              <StatusRow key={s.id} status={s} inUse={project.tasks.some((t) => t.status_id === s.id)} change={change} />
             ))}
           </ul>
           <form
-            className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               const n = newStatus.trim();
               if (n) change(async () => (await addStatus(db, project, n), setNewStatus("")));
             }}
           >
-            <Input value={newStatus} onChange={(e) => setNewStatus(e.target.value)} placeholder="New status" aria-label="New status" />
-            <Button type="submit" variant="outline" disabled={!newStatus.trim()}>
-              <Plus /> Add
-            </Button>
+            <Row>
+              <Plus className="h-5 w-5 text-muted-foreground" aria-hidden />
+              <Input
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+                placeholder="New status"
+                aria-label="New status"
+                className={cn(bare, "px-0")}
+              />
+              <Button type="submit" variant="ghost" size="sm" disabled={!newStatus.trim()}>
+                Add
+              </Button>
+            </Row>
           </form>
-        </section>
+        </Group>
 
-        <section className="grid gap-2" aria-label="Members">
-          <Label>Members</Label>
-          <ul className="grid gap-1">
+        <Group title="Members">
+          <ul className="divide-y">
             {project.members.map((m) => (
-              <li key={m.id} className="flex items-center gap-2 text-sm">
-                <span className="flex-1">
-                  {m.display_name}
-                  {m.id === me.personId && <span className="text-muted-foreground"> (you)</span>}
-                </span>
-                {m.id !== me.personId && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Remove ${m.display_name}`}
-                    onClick={() => change(() => removeMember(db, project.id, m.id))}
-                  >
-                    <X />
-                  </Button>
-                )}
+              <li key={m.id}>
+                <Row>
+                  <span className="flex-1 py-2 text-[15px] sm:text-sm">
+                    {m.display_name}
+                    {m.id === me.personId && <span className="text-muted-foreground"> (you)</span>}
+                  </span>
+                  {m.id !== me.personId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="-mr-2 text-muted-foreground"
+                      aria-label={`Remove ${m.display_name}`}
+                      onClick={() => change(() => removeMember(db, project.id, m.id))}
+                    >
+                      <X />
+                    </Button>
+                  )}
+                </Row>
               </li>
             ))}
           </ul>
           {outsiders.length > 0 && (
-            <Select value="" onValueChange={(id) => change(() => addMember(db, project.id, id))}>
-              <SelectTrigger aria-label="Add a member">
-                <SelectValue placeholder="Add a member…" />
-              </SelectTrigger>
-              <SelectContent>
-                {outsiders.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.display_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Row>
+              <Plus className="h-5 w-5 text-muted-foreground" aria-hidden />
+              <Select value="" onValueChange={(id) => change(() => addMember(db, project.id, id))}>
+                <SelectTrigger aria-label="Add a member" className={cn(bare, "px-0 text-muted-foreground")}>
+                  <SelectValue placeholder="Add a member…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {outsiders.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Row>
           )}
-        </section>
+        </Group>
       </DialogContent>
     </Dialog>
   );
@@ -154,36 +164,39 @@ function StatusRow({
   const [name, setName] = useState(status.name);
   useEffect(() => setName(status.name), [status.name]);
   return (
-    <li className="flex items-center gap-2">
-      <Input
-        value={name}
-        aria-label={`Status name: ${status.name}`}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => {
-          const n = name.trim();
-          if (!n) setName(status.name);
-          else if (n !== status.name) change(() => renameStatus(db, status, n));
-        }}
-      />
-      {status.is_done ? (
-        <Badge variant="outline" className="h-10 w-28 shrink-0 justify-center font-normal">
-          Done status
-        </Badge>
-      ) : (
-        <Button variant="outline" className="w-28 shrink-0" onClick={() => change(() => markDoneStatus(db, status))}>
-          Make Done
+    <li>
+      <Row>
+        <Input
+          value={name}
+          aria-label={`Status name: ${status.name}`}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => {
+            const n = name.trim();
+            if (!n) setName(status.name);
+            else if (n !== status.name) change(() => renameStatus(db, status, n));
+          }}
+          className={cn(bare, "px-0")}
+        />
+        {status.is_done ? (
+          <Badge variant="secondary" className="shrink-0 font-normal">
+            Done status
+          </Badge>
+        ) : (
+          <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => change(() => markDoneStatus(db, status))}>
+            Make Done
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-mr-2 shrink-0 text-muted-foreground"
+          aria-label={`Remove status ${status.name}`}
+          disabled={status.is_done || inUse}
+          onClick={() => change(() => deleteStatus(db, status))}
+        >
+          <Trash2 />
         </Button>
-      )}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        aria-label={`Remove status ${status.name}`}
-        disabled={status.is_done || inUse}
-        onClick={() => change(() => deleteStatus(db, status))}
-      >
-        <Trash2 />
-      </Button>
+      </Row>
     </li>
   );
 }

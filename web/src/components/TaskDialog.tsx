@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Group, Row, bare } from "@/components/Grouped";
+import { cn } from "@/lib/utils";
 
 const NOBODY = "nobody";
 
@@ -37,7 +39,7 @@ export function TaskDialog({
   return (
     <Dialog open={task !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
+        className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:max-w-xl sm:bg-background"
         // Don't jump into the title: on a phone that opens the keyboard.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -88,8 +90,8 @@ function TaskForm({
   return (
     <>
       <DialogHeader>
-        <DialogDescription>
-          #{task.number} in {project.name}
+        <DialogDescription className="text-left">
+          <span className="font-mono">#{task.number}</span> in {project.name}
         </DialogDescription>
         <DialogTitle className="sr-only">{task.title}</DialogTitle>
         <Input
@@ -103,12 +105,12 @@ function TaskForm({
             if (!t) setTitle(task.title);
             else if (t !== task.title) save({ title: t });
           }}
-          className="border-transparent px-0 text-lg font-semibold shadow-none focus-visible:border-input focus-visible:px-3"
+          className="h-auto border-transparent bg-transparent px-0 py-1 text-xl font-semibold shadow-none focus-visible:border-input focus-visible:bg-background focus-visible:px-3 md:text-xl"
         />
       </DialogHeader>
 
       {task.needs_review && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm" data-testid="needs-review">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 text-sm" data-testid="needs-review">
           <Badge>Needs review</Badge>
           <span className="min-w-[12rem] flex-1 text-muted-foreground">A Claude session asked for this to be checked.</span>
           <Button size="sm" variant="outline" onClick={() => save({ needs_review: false })}>
@@ -117,14 +119,16 @@ function TaskForm({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="task-status">Status</Label>
+      <Group label="Details">
+        <Row>
+          <Label htmlFor="task-status" className="flex-1 font-normal">
+            Status
+          </Label>
           <Select value={task.status_id} onValueChange={(v) => save({ status_id: v })}>
-            <SelectTrigger id="task-status">
+            <SelectTrigger id="task-status" className={cn(bare, "w-auto gap-1 text-muted-foreground")}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               {project.statuses.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
@@ -132,26 +136,31 @@ function TaskForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="task-date">Date</Label>
+        </Row>
+        <Row>
+          <Label htmlFor="task-date" className="flex-1 font-normal">
+            Date
+          </Label>
           <Input
             id="task-date"
             type="date"
             value={task.due_on ?? ""}
             onChange={(e) => save({ due_on: e.target.value || null })}
+            className={cn(bare, "w-auto px-0 text-right text-muted-foreground")}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="task-assignee">Given to</Label>
+        </Row>
+        <Row>
+          <Label htmlFor="task-assignee" className="flex-1 font-normal">
+            Given to
+          </Label>
           <Select
             value={task.assignee_person_id ?? NOBODY}
             onValueChange={(v) => save({ assignee_person_id: v === NOBODY ? null : v })}
           >
-            <SelectTrigger id="task-assignee">
+            <SelectTrigger id="task-assignee" className={cn(bare, "w-auto gap-1 text-muted-foreground")}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               <SelectItem value={NOBODY}>Nobody</SelectItem>
               {project.members.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
@@ -160,114 +169,137 @@ function TaskForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        </Row>
+      </Group>
 
-      <div className="grid gap-1.5">
-        <Label>Labels</Label>
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Labels">
-          {project.labels.map((l) => {
-            const on = task.labelIds.includes(l.id);
-            return (
-              <button
-                key={l.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => change(() => setLabel(db, task, l.id, !on))}
-              >
-                <Badge variant={on ? "default" : "outline"} className="cursor-pointer font-normal">
-                  {l.name}
-                </Badge>
-              </button>
-            );
-          })}
-          <form
-            className="flex items-center gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const name = newLabel.trim();
-              if (!name) return;
-              const existing = project.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
-              change(async () => {
-                await setLabel(db, task, existing?.id ?? (await addLabel(db, project.id, name)), true);
-                setNewLabel("");
-              });
-            }}
-          >
-            <Input
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              placeholder="New label"
-              aria-label="New label"
-              className="h-7 w-28 text-xs"
-            />
-          </form>
-        </div>
-      </div>
+      <Group title="Labels">
+        <Row className="flex-wrap gap-1.5 py-2">
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Labels">
+            {project.labels.map((l) => {
+              const on = task.labelIds.includes(l.id);
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  aria-pressed={on}
+                  className="flex min-h-9 items-center"
+                  onClick={() => change(() => setLabel(db, task, l.id, !on))}
+                >
+                  <Badge variant={on ? "default" : "outline"} className="cursor-pointer px-3 py-1 font-normal">
+                    {l.name}
+                  </Badge>
+                </button>
+              );
+            })}
+            <form
+              className="flex items-center"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = newLabel.trim();
+                if (!name) return;
+                const existing = project.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+                change(async () => {
+                  await setLabel(db, task, existing?.id ?? (await addLabel(db, project.id, name)), true);
+                  setNewLabel("");
+                });
+              }}
+            >
+              <Input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="New label"
+                aria-label="New label"
+                className={cn(bare, "h-9 w-32 px-1")}
+              />
+            </form>
+          </div>
+        </Row>
+      </Group>
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="task-notes">Notes</Label>
+      <Group title={<label htmlFor="task-notes">Notes</label>}>
         <Textarea
           id="task-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           onBlur={() => notes !== task.notes && save({ notes })}
           rows={4}
+          placeholder="Add notes"
+          className="rounded-none border-0 bg-transparent px-4 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
-      </div>
+      </Group>
 
-      <div className="grid gap-1.5">
-        <Label>
-          Checklist
-          {task.checklist.length > 0 && (
-            <span className="ml-2 font-normal text-muted-foreground">
-              {task.checklist.filter((c) => c.done).length}/{task.checklist.length}
-            </span>
-          )}
-        </Label>
-        <ul className="grid gap-1" aria-label="Checklist">
+      <Group
+        label="Checklist"
+        title={
+          <>
+            Checklist
+            {task.checklist.length > 0 && (
+              <span className="ml-2 font-mono normal-case">
+                {task.checklist.filter((c) => c.done).length}/{task.checklist.length}
+              </span>
+            )}
+          </>
+        }
+      >
+        <ul aria-label="Checklist" className="divide-y">
           {task.checklist.map((item) => (
-            <li key={item.id} className="group flex items-center gap-2 text-sm">
-              <Checkbox
-                id={`item-${item.id}`}
-                checked={ticked[item.id] ?? item.done}
-                onCheckedChange={(v) => {
-                  setTicked((t) => ({ ...t, [item.id]: v === true }));
-                  change(() => tickChecklistItem(db, item, v === true));
-                }}
-              />
-              <label htmlFor={`item-${item.id}`} className={(ticked[item.id] ?? item.done) ? "flex-1 text-muted-foreground line-through" : "flex-1"}>
-                {item.text}
-              </label>
-              <button
-                type="button"
-                aria-label={`Remove ${item.text}`}
-                className="opacity-50 hover:opacity-100"
-                onClick={() => change(() => deleteChecklistItem(db, item))}
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <li key={item.id}>
+              <Row>
+                <Checkbox
+                  id={`item-${item.id}`}
+                  className="h-5 w-5 rounded-full"
+                  checked={ticked[item.id] ?? item.done}
+                  onCheckedChange={(v) => {
+                    setTicked((t) => ({ ...t, [item.id]: v === true }));
+                    change(() => tickChecklistItem(db, item, v === true));
+                  }}
+                />
+                <label
+                  htmlFor={`item-${item.id}`}
+                  className={cn("flex-1 py-2 text-[15px] sm:text-sm", (ticked[item.id] ?? item.done) && "text-muted-foreground line-through")}
+                >
+                  {item.text}
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove ${item.text}`}
+                  className="-mr-2 text-muted-foreground"
+                  onClick={() => change(() => deleteChecklistItem(db, item))}
+                >
+                  <X />
+                </Button>
+              </Row>
             </li>
           ))}
         </ul>
         <form
-          className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             const text = newItem.trim();
             if (text) change(async () => (await addChecklistItem(db, task, text), setNewItem("")));
           }}
         >
-          <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add an item" aria-label="New checklist item" />
-          <Button type="submit" variant="outline" size="icon" aria-label="Add item" disabled={!newItem.trim()}>
-            <Plus />
-          </Button>
+          <Row>
+            <Plus className="h-5 w-5 text-muted-foreground" aria-hidden />
+            <Input
+              value={newItem}
+              onChange={(e) => setNewItem(e.target.value)}
+              placeholder="Add an item"
+              aria-label="New checklist item"
+              className={cn(bare, "px-0")}
+            />
+            <Button type="submit" variant="ghost" size="sm" aria-label="Add item" disabled={!newItem.trim()}>
+              Add
+            </Button>
+          </Row>
         </form>
-      </div>
+      </Group>
 
-      <div className="flex flex-wrap gap-2 border-t pt-4">
+      <div className="flex flex-wrap gap-2 pt-2">
         {done && !isDone && (
-          <Button onClick={() => save({ status_id: done.id })}>
+          <Button className="flex-1 sm:flex-none" onClick={() => save({ status_id: done.id })}>
             <Check /> Mark done
           </Button>
         )}
