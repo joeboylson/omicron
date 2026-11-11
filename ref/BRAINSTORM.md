@@ -197,6 +197,18 @@ Plain words most people know, no military terms. Each one is chosen so it doesn'
 - **Where Omicron's sessions run:** not tmux and not Claude's remote-control. Omicron hosts them itself, like `dtach`: a small detached `omicron` host process per session owns its terminal (a pseudo-terminal) and a socket in `~/.omicron/run/`. `omicron sessions attach <name>` (or the picker) connects to it; a key detaches. It survives the daemon restarting. Dispatch reopens a closed session with the task as Claude's first message; for an open one the host types the task in.
 - Reports follow rules: `/s` style, no jargon, no made-up terms, at most 500 words.
 
+### The web page is a product, not a proof of concept (11 Nov 2026)
+- Make the UI and UX as mature as possible, following what the biggest and most-loved apps do (Trello, Linear, Things, Apple's Reminders, plus Apple's Human Interface Guidelines). It should feel familiar and easy from the first minute.
+- What that means in practice:
+  - Things move the way people expect: drag cards between and within columns, edit in place, Enter saves, Esc cancels.
+  - Changes show at once and save in the background (with a quiet retry or a clear error), never a spinner for a simple edit.
+  - Delete is undoable (an "Undo" toast) instead of a confirm step.
+  - Keyboard shortcuts and a command menu (⌘K) for people who want speed; every action still reachable by tap.
+  - Good empty, loading (skeletons) and error states everywhere; nothing blank.
+  - Search, filters (mine, due soon, needs review, by label) and sensible sorting.
+  - Accessible: labels for everything, focus that lands where it should, works with a keyboard and VoiceOver, respects Reduce Motion and larger text.
+  - Works the same on phone and desktop, with phone-native touches (swipe, sheets, 44pt targets, safe areas).
+
 ## Notes from seraph (how computers talk through Supabase)
 Source: `agent_orchestration/seraph`, mainly `src/daemon.rs` and `supabase/migrations/20261018000500_many_machines.sql`.
 

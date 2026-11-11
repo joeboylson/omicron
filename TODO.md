@@ -243,7 +243,15 @@ visible, a commit, rebuild the Mac's pages. Decisions that need Joe go in
    Supabase; the rest on the machine running the team; workers run in the
    session host; `omicron teams` picker to jump into a worker; open a team's
    folder in VS Code).
-5. Housekeeping: fix old tool paths in `CLAUDE.md`.
+5. UX pass to product quality (see "The web page is a product" in
+   `ref/BRAINSTORM.md`): drag and drop within and between columns, edits
+   that show at once, undo instead of confirm for deletes, ⌘K command menu
+   and keyboard shortcuts, skeletons and empty states everywhere, search and
+   filters, an accessibility check, swipe actions on the phone. Done after
+   item 3's gaps, before or alongside Teams depending on time.
+6. Housekeeping: fix old tool paths in `CLAUDE.md`.
+
+Every new piece of UI tonight is built to that bar, not as a first draft.
 
 ## Questions for Joe
 Decisions an unattended run found it needed; it carried on with other work.
