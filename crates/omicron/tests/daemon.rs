@@ -70,6 +70,11 @@ fn start_daemon(home: &Path, args: &[&str]) -> Daemon {
             cmd.env_remove(k);
         }
     }
+    // A machine "on Tailscale" has a status file in its home.
+    let status = home.join("tailscale.json");
+    if status.exists() {
+        cmd.env("OMICRON_TAILSCALE_STATUS", &status);
+    }
     let mut child = cmd
         .env("OMICRON_HOME", home)
         .arg("daemon")
@@ -415,4 +420,50 @@ fn machines_unseen_for_30_days_are_switched_off_until_switched_back_on() {
     assert_eq!(run(&web, &["machines", "switch-on", &name]).trim(), format!("Switched {name} on."));
     let daemon = start_daemon(&home, &[]);
     daemon.wait_until_listening();
+}
+
+#[test]
+fn picking_a_machine_opens_ssh_to_its_tailnet_name() {
+    let s = supabase_or_skip!();
+    let name = unique("studio");
+    let (home, _) = registered_machine(&s, &name);
+    std::fs::write(
+        home.join("tailscale.json"),
+        json!({ "Self": { "UserID": 1, "DNSName": format!("{name}.example.ts.net.") }, "User": { "1": { "LoginName": "tagged-devices" } } })
+            .to_string(),
+    )
+    .unwrap();
+    let (other, _) = registered_machine(&s, &unique("laptop"));
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+
+    // A stand-in for ssh that prints what it was asked to do.
+    let bin = other.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("ssh"), "#!/bin/sh\necho \"ssh $*\"\n").unwrap();
+    std::process::Command::new("chmod").args(["+x", bin.join("ssh").to_str().unwrap()]).status().unwrap();
+    let pick = |args: &[&str]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
+        for (k, _) in std::env::vars() {
+            if k.starts_with("OMICRON_") {
+                cmd.env_remove(k);
+            }
+        }
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+        cmd.env("OMICRON_HOME", &other).env("PATH", path).args(["machines", "pick"]).args(args).stdin(Stdio::null()).output().unwrap()
+    };
+
+    let out = pick(&[&name]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("ssh {name}.example.ts.net"));
+
+    // Without a name and no one to ask, it lists them and says to name one.
+    let out = pick(&[]);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && said.contains(&format!("{name}  {name}.example.ts.net")) && said.contains("name one"), "{said}");
+
+    // A machine that isn't awake can't be picked.
+    drop(daemon);
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(!pick(&[&name]).status.success());
 }

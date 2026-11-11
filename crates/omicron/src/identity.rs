@@ -55,6 +55,8 @@ struct Status {
 struct SelfNode {
     #[serde(rename = "UserID")]
     user_id: u64,
+    #[serde(rename = "DNSName", default)]
+    dns_name: String,
 }
 
 #[derive(Deserialize)]
@@ -86,6 +88,18 @@ pub fn person_from_status(status_json: &str) -> Result<TailscalePerson> {
 /// Reads the file in `OMICRON_TAILSCALE_STATUS` instead of asking Tailscale
 /// when it's set (for test machines that aren't on Tailscale).
 pub fn local_person() -> Result<TailscalePerson> {
+    person_from_status(&local_status()?)
+}
+
+/// This machine's name on the tailnet, like `atlas.example.ts.net`, if it's
+/// on one. Other machines reach it by this name (`omicron machines pick`).
+pub fn local_tailnet_name() -> Option<String> {
+    let status: Status = serde_json::from_str(&local_status().ok()?).ok()?;
+    let name = status.me?.dns_name.trim_end_matches('.').to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+fn local_status() -> Result<String> {
     let json = match std::env::var_os("OMICRON_TAILSCALE_STATUS") {
         Some(path) => std::fs::read_to_string(&path)
             .with_context(|| format!("couldn't read {}", path.to_string_lossy()))?,
@@ -100,7 +114,7 @@ pub fn local_person() -> Result<TailscalePerson> {
             String::from_utf8(out.stdout).context("Tailscale's status wasn't text")?
         }
     };
-    person_from_status(&json)
+    Ok(json)
 }
 
 /// Work out who a visitor is.

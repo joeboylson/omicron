@@ -113,6 +113,9 @@ enum Machines {
         #[arg(long)]
         print: bool,
     },
+    /// Open a terminal on another awake machine (ssh over Tailscale). Lists
+    /// them to choose from when none is named.
+    Pick { machine: Option<String> },
     /// Save an API key made on another machine with `register --print`
     UseKey {
         key: String,
@@ -293,6 +296,25 @@ fn machines(m: Machines) -> Result<()> {
             println!("Switched {machine} on.");
             Ok(())
         }
+        Machines::Pick { machine } => {
+            let supabase = config.supabase()?;
+            let key = config.machine_key()?;
+            let me = identity::local_tailnet_name();
+            let others: Vec<(String, String)> = awake(&supabase, &key)?
+                .into_iter()
+                .filter_map(|(name, host)| Some((name, host?)))
+                .filter(|(_, host)| Some(host) != me.as_ref())
+                .collect();
+            let (name, host) = match machine {
+                Some(want) => others
+                    .into_iter()
+                    .find(|(n, h)| n.eq_ignore_ascii_case(&want) || h.split('.').next() == Some(want.as_str()))
+                    .with_context(|| format!("{want} isn't awake (its daemon isn't running), or it's this machine"))?,
+                None => pick_one(others)?,
+            };
+            eprintln!("Opening a terminal on {name} ({host})…");
+            exec_ssh(&host)
+        }
         Machines::Awake => {
             let supabase = config.supabase()?;
             let key = config.machine_key()?;
@@ -306,6 +328,11 @@ fn machines(m: Machines) -> Result<()> {
 
 /// Join the shared channel just long enough to see who's connected.
 fn awake_machines(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey) -> Result<Vec<String>> {
+    Ok(awake(supabase, key)?.into_iter().map(|(name, _)| name).collect())
+}
+
+/// Machines that are awake, with their tailnet names when they said them.
+fn awake(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey) -> Result<Vec<(String, Option<String>)>> {
     use omicron::realtime::{self, Event, Listen, Next};
     let stop = std::sync::atomic::AtomicBool::new(false);
     let mut names = None;
@@ -313,7 +340,11 @@ fn awake_machines(supabase: &omicron::supa::Supabase, key: &omicron::supa::Machi
     realtime::listen(supabase, &Listen { tables: &[], announce: None }, || supabase.sign_in_machine(key), &stop, |event| {
         Ok(match event {
             Event::Connected(who) => {
-                names = Some(who.values().filter_map(|d| d["name"].as_str().map(String::from)).collect::<Vec<_>>());
+                names = Some(
+                    who.values()
+                        .filter_map(|d| Some((d["name"].as_str()?.to_string(), d["host"].as_str().map(String::from))))
+                        .collect::<Vec<_>>(),
+                );
                 Next::Stop
             }
             Event::Reconnecting(why) if started.elapsed().as_secs() > 10 => bail!("couldn't reach Realtime: {why}"),
@@ -381,7 +412,11 @@ fn daemon() -> Result<()> {
 
     let listen = Listen {
         tables: &["changes"],
-        announce: Some((key.machine_id.to_string(), json!({ "kind": "machine", "machine_id": key.machine_id, "name": name }))),
+        // The tailnet name lets other machines open a terminal here.
+        announce: Some((
+            key.machine_id.to_string(),
+            json!({ "kind": "machine", "machine_id": key.machine_id, "name": name, "host": identity::local_tailnet_name() }),
+        )),
     };
     // Each new login (on connect, and about hourly after) also records that
     // this machine is still around, so one in use never hits the 30-day
@@ -463,4 +498,32 @@ fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State) ->
     out.flush()?;
     state.mark(seq);
     state.save()
+}
+
+/// Ask which machine, by number.
+fn pick_one(machines: Vec<(String, String)>) -> Result<(String, String)> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if machines.is_empty() {
+        bail!("no other machine is awake (a machine is awake while its `omicron daemon` runs)");
+    }
+    for (i, (name, host)) in machines.iter().enumerate() {
+        eprintln!("{}. {name}  {host}", i + 1);
+    }
+    if !std::io::stdin().is_terminal() {
+        bail!("name one: `omicron machines pick <machine>`");
+    }
+    eprint!("Which one? ");
+    std::io::stderr().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().lock().read_line(&mut answer)?;
+    let n: usize = answer.trim().parse().context("type the number of the machine")?;
+    machines.into_iter().nth(n.wrapping_sub(1)).context("there's no machine with that number")
+}
+
+/// Replace this process with `ssh <host>`, so the terminal tab becomes the
+/// other machine's.
+fn exec_ssh(host: &str) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new("ssh").arg(host).exec();
+    Err(err).context("couldn't run ssh")
 }

@@ -169,7 +169,10 @@ Built in this order. Each part replaces an old tool only once it's ready.
       web page: a chat sheet from the Project's top bar, live.
 
 ## 6. Machines and accounts
-- [ ] `omicron machines`: pick a machine for a new terminal tab.
+- [x] `omicron machines pick [machine]`: open a terminal on another awake
+      machine with `ssh <its tailnet name>` (decided 11 Nov 2026). Each
+      daemon announces its tailnet name with its "awake" status; with no name
+      given it lists them and asks for a number.
 - [ ] `omicron accounts`: switch Claude accounts (rewrite of janus).
 
 ## 7. Teams (rewrite of legion)
