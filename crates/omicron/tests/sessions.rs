@@ -1109,6 +1109,26 @@ fn a_team_runs_a_job_from_start_to_finish() {
     let (_, jobs) = run(&["teams", "jobs", &team], None, None);
     assert_eq!(jobs, "#1\tworking (planner)\tAdd a login page\n");
 
+    // The planner asks a person: a task given to Pat (who added the job),
+    // the job blocked; Pat's answer goes back to the planner.
+    let (okay, out) = run(&["teams", "ask", "Email login, or Google too?"], Some("planner"), t);
+    assert!(okay && out.starts_with("Asked (task #"), "{out}");
+    let (_, jobs) = run(&["teams", "jobs", &team], None, None);
+    assert!(jobs.starts_with("#1\tblocked"), "{jobs}");
+    let n = out.trim_start_matches("Asked (task #").split(')').next().unwrap().to_string();
+    let shown = ok(&pat, None, &["tasks", "show", &project, &n]);
+    assert!(shown.contains(&format!("{team}: planner asks about job #1")) && shown.contains("Email login, or Google too?"), "{shown}");
+    ok(&pat, None, &["tasks", "comment", &project, &n, "Email only for now."]);
+    wait_for("the answer reached the planner", || read(&mac, "planner.typed").contains("Email only for now."));
+    let (_, jobs) = run(&["teams", "jobs", &team], None, None);
+    assert!(jobs.starts_with("#1\tworking"), "{jobs}");
+
+    // A heads-up goes to everyone running, and into the folder.
+    let (okay, out) = run(&["teams", "heads-up", "npm test takes 3 minutes; don't kill it."], Some("planner"), t);
+    assert!(okay, "{out}");
+    wait_for("the lead got the heads-up", || read(&mac, "lead.typed").contains("Heads-up from planner: npm test takes 3 minutes"));
+    assert!(std::fs::read_to_string(folder.join(".omicron-team/heads-ups.md")).unwrap().contains("(planner): npm test takes 3 minutes"));
+
     // The planner hands it to the builder; the lead is told.
     let (okay, out) = run(&["teams", "handoff", "builder", "--note", "Plan: one form, one route."], Some("planner"), t);
     assert!(okay, "{out}");

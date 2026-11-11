@@ -79,7 +79,7 @@ fn commands_text(lead: bool) -> String {
     let mut t = String::from(
         "Your team commands (run them with Bash): \
          `omicron teams handoff <role or done> --note \"<what you did, what's next>\"` passes the job on (done when it's finished); \
-         `omicron teams blocked \"<why>\"` says you're stuck. ",
+         `omicron teams blocked \"<why>\"` says you're stuck; `omicron teams ask \"<question>\"` asks a person (the answer comes back to you); `omicron teams heads-up \"<one line>\"` warns the whole team (a gotcha, a slow command, a file not to touch). ",
     );
     if lead {
         t.push_str(
@@ -248,6 +248,91 @@ pub fn handoff(to: &str, note: &str) -> Result<String> {
     Ok(format!("Handed job #{} to {to}. The lead has been told.", job.number))
 }
 
+/// A team member asks a person something. It becomes a task in the team's
+/// Project, given to whoever added the job (when a person did); the job is
+/// blocked until the answer, a comment there, comes back.
+pub fn ask(question: &str) -> Result<String> {
+    let (board, team, me) = caller()?;
+    let job = my_job(&board, &team, &me).ok();
+    let status = board.supabase.request_as(
+        &board.session,
+        "GET",
+        &format!("/rest/v1/statuses?project_id=eq.{}&is_done=eq.false&select=id&order=position&limit=1", team.project_id),
+        None,
+    )?;
+    let status_id = status.get(0).and_then(|r| r["id"].as_str()).context("the team's Project has no open status")?.to_string();
+    let asker = job.as_ref().map(|j| j.id.clone());
+    let to = match &asker {
+        Some(id) => {
+            let r = board.supabase.request_as(&board.session, "GET", &format!("/rest/v1/jobs?id=eq.{id}&select=created_by"), None)?;
+            let by = r.get(0).and_then(|r| r["created_by"].as_str()).map(String::from);
+            // Only a member of the Project can be given the task.
+            match by {
+                Some(p) => {
+                    let m = board.supabase.request_as(
+                        &board.session,
+                        "GET",
+                        &format!("/rest/v1/project_members?project_id=eq.{}&person_id=eq.{p}&select=person_id", team.project_id),
+                        None,
+                    )?;
+                    m.as_array().is_some_and(|a| !a.is_empty()).then_some(p)
+                }
+                None => None,
+            }
+        }
+        None => None,
+    };
+    let about = job.as_ref().map(|j| format!(" about job #{}", j.number)).unwrap_or_default();
+    let task = board.supabase.request_as(
+        &board.session,
+        "POST",
+        "/rest/v1/tasks",
+        Some(serde_json::json!({
+            "project_id": team.project_id,
+            "status_id": status_id,
+            "title": format!("{}: {me} asks{about}", team.name),
+            "notes": format!("{question}\n\nAnswer with a comment; it goes straight back to {me}."),
+            "assignee_person_id": to,
+        })),
+    )?;
+    let task_id = task[0]["id"].as_str().context("the request wasn't saved")?.to_string();
+    let number = task[0]["number"].as_i64().unwrap_or(0);
+    board.supabase.request_as(
+        &board.session,
+        "POST",
+        "/rest/v1/team_requests",
+        Some(serde_json::json!({ "team_id": team.id, "job_id": asker, "worker": me, "task_id": task_id })),
+    )?;
+    if let Some(j) = &job {
+        board.update_job(j, serde_json::json!({ "state": "blocked", "note": format!("Asked: {question}") }))?;
+    }
+    if me != "lead" {
+        tell(&team.name, "lead", &format!("{me} asked a person{about}: {question} (task #{number}). It'll come back to {me}."))?;
+    }
+    Ok(format!("Asked (task #{number}). The answer will come back to you here; carry on with anything that doesn't need it."))
+}
+
+/// A one-line heads-up for the whole team: kept in the folder's
+/// heads-ups.md and typed to everyone running.
+pub fn heads_up(text: &str) -> Result<String> {
+    let (board, team, me) = caller()?;
+    let line = text.replace(['\n', '\r'], " ");
+    if line.chars().count() > 200 {
+        bail!("a heads-up is one line of at most 200 characters");
+    }
+    let file = Path::new(&team.folder).join(SETUP).join("heads-ups.md");
+    let mut all = std::fs::read_to_string(&file).unwrap_or_else(|_| "# Heads-ups\n\n".into());
+    all.push_str(&format!("- {} ({me}): {line}\n", chrono::Local::now().format("%Y-%m-%d")));
+    std::fs::write(&file, all)?;
+    let mut told = 0;
+    for (w, _, state, _) in board.workers(&team)? {
+        if w != me && matches!(state.as_str(), "busy" | "idle" | "starting") && tell(&team.name, &w, &format!("Heads-up from {me}: {line}"))? {
+            told += 1;
+        }
+    }
+    Ok(format!("Heads-up saved in {SETUP}/heads-ups.md and told to {told} running."))
+}
+
 pub fn blocked(why: &str) -> Result<String> {
     let (board, team, me) = caller()?;
     let job = my_job(&board, &team, &me)?;
@@ -323,6 +408,35 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
                 start_lead(&b, &team)?;
             } else {
                 stop(&team, "lead")?;
+            }
+        }
+        ("comments", "INSERT") => {
+            // An answer to a team's question: pass it back to who asked.
+            if record["session_id"].is_string() {
+                return Ok(());
+            }
+            let b = board()?;
+            let task = record["task_id"].as_str().unwrap_or("");
+            let reqs = b.supabase.request_as(&b.session, "GET", &format!("/rest/v1/team_requests?task_id=eq.{task}&state=eq.open&select=id,team_id,job_id,worker"), None)?;
+            let Some(req) = reqs.get(0) else { return Ok(()) };
+            let Ok(team) = b.team_by_id(req["team_id"].as_str().unwrap_or("")) else { return Ok(()) };
+            if team.machine_id != key.machine_id.to_string() {
+                return Ok(());
+            }
+            let worker = req["worker"].as_str().unwrap_or("lead");
+            let who = record["author_name"].as_str().unwrap_or("someone");
+            let body = record["body"].as_str().unwrap_or("");
+            let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))? || tell(&team.name, "lead", &format!("Answer for {worker} from {who}: {body}"))?;
+            if told {
+                b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")), Some(serde_json::json!({ "state": "answered" })))?;
+                if let Some(job) = req["job_id"].as_str() {
+                    b.supabase.request_as(
+                        &b.session,
+                        "PATCH",
+                        &format!("/rest/v1/jobs?id=eq.{job}&state=eq.blocked"),
+                        Some(serde_json::json!({ "state": "working", "note": format!("Answered by {who}: {body}") })),
+                    )?;
+                }
             }
         }
         ("jobs", "INSERT") => {

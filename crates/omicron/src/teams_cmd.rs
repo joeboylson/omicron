@@ -63,6 +63,10 @@ pub enum Teams {
     },
     /// (Worker) say you're stuck on your job, and why
     Blocked { why: String },
+    /// (Team member) ask a person something; the answer comes back here
+    Ask { question: String },
+    /// (Team member) a one-line warning for the whole team
+    HeadsUp { text: String },
     /// (Lead) finish a job: merge its branch and stop its workers
     Finish { job: i64 },
     /// (Lead) stop a worker
@@ -219,6 +223,8 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
         }
         Teams::Handoff { to, note } => println!("{}", crate::teams_run::handoff(&to, &note)?),
         Teams::Blocked { why } => println!("{}", crate::teams_run::blocked(&why)?),
+        Teams::Ask { question } => println!("{}", crate::teams_run::ask(&question)?),
+        Teams::HeadsUp { text } => println!("{}", crate::teams_run::heads_up(&text)?),
         Teams::Finish { job } => println!("{}", crate::teams_run::finish(job)?),
         Teams::StopWorker { name } => println!("{}", crate::teams_run::stop_worker(&name)?),
         Teams::Jobs { team } => {

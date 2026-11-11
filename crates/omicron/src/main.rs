@@ -525,7 +525,7 @@ fn daemon() -> Result<()> {
     let runner = loops_cmd::Runner::start(supabase.clone(), key.clone(), name.clone());
     let react = |row: &serde_json::Value| {
         runner.heard(row);
-        if matches!(row["table_name"].as_str(), Some("teams" | "jobs")) {
+        if matches!(row["table_name"].as_str(), Some("teams" | "jobs" | "comments")) {
             let (supabase, key, row) = (supabase.clone(), key.clone(), row.clone());
             std::thread::spawn(move || {
                 if let Err(e) = teams_run::heard(&supabase, &key, &row) {
