@@ -192,3 +192,58 @@ fn it_switches_on_its_own_at_a_limit_and_back_when_it_resets() {
     go(&["accounts", "resume"]);
     assert!(go(&["accounts", "auto", "check"]).contains("Switched Claude Code to work"));
 }
+
+#[test]
+fn a_session_can_stay_on_one_account() {
+    let h = new_home();
+    // A stand-in for claude: `setup-token` says what it would, anything else
+    // prints the token it was given and its arguments.
+    let bin = h.claude.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(
+        bin.join("claude"),
+        "#!/bin/sh\nif [ \"$1\" = setup-token ]; then echo 'Your token: sk-ant-oat01-abcdefghijklmnop'; exit 0; fi\necho \"claude $* with $CLAUDE_CODE_OAUTH_TOKEN\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(bin.join("claude"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let go = |args: &[&str], input: &str| {
+        use std::io::Write;
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
+        for (k, _) in std::env::vars() {
+            if k.starts_with("OMICRON_") {
+                cmd.env_remove(k);
+            }
+        }
+        let mut child = cmd
+            .env("OMICRON_HOME", &h.omicron)
+            .env("PATH", &path)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        let out = child.wait_with_output().unwrap();
+        (out.status.success(), String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string())
+    };
+
+    // First time: setup-token, the pasted token is saved, then claude runs with it.
+    let (good, out, err) = go(&["accounts", "run", "work", "--resume", "-p", "hi"], "sk-ant-oat01-abcdefghijklmnop\n");
+    assert!(good, "{err}");
+    assert!(out.contains("Your token:"), "{out}");
+    assert!(out.trim_end().ends_with("claude --resume -p hi with sk-ant-oat01-abcdefghijklmnop"), "{out}");
+    let saved = h.omicron.join("accounts/work.token");
+    assert_eq!(std::fs::metadata(&saved).unwrap().permissions().mode() & 0o777, 0o600);
+
+    // After that it asks nothing.
+    let (good, out, _) = go(&["accounts", "run", "work"], "");
+    assert!(good);
+    assert_eq!(out.trim(), "claude  with sk-ant-oat01-abcdefghijklmnop");
+
+    // A pasted line that isn't a token isn't saved.
+    let (good, _, err) = go(&["accounts", "run", "work", "--new-token"], "oops\n");
+    assert!(!good && err.contains("doesn't look like the token"), "{err}");
+    assert!(go(&["accounts", "run", "work"], "").1.contains("sk-ant-oat01-abcdefghijklmnop"), "the old token is kept");
+}

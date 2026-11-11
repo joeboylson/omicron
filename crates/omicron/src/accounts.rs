@@ -548,3 +548,47 @@ mod tests {
         assert_eq!(a.decide(Some("personal"), Some(&used(99.0, 2, 99.0)), Some(&used(1.0, 2, 1.0)), Utc::now()), None);
     }
 }
+
+// ---- one session on one account ---------------------------------------------
+
+/// A long-lived token for one account, from `claude setup-token`, kept in
+/// `~/.omicron/accounts/<name>.token` with the day it was made. A session
+/// started with it in `CLAUDE_CODE_OAUTH_TOKEN` stays on that account
+/// whatever happens to Claude Code's shared login.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionToken {
+    pub token: String,
+    pub made: DateTime<Utc>,
+}
+
+impl SessionToken {
+    /// Tokens from `claude setup-token` last a year.
+    pub fn expires(&self) -> DateTime<Utc> {
+        self.made + chrono::Duration::days(365)
+    }
+}
+
+fn token_path(name: &str) -> Result<PathBuf> {
+    check_name(name)?;
+    Ok(accounts_dir()?.join(format!("{name}.token")))
+}
+
+pub fn session_token(name: &str) -> Result<Option<SessionToken>> {
+    let doc = read_object(&token_path(name)?)?;
+    if doc.is_empty() {
+        return Ok(None);
+    }
+    Ok(serde_json::from_value(Value::Object(doc)).ok())
+}
+
+/// Save a token pasted from `claude setup-token`. Checks it looks like one.
+pub fn save_session_token(name: &str, token: &str) -> Result<SessionToken> {
+    let token = token.trim();
+    if !token.starts_with("sk-ant-") || token.len() < 20 || token.contains(char::is_whitespace) {
+        bail!("that doesn't look like the token `claude setup-token` prints (it starts with sk-ant-)");
+    }
+    let t = SessionToken { token: token.to_string(), made: Utc::now() };
+    let Value::Object(doc) = serde_json::to_value(&t)? else { unreachable!() };
+    write_object(&token_path(name)?, &doc, 0o600)?;
+    Ok(t)
+}

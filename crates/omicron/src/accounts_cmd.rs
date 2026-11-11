@@ -1,6 +1,6 @@
 //! `omicron accounts`: Claude accounts on this machine (rewrite of janus).
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use omicron::accounts::{self, Auto, Window};
 
@@ -23,6 +23,16 @@ pub enum Accounts {
     Auto(AutoCmd),
     /// After picking an account by hand, let it switch on its own again
     Resume,
+    /// Start a Claude Code session that stays on one account, whatever
+    /// happens to the shared login. Anything after the name goes to claude.
+    Run {
+        name: String,
+        /// Replace the account's saved long-lived token first
+        #[arg(long)]
+        new_token: bool,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -111,6 +121,7 @@ pub fn accounts(cmd: Accounts) -> Result<()> {
             println!("It can switch on its own again.");
         }
         Accounts::Auto(cmd) => auto_cmd(cmd)?,
+        Accounts::Run { name, new_token, args } => run(&name, new_token, &args)?,
         Accounts::Remove { name } => {
             accounts::remove(&name)?;
             println!("Forgot {name}.");
@@ -190,4 +201,40 @@ fn show(a: &Auto) {
     if let Some(h) = &a.held {
         println!("Held on {h} (picked by hand) until `omicron accounts resume`.");
     }
+}
+
+/// `omicron accounts run`: get the account's long-lived token (asking for
+/// one the first time), then become `claude` with it.
+fn run(name: &str, new_token: bool, args: &[String]) -> Result<()> {
+    use std::io::{BufRead, Write};
+    let token = match accounts::session_token(name)? {
+        Some(t) if !new_token => t,
+        _ => {
+            eprintln!("A session that stays on {name} needs a long-lived token for it (it lasts a year).");
+            eprintln!("`claude setup-token` opens your browser: sign in there as {name}, then paste the token it prints.\n");
+            let status = std::process::Command::new("claude").arg("setup-token").status();
+            match status {
+                Ok(s) if s.success() => {}
+                Ok(_) => anyhow::bail!("`claude setup-token` didn't finish"),
+                Err(e) => anyhow::bail!("couldn't run claude: {e}"),
+            }
+            eprint!("\nPaste the token here: ");
+            std::io::stderr().flush()?;
+            let mut line = String::new();
+            std::io::stdin().lock().read_line(&mut line)?;
+            let t = accounts::save_session_token(name, &line)?;
+            eprintln!("Saved. `omicron accounts run {name}` won't ask again until it runs out.");
+            t
+        }
+    };
+    let left = (token.expires() - chrono::Utc::now()).num_days();
+    if left < 0 {
+        anyhow::bail!("{name}'s token ran out. Make a new one with `omicron accounts run {name} --new-token`.");
+    }
+    if left < 30 {
+        eprintln!("{name}'s token runs out in {left} days. Replace it with `omicron accounts run {name} --new-token`.");
+    }
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new("claude").args(args).env("CLAUDE_CODE_OAUTH_TOKEN", &token.token).exec();
+    Err(err).context("couldn't run claude")
 }

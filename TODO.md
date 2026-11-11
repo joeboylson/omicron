@@ -192,8 +192,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       secondary at a limit and back when it resets; picking one by hand holds
       it. `omicron daemon` checks every 2 minutes while it's on. Tested with a
       stand-in usage server (`tests/accounts.rs`).
-- [ ] `omicron accounts run <name>`: one session that stays on one account
-      (`claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN`).
+- [x] `omicron accounts run <name> [claude args]`: one session that stays on
+      one account. The first time it runs `claude setup-token` and saves the
+      pasted token (`~/.omicron/accounts/<name>.token`, private); then it
+      starts `claude` with `CLAUDE_CODE_OAUTH_TOKEN`. Warns a month before the
+      token's year is up; `--new-token` replaces it.
 - [ ] Web page: each machine's account and usage (names and percentages
       only; logins never leave the machine).
 
