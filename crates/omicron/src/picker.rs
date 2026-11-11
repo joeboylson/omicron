@@ -1,11 +1,21 @@
-//! `omicron sessions pick`: a full-screen list of this machine's sessions.
-//! Arrow keys (or Ctrl-P/Ctrl-N) move, typing filters by name or Project,
-//! Enter jumps in (reopening a closed one in the host first), Esc quits.
+//! Full-screen pickers: `omicron sessions pick` (this machine's sessions)
+//! and `omicron teams pick` (this machine's running team members).
+//! Arrow keys (or Ctrl-P/Ctrl-N) move, typing filters by any column,
+//! Enter jumps in (reopening a closed session in the host first), Esc quits.
 
 use crate::board_cmd::sign_in;
 use anyhow::{bail, Context, Result};
 use omicron::board::SessionRecord;
 use std::io::{Read, Write};
+
+/// A line in a picker: the name Enter acts on, then what's shown beside it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    pub name: String,
+    pub status: String,
+    pub group: String,
+    pub detail: String,
+}
 
 /// One row: a session and whether it's running in the host here.
 #[derive(Debug, Clone)]
@@ -22,6 +32,15 @@ impl Entry {
             (false, "open") => "open elsewhere",
             (false, "closed") => "closed",
             _ => "crashed",
+        }
+    }
+
+    fn row(&self) -> Row {
+        Row {
+            name: self.session.name.clone(),
+            status: self.status().into(),
+            group: self.session.project.clone(),
+            detail: self.session.folder.clone(),
         }
     }
 }
@@ -47,12 +66,13 @@ pub fn entries(sessions: Vec<SessionRecord>, machine_id: &str, hosted: &[String]
     list
 }
 
-/// The rows matching what's typed (every word, in the name or Project).
-pub fn matching<'a>(list: &'a [Entry], query: &str) -> Vec<&'a Entry> {
+/// The rows matching what's typed (every word, in the name, status or group).
+pub fn matching(rows: &[Row], query: &str) -> Vec<usize> {
     let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
-    list.iter()
-        .filter(|e| {
-            let text = format!("{} {}", e.session.name, e.session.project).to_lowercase();
+    (0..rows.len())
+        .filter(|&i| {
+            let r = &rows[i];
+            let text = format!("{} {} {}", r.name, r.status, r.group).to_lowercase();
             words.iter().all(|w| text.contains(w.as_str()))
         })
         .collect()
@@ -74,7 +94,9 @@ pub fn pick() -> Result<()> {
         }
         return Ok(());
     }
-    let Some(chosen) = choose(&list)? else { return Ok(()) };
+    let rows: Vec<Row> = list.iter().map(Entry::row).collect();
+    let Some(at) = choose("Sessions on this machine", &rows)? else { return Ok(()) };
+    let chosen = &list[at];
     let s = &chosen.session;
     if chosen.hosted {
         omicron::host::attach(&s.name)?;
@@ -89,8 +111,76 @@ pub fn pick() -> Result<()> {
     Ok(())
 }
 
+/// A team member, as `omicron teams pick` lists it.
+#[derive(Debug, Clone)]
+pub struct Member {
+    pub team: String,
+    pub worker: String,
+    pub role: String,
+    pub state: String,
+    /// The job it's on, like "#3 Add a login page".
+    pub job: Option<String>,
+}
+
+/// The members running in the host here (only one team's, if named): by
+/// team, the lead first, then by name.
+pub fn team_rows(mut members: Vec<Member>, hosted: &[String], only: Option<&str>) -> Vec<Row> {
+    members.retain(|m| only.map_or(true, |t| m.team.eq_ignore_ascii_case(t)));
+    members.retain(|m| hosted.contains(&crate::teams_run::host_name(&m.team, &m.worker)));
+    members.sort_by(|a, b| a.team.cmp(&b.team).then((a.worker != "lead").cmp(&(b.worker != "lead"))).then(a.worker.cmp(&b.worker)));
+    members
+        .into_iter()
+        .map(|m| Row {
+            name: crate::teams_run::host_name(&m.team, &m.worker),
+            status: m.state,
+            group: m.role,
+            detail: m.job.unwrap_or_default(),
+        })
+        .collect()
+}
+
+/// `omicron teams pick [team]`.
+pub fn pick_team(team: Option<String>) -> Result<()> {
+    let board = sign_in(true)?;
+    let me = omicron::config::Config::load()?.machine_key()?.machine_id.to_string();
+    let hosted = omicron::host::hosted()?;
+    let mut members = Vec::new();
+    for t in board.teams()?.into_iter().filter(|t| t.machine_id == me) {
+        if team.as_deref().is_some_and(|n| !t.name.eq_ignore_ascii_case(n)) {
+            continue;
+        }
+        let jobs = board.jobs(&t)?;
+        for (worker, role, state, job_id) in board.workers(&t)? {
+            let job = job_id.and_then(|id| jobs.iter().find(|j| j.id == id)).map(|j| format!("#{} {}", j.number, j.title));
+            members.push(Member { team: t.name.clone(), worker, role, state, job });
+        }
+    }
+    let rows = team_rows(members, &hosted, team.as_deref());
+    if rows.is_empty() {
+        match &team {
+            Some(t) => println!("Nobody in {t} is running on this machine. Start the team with `omicron teams start`."),
+            None => println!("No team members are running on this machine. Start a team with `omicron teams start`."),
+        }
+        return Ok(());
+    }
+    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        for r in &rows {
+            println!("{}\t{}\t{}\t{}", r.name, r.group, r.status, r.detail);
+        }
+        return Ok(());
+    }
+    let title = match &team {
+        Some(t) => format!("{t} on this machine"),
+        None => "Team members on this machine".to_string(),
+    };
+    if let Some(at) = choose(&title, &rows)? {
+        omicron::host::attach(&rows[at].name)?;
+    }
+    Ok(())
+}
+
 /// The full-screen part. None if they quit.
-fn choose(list: &[Entry]) -> Result<Option<Entry>> {
+pub fn choose(title: &str, rows: &[Row]) -> Result<Option<usize>> {
     use nix::sys::termios;
     let stdin = std::io::stdin();
     let saved = termios::tcgetattr(&stdin).context("the picker needs a terminal")?;
@@ -100,21 +190,22 @@ fn choose(list: &[Entry]) -> Result<Option<Entry>> {
     let mut out = std::io::stdout();
     // The alternate screen, so the terminal's contents come back after.
     write!(out, "\x1b[?1049h\x1b[?25l")?;
-    let result = run(list, &mut out);
+    let result = run(title, rows, &mut out);
     let _ = write!(out, "\x1b[?25h\x1b[?1049l");
     let _ = out.flush();
     let _ = termios::tcsetattr(&std::io::stdin(), termios::SetArg::TCSANOW, &saved);
     result
 }
 
-fn run(list: &[Entry], out: &mut std::io::Stdout) -> Result<Option<Entry>> {
+fn run(title: &str, list: &[Row], out: &mut std::io::Stdout) -> Result<Option<usize>> {
     let mut query = String::new();
     let mut at = 0usize;
     let mut input = std::io::stdin();
     loop {
         let rows = matching(list, &query);
         at = at.min(rows.len().saturating_sub(1));
-        draw(out, &rows, at, &query)?;
+        let shown: Vec<&Row> = rows.iter().map(|&i| &list[i]).collect();
+        draw(out, title, &shown, at, &query)?;
         let mut key = [0u8; 8];
         let n = input.read(&mut key)?;
         match &key[..n] {
@@ -122,8 +213,8 @@ fn run(list: &[Entry], out: &mut std::io::Stdout) -> Result<Option<Entry>> {
             [0x1b, b'[', b'A'] | [0x10] => at = at.saturating_sub(1),
             [0x1b, b'[', b'B'] | [0x0e] => at = (at + 1).min(rows.len().saturating_sub(1)),
             [b'\r'] | [b'\n'] => {
-                if let Some(e) = rows.get(at) {
-                    return Ok(Some((*e).clone()));
+                if let Some(&i) = rows.get(at) {
+                    return Ok(Some(i));
                 }
             }
             [0x7f] | [0x08] => {
@@ -142,23 +233,18 @@ fn run(list: &[Entry], out: &mut std::io::Stdout) -> Result<Option<Entry>> {
     }
 }
 
-fn draw(out: &mut std::io::Stdout, rows: &[&Entry], at: usize, query: &str) -> Result<()> {
+fn draw(out: &mut std::io::Stdout, title: &str, rows: &[&Row], at: usize, query: &str) -> Result<()> {
     // Raw mode: lines end with \r\n.
     let mut screen = String::from("\x1b[H\x1b[2J");
-    screen.push_str("\x1b[1mSessions on this machine\x1b[0m\r\n");
+    screen.push_str(&format!("\x1b[1m{title}\x1b[0m\r\n"));
     screen.push_str(&format!("\x1b[2mFilter:\x1b[0m {query}\r\n\r\n"));
     if rows.is_empty() {
         screen.push_str("  \x1b[2mNothing matches.\x1b[0m\r\n");
     }
-    let width = rows.iter().map(|e| e.session.name.chars().count()).max().unwrap_or(0);
-    for (i, e) in rows.iter().enumerate() {
-        let line = format!(
-            "{:<width$}  {:<14}  {}  \x1b[2m{}\x1b[0m",
-            e.session.name,
-            e.status(),
-            e.session.project,
-            e.session.folder,
-        );
+    let width = rows.iter().map(|r| r.name.chars().count()).max().unwrap_or(0);
+    let status = rows.iter().map(|r| r.status.chars().count()).max().unwrap_or(0);
+    for (i, r) in rows.iter().enumerate() {
+        let line = format!("{:<width$}  {:<status$}  {}  \x1b[2m{}\x1b[0m", r.name, r.status, r.group, r.detail);
         if i == at {
             screen.push_str(&format!("\x1b[7m› {line}\x1b[0m\r\n"));
         } else {
@@ -208,9 +294,35 @@ mod tests {
             [("web", "running"), ("parser", "open elsewhere"), ("alpha", "closed"), ("zeta", "closed"), ("crashed", "crashed")]
         );
         // Filtering by name and Project, every word.
-        let names = |q: &str| matching(&list, q).iter().map(|e| e.session.name.clone()).collect::<Vec<_>>();
+        let rows: Vec<Row> = list.iter().map(Entry::row).collect();
+        let names = |q: &str| matching(&rows, q).iter().map(|&i| rows[i].name.clone()).collect::<Vec<_>>();
         assert_eq!(names("site"), ["web"]);
         assert_eq!(names("code r"), ["parser", "crashed"]);
         assert!(names("nothing").is_empty());
+    }
+
+    #[test]
+    fn team_members_running_here_lead_first() {
+        let m = |team: &str, worker: &str, role: &str, job: Option<&str>| Member {
+            team: team.into(),
+            worker: worker.into(),
+            role: role.into(),
+            state: "busy".into(),
+            job: job.map(String::from),
+        };
+        let all = vec![
+            m("web", "builder-1", "builder", Some("#2 Fix the footer")),
+            m("web", "lead", "lead", None),
+            m("web", "reviewer-1", "reviewer", None),
+            m("api", "lead", "lead", None),
+        ];
+        let hosted: Vec<String> = ["web.builder-1", "web.lead", "api.lead", "other"].map(String::from).to_vec();
+        let names = |only| team_rows(all.clone(), &hosted, only).into_iter().map(|r| r.name).collect::<Vec<_>>();
+        assert_eq!(names(None), ["api.lead", "web.lead", "web.builder-1"]);
+        assert_eq!(names(Some("WEB")), ["web.lead", "web.builder-1"]);
+        let rows = team_rows(all.clone(), &hosted, None);
+        assert_eq!(rows[2], Row { name: "web.builder-1".into(), status: "busy".into(), group: "builder".into(), detail: "#2 Fix the footer".into() });
+        let found = matching(&rows, "web build");
+        assert_eq!(found, [2]);
     }
 }

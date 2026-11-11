@@ -39,6 +39,11 @@ pub enum Teams {
     Stop { team: String },
     /// The teams you can see
     List,
+    /// Pick a team member running on this machine and jump into its terminal
+    Pick {
+        /// Only this team's members
+        team: Option<String>,
+    },
     /// Give a team a job
     AddJob {
         team: String,
@@ -211,6 +216,7 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
                 println!("{}\t{}\t{}\t{} open jobs\t{}", t.name, t.state, t.workflow, open, t.folder);
             }
         }
+        Teams::Pick { team } => crate::picker::pick_team(team)?,
         Teams::AddJob { team, title, text } => {
             let board = sign_in(as_machine)?;
             let t = board.team(&team)?;
