@@ -1083,6 +1083,46 @@ impl Board {
         Ok(serde_json::from_value(rows[0].clone())?)
     }
 
+    pub fn team_by_id(&self, id: &str) -> Result<TeamRow> {
+        let rows: Vec<TeamRow> = serde_json::from_value(self.get(&format!("/rest/v1/teams?id=eq.{id}"))?)?;
+        rows.into_iter().next().context("the team is gone")
+    }
+
+    pub fn job(&self, team: &TeamRow, number: i64) -> Result<Job> {
+        let rows: Vec<Job> = serde_json::from_value(self.get(&format!("/rest/v1/jobs?team_id=eq.{}&number=eq.{number}", team.id))?)?;
+        rows.into_iter().next().with_context(|| format!("{} has no job #{number}", team.name))
+    }
+
+    pub fn update_job(&self, job: &Job, change: Value) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/jobs?id=eq.{}", job.id), change)?;
+        Ok(())
+    }
+
+    /// A team's workers: (name, role, state, job id).
+    pub fn workers(&self, team: &TeamRow) -> Result<Vec<(String, String, String, Option<String>)>> {
+        let rows = self.get(&format!("/rest/v1/workers?team_id=eq.{}&select=name,role,state,job_id&order=name", team.id))?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| {
+                let s = |k: &str| r[k].as_str().unwrap_or("").to_string();
+                (s("name"), s("role"), s("state"), r["job_id"].as_str().map(String::from))
+            })
+            .collect())
+    }
+
+    /// Record a worker (added, or changed if it's there). Only the team's machine can.
+    pub fn set_worker(&self, team: &TeamRow, name: &str, role: &str, state: &str, job_id: Option<&str>) -> Result<()> {
+        let body = json!({ "team_id": team.id, "name": name, "role": role, "state": state, "job_id": job_id });
+        let here = self.get(&format!("/rest/v1/workers?team_id=eq.{}&name=eq.{}&select=id", team.id, enc(name)))?;
+        match here.get(0).and_then(|r| r["id"].as_str()) {
+            Some(id) => self.send("PATCH", &format!("/rest/v1/workers?id=eq.{id}"), body)?,
+            None => self.send("POST", "/rest/v1/workers", body)?,
+        };
+        Ok(())
+    }
+
     pub fn jobs(&self, team: &TeamRow) -> Result<Vec<Job>> {
         Ok(serde_json::from_value(self.get(&format!("/rest/v1/jobs?team_id=eq.{}&order=number", team.id))?)?)
     }

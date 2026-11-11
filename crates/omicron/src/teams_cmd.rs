@@ -49,6 +49,24 @@ pub enum Teams {
     },
     /// A team's jobs
     Jobs { team: String },
+    /// (Lead) start a worker in a role on a job
+    StartWorker {
+        role: String,
+        #[arg(long)]
+        job: i64,
+    },
+    /// (Worker) pass your job on to a role, or `done`
+    Handoff {
+        to: String,
+        #[arg(long, default_value = "")]
+        note: String,
+    },
+    /// (Worker) say you're stuck on your job, and why
+    Blocked { why: String },
+    /// (Lead) finish a job: merge its branch and stop its workers
+    Finish { job: i64 },
+    /// (Lead) stop a worker
+    StopWorker { name: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -195,6 +213,14 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
             let job = board.add_job(&t, &title, &text)?;
             println!("Added job #{} to {}: {}", job.number, t.name, job.title);
         }
+        Teams::StartWorker { role, job } => {
+            let name = crate::teams_run::start_worker(&role, job)?;
+            println!("Started {name} on job #{job}.");
+        }
+        Teams::Handoff { to, note } => println!("{}", crate::teams_run::handoff(&to, &note)?),
+        Teams::Blocked { why } => println!("{}", crate::teams_run::blocked(&why)?),
+        Teams::Finish { job } => println!("{}", crate::teams_run::finish(job)?),
+        Teams::StopWorker { name } => println!("{}", crate::teams_run::stop_worker(&name)?),
         Teams::Jobs { team } => {
             let board = sign_in(as_machine)?;
             let t = board.team(&team)?;

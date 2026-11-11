@@ -1024,3 +1024,118 @@ fn rename_in_claude_renames_the_session_and_its_host_keeps_answering() {
     ok(&mac, None, &["sessions", "send", "parser-work", "\u{4}"]);
     d.kill().unwrap();
 }
+
+/// A stand-in claude for team sessions: writes how it was started to
+/// `claude/<worker>.args` (one per line) and each line typed into it to
+/// `claude/<worker>.typed`; ends on /exit.
+fn team_claude(c: &Computer) -> String {
+    let bin = c.home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(
+        bin.join("claude"),
+        "#!/bin/sh\nd=\"$OMICRON_HOME/claude\"; mkdir -p \"$d\"\nprintf '%s\\n' \"$@\" > \"$d/$OMICRON_WORKER.args\"\nwhile read -r line; do echo \"$line\" >> \"$d/$OMICRON_WORKER.typed\"; [ \"$line\" = \"/exit\" ] && exit 0; done\n",
+    )
+    .unwrap();
+    Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
+    format!("{}:{}", bin.display(), std::env::var("PATH").unwrap())
+}
+
+fn read(c: &Computer, file: &str) -> String {
+    std::fs::read_to_string(c.home.join("claude").join(file)).unwrap_or_default()
+}
+
+#[test]
+fn a_team_runs_a_job_from_start_to_finish() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    let short = PathBuf::from(format!("/tmp/ot-{}", &Uuid::new_v4().simple().to_string()[..8]));
+    std::fs::rename(&mac.home, &short).unwrap();
+    let mac = Computer { home: short, tailscale: None };
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let path = team_claude(&mac);
+
+    // A git folder for the team.
+    let folder = mac.home.join("app");
+    std::fs::create_dir_all(&folder).unwrap();
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let o = Command::new("git").arg("-C").arg(dir).args(["-c", "user.email=t@x", "-c", "user.name=T"]).args(args).output().unwrap();
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).to_string()
+    };
+    git(&folder, &["init", "-q", "-b", "main"]);
+    git(&folder, &["config", "user.email", "t@x"]);
+    git(&folder, &["config", "user.name", "T"]);
+    std::fs::write(folder.join("README.md"), "app\n").unwrap();
+    git(&folder, &["add", "."]);
+    git(&folder, &["commit", "-qm", "start"]);
+
+    let team = format!("web{}", &Uuid::new_v4().simple().to_string()[..4]);
+    let run = |args: &[&str], worker: Option<&str>, team_id: Option<&str>| {
+        let mut c = command(&mac, None, args);
+        c.env("PATH", &path).current_dir(&folder);
+        if let (Some(w), Some(t)) = (worker, team_id) {
+            c.env("OMICRON_TEAM", t).env("OMICRON_WORKER", w);
+        }
+        let o = c.output().unwrap();
+        (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
+    };
+    assert!(run(&["teams", "init", "--name", &team], None, None).0);
+    let mut d = daemon(&mac, &path);
+    let (okay, out) = run(&["teams", "start", "--project", &project], None, None);
+    assert!(okay, "{out}");
+
+    // The daemon starts the lead, with its instructions.
+    wait_for("the lead started", || !read(&mac, "lead.args").is_empty());
+    assert!(read(&mac, "lead.args").contains(&format!("You are the lead of the team {team}")));
+    let tid = s.admin_request("GET", &format!("/rest/v1/teams?name=eq.{team}&select=id"), None).unwrap()[0]["id"].as_str().unwrap().to_string();
+    let t = Some(tid.as_str());
+
+    // A new job: the lead is told.
+    assert!(run(&["teams", "add-job", &team, "Add a login page"], None, None).0);
+    wait_for("the lead told about the job", || read(&mac, "lead.typed").contains("New job #1: Add a login page"));
+
+    // Only the lead starts workers.
+    let (okay, out) = run(&["teams", "start-worker", "planner", "--job", "1"], Some("builder"), t);
+    assert!(!okay && out.contains("only the lead can start workers"), "{out}");
+    let (okay, out) = run(&["teams", "start-worker", "planner", "--job", "1"], Some("lead"), t);
+    assert!(okay && out.trim() == "Started planner on job #1.", "{out}");
+    wait_for("the planner started", || read(&mac, "planner.args").contains("Job #1: Add a login page"));
+    // One per job and role.
+    let (okay, out) = run(&["teams", "start-worker", "planner", "--job", "1"], Some("lead"), t);
+    assert!(!okay && out.contains("planner is already on job #1"), "{out}");
+    let (_, jobs) = run(&["teams", "jobs", &team], None, None);
+    assert_eq!(jobs, "#1\tworking (planner)\tAdd a login page\n");
+
+    // The planner hands it to the builder; the lead is told.
+    let (okay, out) = run(&["teams", "handoff", "builder", "--note", "Plan: one form, one route."], Some("planner"), t);
+    assert!(okay, "{out}");
+    wait_for("the lead told about the handoff", || read(&mac, "lead.typed").contains("planner handed job #1 to builder"));
+    assert!(run(&["teams", "start-worker", "builder", "--job", "1"], Some("lead"), t).0);
+    wait_for("the builder started", || read(&mac, "builder.args").contains("Notes so far: Plan: one form, one route."));
+
+    // The builder works in the job's own worktree, on its branch, and says it's done.
+    let worktree = mac.home.join("teams").join(format!("{team}-{}", &tid[..8])).join("job-1");
+    assert_eq!(git(&worktree, &["branch", "--show-current"]).trim(), "job/1-add-a-login-page");
+    std::fs::write(worktree.join("login.html"), "<form></form>\n").unwrap();
+    git(&worktree, &["add", "."]);
+    git(&worktree, &["commit", "-qm", "Login page"]);
+    assert!(run(&["teams", "handoff", "done", "--note", "Built and tested."], Some("builder"), t).0);
+    wait_for("the lead told it's done", || read(&mac, "lead.typed").contains("builder says job #1 is done"));
+
+    // The lead finishes it: merged onto main, workers stopped.
+    let (okay, out) = run(&["teams", "finish", "1"], Some("lead"), t);
+    assert!(okay, "{out}");
+    assert!(folder.join("login.html").exists(), "merged onto the base branch");
+    assert!(git(&folder, &["log", "--oneline", "-1"]).contains("Job #1: Add a login page"));
+    wait_for("its workers stopped", || read(&mac, "builder.typed").contains("/exit") && read(&mac, "planner.typed").contains("/exit"));
+    let (_, jobs) = run(&["teams", "jobs", &team], None, None);
+    assert!(jobs.starts_with("#1\tdone"), "{jobs}");
+
+    // Stopping the team stops the lead.
+    run(&["teams", "stop", &team], None, None);
+    wait_for("the lead stopped", || read(&mac, "lead.typed").contains("/exit"));
+    d.kill().unwrap();
+}

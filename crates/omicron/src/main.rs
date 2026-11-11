@@ -13,6 +13,7 @@ mod handoff_cmd;
 mod loops_cmd;
 mod picker;
 mod teams_cmd;
+mod teams_run;
 mod sessions_cmd;
 
 /// Tasks, Projects, and Claude sessions in one tool.
@@ -524,6 +525,14 @@ fn daemon() -> Result<()> {
     let runner = loops_cmd::Runner::start(supabase.clone(), key.clone(), name.clone());
     let react = |row: &serde_json::Value| {
         runner.heard(row);
+        if matches!(row["table_name"].as_str(), Some("teams" | "jobs")) {
+            let (supabase, key, row) = (supabase.clone(), key.clone(), row.clone());
+            std::thread::spawn(move || {
+                if let Err(e) = teams_run::heard(&supabase, &key, &row) {
+                    eprintln!("omicron daemon: teams: {e:#}");
+                }
+            });
+        }
         if row["table_name"] == "dispatches" && row["kind"] == "INSERT" {
             let (supabase, key, name, record) = (supabase.clone(), key.clone(), name.clone(), row["record"].clone());
             std::thread::spawn(move || {
@@ -540,6 +549,15 @@ fn daemon() -> Result<()> {
                 catch_up(&supabase, &session, &mut state, &react)?;
                 // Loops changed while this wasn't listening are read afresh.
                 runner.reload()?;
+                // Running teams here get their lead back (after a restart).
+                {
+                    let (supabase, key) = (supabase.clone(), key.clone());
+                    std::thread::spawn(move || {
+                        if let Err(e) = teams_run::bring_back(&supabase, &key) {
+                            eprintln!("omicron daemon: teams: {e:#}");
+                        }
+                    });
+                }
                 eprintln!("omicron daemon: {name} is listening for changes");
             }
             Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
