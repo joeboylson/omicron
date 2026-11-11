@@ -277,9 +277,11 @@ pub struct SessionRecord {
     pub state: String,
     pub claude_session_id: Option<String>,
     pub folder: String,
+    /// Why it's gone, when it is.
+    pub gone_why: Option<String>,
 }
 
-const SESSION_FIELDS: &str = "id,project_id,machine_id,name,state,claude_session_id,folder,projects(name),machines(name)";
+const SESSION_FIELDS: &str = "id,project_id,machine_id,name,state,gone_why,claude_session_id,folder,projects(name),machines(name)";
 
 fn session_from(v: &Value) -> Result<SessionRecord> {
     Ok(SessionRecord {
@@ -292,6 +294,7 @@ fn session_from(v: &Value) -> Result<SessionRecord> {
         state: v["state"].as_str().unwrap_or("").to_string(),
         claude_session_id: v["claude_session_id"].as_str().map(String::from),
         folder: v["folder"].as_str().unwrap_or("").to_string(),
+        gone_why: v["gone_why"].as_str().map(String::from),
     })
 }
 
@@ -679,6 +682,22 @@ impl Board {
             .flatten()
             .map(|v| Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?)))
             .collect()
+    }
+
+    /// Give the open tasks of a session to a member (`to_person`) or to
+    /// another session in the Project. Returns how many.
+    pub fn give_session_tasks(&self, project: &Project, from: &str, to_person: Option<&str>, to_session: Option<&str>) -> Result<usize> {
+        let from = self.session(project, from)?;
+        let change = match (to_person, to_session) {
+            (Some(p), None) => json!({ "assignee_person_id": self.member_id(project, p)?, "assignee_session_id": null }),
+            (None, Some(s)) => json!({ "assignee_session_id": self.session(project, s)?.id, "assignee_person_id": null }),
+            _ => bail!("give them to a member or to a session"),
+        };
+        let ids: Vec<String> = self.session_tasks(&from.id)?.into_iter().map(|(_, t)| t.id).collect();
+        if !ids.is_empty() {
+            self.send("PATCH", &format!("/rest/v1/tasks?id=in.({})", ids.join(",")), change)?;
+        }
+        Ok(ids.len())
     }
 
     /// Take the tasks sent to a session that it hasn't picked up yet, marking

@@ -49,6 +49,12 @@ let failing;
     await page.getByRole("link", { name: /^Omicron/ }).click();
     await page.getByRole("region", { name: "Claude sessions" }).waitFor();
     await shot("4-omicron");
+    // A stopped session: why, and its open tasks to give away.
+    await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /docs/ }).click();
+    await page.getByTestId("gone-why").waitFor();
+    await shot("4f-stopped-session");
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();
     await page.getByTestId("dispatch").waitFor();

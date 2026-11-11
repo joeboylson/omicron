@@ -62,6 +62,8 @@ export type ClaudeSession = {
   folder: string;
   machine_id: string;
   machine: string;
+  /** Why it's gone, when it is. */
+  gone_why: string | null;
 };
 export type ChatMessage = { id: string; author: string; session: string | null; body: string; created_at: string };
 export type ProjectData = {
@@ -101,7 +103,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .eq("project_id", id)
       .order("position")
       .order("number"),
-    db.from("sessions").select("id,name,state,folder,machine_id,machines(name)").eq("project_id", id).order("name"),
+    db.from("sessions").select("id,name,state,folder,machine_id,gone_why,machines(name)").eq("project_id", id).order("name"),
     db
       .from("handoffs")
       .select("id,number,session_id,state,written_at,body")
@@ -157,6 +159,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       folder: r.folder,
       machine_id: r.machine_id,
       machine: r.machines?.name ?? "",
+      gone_why: r.gone_why,
     })),
     handoffs: must(handoffs) as HandoffNote[],
   };
@@ -377,4 +380,17 @@ export async function requestDispatch(db: SupabaseClient, task: Task): Promise<s
 /** Fail a request nobody took. Does nothing if it was taken after all. */
 export async function giveUpDispatch(db: SupabaseClient, id: string, why: string) {
   must(await db.rpc("give_up_dispatch", { dispatch: id, why }));
+}
+
+/** Give a session's open tasks to a member or to another session. */
+export async function giveSessionTasks(db: SupabaseClient, project: ProjectData, from: ClaudeSession, to: { person?: string; session?: string }) {
+  const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
+  const ids = project.tasks.filter((t) => t.assignee_session_id === from.id && !done.has(t.status_id)).map((t) => t.id);
+  if (ids.length === 0) return;
+  must(
+    await db
+      .from("tasks")
+      .update({ assignee_person_id: to.person ?? null, assignee_session_id: to.session ?? null })
+      .in("id", ids),
+  );
 }

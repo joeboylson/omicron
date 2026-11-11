@@ -44,6 +44,19 @@ pub enum Sessions {
         #[arg(long)]
         project: String,
     },
+    /// Give a session's open tasks to a member or to another session (for a
+    /// session that's gone)
+    GiveTasks {
+        name: String,
+        #[arg(long)]
+        project: String,
+        /// A member of the Project, by name
+        #[arg(long, conflicts_with = "to_session", required_unless_present = "to_session")]
+        to: Option<String>,
+        /// Another session in the Project
+        #[arg(long)]
+        to_session: Option<String>,
+    },
     /// Run a command in the background in Omicron's session host, to jump
     /// into later with `attach`. Example: omicron sessions host work -- claude
     Host {
@@ -112,7 +125,8 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
                 println!("No sessions yet. In a Claude Code session, run `omicron sessions add <name> --project <Project>`.");
             }
             for s in rows {
-                println!("{}\t{}\t{}\t{}\t{}", s.name, s.project, s.machine, s.state, s.folder);
+                let why = s.gone_why.map(|w| format!("\t({w})")).unwrap_or_default();
+                println!("{}\t{}\t{}\t{}\t{}{why}", s.name, s.project, s.machine, s.state, s.folder);
             }
         }
         Sessions::Remove { name, project } => {
@@ -129,6 +143,17 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             }
             windows.save()?;
             println!("Removed session {name} from {}.", project.name);
+        }
+        Sessions::GiveTasks { name, project, to, to_session } => {
+            let board = sign_in(as_machine)?;
+            let p = board.project(&project)?;
+            let n = board.give_session_tasks(&p, &name, to.as_deref(), to_session.as_deref())?;
+            let who = to.or(to_session).unwrap_or_default();
+            match n {
+                0 => println!("{name} has no open tasks."),
+                1 => println!("Gave {name}'s open task to {who}."),
+                n => println!("Gave {name}'s {n} open tasks to {who}."),
+            }
         }
         Sessions::Host { name, command } => {
             let folder = std::env::current_dir()?;
@@ -306,7 +331,7 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     let mut handoff = None;
     let mut cancel_handoff = None;
     // What to tell Supabase, if anything. Untracked windows never call it.
-    let mut updates: Vec<(String, Value)> = gone.into_iter().map(|id| (id, json!({ "state": "gone" }))).collect();
+    let mut updates: Vec<(String, Value)> = gone.into_iter().map(|id| (id, json!({ "state": "gone", "gone_why": omicron::windows::STOPPED }))).collect();
     match event {
         Hook::SessionStart => {
             let folder = input["cwd"].as_str().unwrap_or("").to_string();

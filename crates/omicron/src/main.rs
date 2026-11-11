@@ -419,12 +419,22 @@ fn daemon() -> Result<()> {
     // restart): their sessions are gone.
     let mut windows = omicron::windows::Windows::load()?;
     let gone = windows.sweep();
+    let board = omicron::board::Board { supabase: supabase.clone(), session: first.clone() };
     if !gone.is_empty() {
-        let board = omicron::board::Board { supabase: supabase.clone(), session: first.clone() };
         for id in gone {
-            board.update_session(&id, json!({ "state": "gone" }))?;
+            board.update_session(&id, json!({ "state": "gone", "gone_why": omicron::windows::STOPPED }))?;
         }
         windows.save()?;
+    }
+    // Closed sessions whose conversation was deleted can't be reopened:
+    // they're gone too.
+    for s in board.sessions(None)? {
+        let deleted = s.machine_id == key.machine_id.to_string()
+            && s.state == "closed"
+            && s.claude_session_id.as_deref().is_some_and(|id| !omicron::windows::transcript_exists(id));
+        if deleted {
+            board.update_session(&s.id, json!({ "state": "gone", "gone_why": omicron::windows::DELETED }))?;
+        }
     }
     // Switching Claude accounts on their own: Anthropic's usage numbers can
     // only be read by asking, so this checks every 2 minutes while it's on.

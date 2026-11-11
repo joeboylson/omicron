@@ -66,7 +66,7 @@ export function ProjectPage({ id }: { id: string }) {
           </>
         }
       />
-      <Sessions project={project.name} sessions={project.sessions} handoffs={project.handoffs} />
+      <Sessions project={project} onChanged={reload} />
       <div className="flex items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <span id="group-by" className="text-sm text-muted-foreground">
           Group by

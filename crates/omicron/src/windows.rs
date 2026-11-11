@@ -113,6 +113,29 @@ fn ancestors() -> Result<Vec<(u32, String)>> {
     Ok(chain)
 }
 
+/// Why a session is gone when its window stopped without saying.
+pub const STOPPED: &str = "it stopped without saying (a crash or a restart)";
+/// Why a session is gone when its conversation was deleted.
+pub const DELETED: &str = "its conversation was deleted";
+
+/// Is Claude Code's transcript of this conversation still on this machine?
+/// It's `<id>.jsonl` in one of the folders under `~/.claude/projects`
+/// (or `$CLAUDE_CONFIG_DIR/projects`). Without it, the conversation can't
+/// be reopened.
+pub fn transcript_exists(claude_session_id: &str) -> bool {
+    let base = match std::env::var_os("CLAUDE_CONFIG_DIR") {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None => match std::env::var_os("HOME") {
+            Some(home) => std::path::PathBuf::from(home).join(".claude"),
+            // Can't tell: don't call it deleted.
+            None => return true,
+        },
+    };
+    let Ok(folders) = std::fs::read_dir(base.join("projects")) else { return false };
+    let file = format!("{claude_session_id}.jsonl");
+    folders.flatten().any(|f| f.path().join(&file).is_file())
+}
+
 fn alive(pid: u32) -> bool {
     Command::new("ps")
         .args(["-o", "pid=", "-p", &pid.to_string()])

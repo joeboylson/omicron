@@ -3,7 +3,7 @@
 // and Supabase.
 const { test, expect } = require("@playwright/test");
 const crypto = require("node:crypto");
-const { startOmicron, unique, sessionFor, rest, visitAs, fakeWindow } = require("./omicron");
+const { startOmicron, unique, need, sessionFor, rest, visitAs, fakeWindow } = require("./omicron");
 
 let omicron;
 let machineName;
@@ -306,7 +306,9 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
   let daemon;
   try {
     const folder = omicron.folder();
-    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: folder, source: "startup" });
+    const claude = crypto.randomUUID();
+    omicron.transcript(claude);
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: folder, source: "startup" });
     omicron.addSession(win.pid, "parser", name);
     await page.getByRole("button", { name: "#1 Write the parser" }).click();
     await pick(page, "Given to", "parser");
@@ -497,4 +499,54 @@ test("comments hold images: picked, dropped, or posted by a session, and open fu
   require("node:fs").writeFileSync(shot, png);
   omicron.cli("tasks", "comment", name, "1", "Done, screenshot attached.", "--image", shot, "--as-machine");
   await expect(comments.getByRole("listitem").filter({ hasText: "Done, screenshot attached." }).getByRole("img")).toBeVisible();
+});
+
+test("a session taken out with its machine says why, and its tasks go to someone else", async ({ page, request }) => {
+  const robin = await newPerson(page, request, "Robin Example");
+  const name = unique("Code");
+  const projectId = await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  // The add form stays open for the next one.
+  await page.getByLabel("New task in To do").fill("Write the docs");
+  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await expect(column(page, "To do").getByRole("button", { name: /Write the docs/ })).toBeVisible();
+
+  // A machine in just this Project, with a session holding both tasks
+  // (signed in with its own key, as its daemon and hooks do).
+  const box = unique("box");
+  const key = omicron.cli("machines", "register", box, "--print").trim();
+  const [, id, secret] = key.match(/^omk_([0-9a-f]+)_(.+)$/);
+  const uuid = id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+  await rest(request, robin.session, "POST", "/rest/v1/project_machines", { project_id: projectId, machine_id: uuid });
+  const login = await (
+    await request.post(`${need("OMICRON_SUPABASE_URL")}/auth/v1/token?grant_type=password`, {
+      headers: { apikey: need("OMICRON_SUPABASE_KEY") },
+      data: { email: `${uuid}@machines.omicron.invalid`, password: secret },
+    })
+  ).json();
+  const [session] = await rest(request, login, "POST", "/rest/v1/sessions", { project_id: projectId, name: "parser", folder: "/work" });
+  await rest(request, login, "PATCH", `/rest/v1/tasks?project_id=eq.${projectId}`, { assignee_session_id: session.id });
+  const sessions = page.getByRole("region", { name: "Claude sessions" });
+  await expect(sessions).toContainText(`parser${box} · open`);
+
+  // The machine is taken out of the Project: the page shows it stopped, live.
+  await rest(request, robin.session, "DELETE", `/rest/v1/project_machines?project_id=eq.${projectId}&machine_id=eq.${uuid}`);
+  await expect(sessions).toContainText(`parser${box} · stopped`);
+
+  // The task says why, and Dispatch is off.
+  await page.getByRole("button", { name: "#1 Write the parser" }).click();
+  await expect(page.getByTestId("pickup")).toHaveText("parser stopped: its machine was taken out of the Project. Give the task to someone else.");
+  await expect(page.getByRole("button", { name: "Dispatch" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  // From the session's sheet, both open tasks go to a person at once.
+  await sessions.getByRole("button", { name: /parser/ }).click();
+  await expect(page.getByTestId("gone-why")).toHaveText("Stopped: its machine was taken out of the Project.");
+  await expect(page.getByRole("list", { name: "Open tasks" }).getByRole("listitem")).toHaveCount(2);
+  await page.getByLabel("Give parser's open tasks to").click();
+  await page.getByRole("option", { name: "Robin Example" }).click();
+  await expect(page.getByRole("list", { name: "Open tasks" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "#1 Write the parser" })).toContainText("RE");
+  await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText("RE");
 });

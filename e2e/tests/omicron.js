@@ -49,6 +49,8 @@ async function startOmicron() {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     OMICRON_HOME: home,
+    // Claude Code's own folder (transcripts), just for this test machine.
+    CLAUDE_CONFIG_DIR: path.join(home, "claude-code"),
     OMICRON_TAILSCALE_STATUS: tailscaleStatus(home, me.login, me.name),
   };
 
@@ -102,6 +104,12 @@ async function startOmicron() {
      * once it's listening; call `stop()` on what it returns.
      */
     daemon: () => startDaemon(home, env),
+    /** Write Claude Code's transcript for a conversation, as Claude Code does. */
+    transcript: (claudeId) => {
+      const dir = path.join(home, "claude-code", "projects", "work");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `${claudeId}.jsonl`), "");
+    },
     /** A folder on this machine for a session to work in. */
     folder: () => fs.mkdtempSync(path.join(home, "work-")),
     stop: () => {
@@ -120,6 +128,7 @@ function startDaemon(home, env) {
       "#!/bin/sh",
       'id=; source=startup',
       'while [ $# -gt 0 ]; do case "$1" in --session-id) id="$2"; shift;; --resume) id="$2"; source=resume; shift;; esac; shift; done',
+      'mkdir -p "$CLAUDE_CONFIG_DIR/projects/work" && touch "$CLAUDE_CONFIG_DIR/projects/work/$id.jsonl"',
       `printf '{"session_id":"%s","cwd":"%s","source":"%s"}' "$id" "$PWD" "$source" | "${need("OMICRON_BIN")}" hook session-start`,
       "exec cat",
       "",

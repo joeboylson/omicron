@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Copy, Terminal } from "lucide-react";
-import type { ClaudeSession, HandoffNote } from "@/lib/data";
+import { giveSessionTasks, type ClaudeSession, type HandoffNote, type ProjectData } from "@/lib/data";
+import { useApp } from "@/lib/app";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Row, bare } from "@/components/Grouped";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,7 +14,8 @@ const STATE_TEXT = { open: "open", closed: "closed", gone: "stopped" } as const;
 const NOTE_STATE = { waiting: "waiting", picked_up: "picked up", replaced: "replaced", cancelled: "cancelled" } as const;
 
 /** The Project's Claude sessions, open ones first. Tap one for its handoff notes. */
-export function Sessions({ project, sessions, handoffs }: { project: string; sessions: ClaudeSession[]; handoffs: HandoffNote[] }) {
+export function Sessions({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
+  const { sessions, handoffs } = project;
   const [openId, setOpenId] = useState<string | null>(null);
   if (sessions.length === 0) return null;
   const order = { open: 0, closed: 1, gone: 2 };
@@ -44,18 +48,34 @@ export function Sessions({ project, sessions, handoffs }: { project: string; ses
       </ul>
       <Dialog open={open !== null} onOpenChange={(o) => !o && setOpenId(null)}>
         <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={(e) => e.preventDefault()}>
-          {open && <SessionNotes project={project} session={open} notes={handoffs.filter((h) => h.session_id === open.id)} />}
+          {open && (
+            <SessionNotes project={project} session={open} notes={handoffs.filter((h) => h.session_id === open.id)} onChanged={onChanged} />
+          )}
         </DialogContent>
       </Dialog>
     </section>
   );
 }
 
-function SessionNotes({ project, session, notes }: { project: string; session: ClaudeSession; notes: HandoffNote[] }) {
+function SessionNotes({
+  project,
+  session,
+  notes,
+  onChanged,
+}: {
+  project: ProjectData;
+  session: ClaudeSession;
+  notes: HandoffNote[];
+  onChanged: () => void;
+}) {
+  const { db, act } = useApp();
+  const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
+  const tasks = project.tasks.filter((t) => t.assignee_session_id === session.id && !done.has(t.status_id));
+  const others = project.sessions.filter((s) => s.id !== session.id && s.state === "open");
   const [copied, setCopied] = useState<number | null>(null);
   const copy = async (n: HandoffNote) => {
     // Pastes into any Claude session to continue from this note.
-    await navigator.clipboard?.writeText(`omicron handoff show '${project}' ${n.number} --pickup`).catch(() => {});
+    await navigator.clipboard?.writeText(`omicron handoff show '${project.name}' ${n.number} --pickup`).catch(() => {});
     setCopied(n.number);
   };
   return (
@@ -74,6 +94,67 @@ function SessionNotes({ project, session, notes }: { project: string; session: C
           {STATE_TEXT[session.state]}
         </DialogDescription>
       </DialogHeader>
+      {session.state === "gone" && (
+        <p role="status" className="-mt-2 text-sm text-muted-foreground" data-testid="gone-why">
+          Stopped: {session.gone_why ?? "it stopped without saying"}.
+        </p>
+      )}
+      {tasks.length > 0 && (
+        <Group
+          title="Open tasks"
+          note={
+            session.state !== "gone"
+              ? undefined
+              : session.gone_why?.startsWith("it stopped without saying")
+                ? "Dispatch can reopen it on its machine, or give them to someone else."
+                : "A stopped session can't work on these. Give them to someone else."
+          }
+        >
+          <ul aria-label="Open tasks" className="divide-y">
+            {tasks.map((t) => (
+              <li key={t.id} className="flex gap-2 px-4 py-3 text-[15px] sm:text-sm">
+                <span className="font-mono text-muted-foreground">#{t.number}</span>
+                <span className="flex-1">{t.title}</span>
+              </li>
+            ))}
+          </ul>
+          <Row>
+            <Select
+              value=""
+              onValueChange={(v) => {
+                const [kind, id] = v.split(":");
+                act(() => giveSessionTasks(db, project, session, kind === "person" ? { person: id } : { session: id })).then(
+                  (ok) => ok && onChanged(),
+                );
+              }}
+            >
+              <SelectTrigger aria-label={`Give ${session.name}'s open tasks to`} className={cn(bare, "px-0 text-[var(--sys-blue)]")}>
+                <SelectValue placeholder={tasks.length === 1 ? "Give it to…" : `Give all ${tasks.length} to…`} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>People</SelectLabel>
+                  {project.members.map((m) => (
+                    <SelectItem key={m.id} value={`person:${m.id}`}>
+                      {m.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                {others.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Claude sessions</SelectLabel>
+                    {others.map((o) => (
+                      <SelectItem key={o.id} value={`session:${o.id}`}>
+                        {o.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+          </Row>
+        </Group>
+      )}
       <Group title="Handoff notes" note="A waiting note goes to the next conversation in the session's window after /clear.">
         {notes.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted-foreground">
