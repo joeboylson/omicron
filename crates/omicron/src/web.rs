@@ -4,7 +4,9 @@
 //! it through `tailscale serve`, which adds their Tailscale login to each
 //! request (see `identity`).
 //!
-//! - `GET /` and `GET /assets/...`: the web page.
+//! - `GET /` and `GET /assets/...`: the web page (built into the program, see
+//!   `build.rs`). Any other page address also gets `index.html`, so the page
+//!   can have its own addresses like `/p/<id>`.
 //! - `GET /config.json`: where Supabase is, and its publishable key.
 //! - `POST /api/session`: works out who the visitor is and hands back a
 //!   Supabase login for them. The page then talks to Supabase directly.
@@ -17,8 +19,36 @@ use std::io::Cursor;
 use std::net::IpAddr;
 use tiny_http::{Header, Method, Request, Response, Server};
 
-/// The page shown until the real web app is built.
-const INDEX_HTML: &str = include_str!("web/index.html");
+/// Shown when the program was built without the web page.
+const STAND_IN_HTML: &str = include_str!("web/index.html");
+
+mod built {
+    include!(concat!(env!("OUT_DIR"), "/web_assets.rs"));
+}
+
+/// A file of the built web page, if there is one at this address.
+fn asset(path: &str) -> Option<&'static [u8]> {
+    built::ASSETS.iter().find(|(p, _)| *p == path).map(|(_, b)| *b)
+}
+
+fn index_html() -> Vec<u8> {
+    asset("/index.html").map_or_else(|| STAND_IN_HTML.as_bytes().to_vec(), |b| b.to_vec())
+}
+
+fn content_type(path: &str) -> &'static str {
+    match path.rsplit_once('.').map(|(_, ext)| ext) {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json") => "application/json",
+        Some("webmanifest") => "application/manifest+json",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("ico") => "image/x-icon",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
+}
 
 pub struct WebMachine {
     pub supabase: Supabase,
@@ -59,47 +89,63 @@ impl WebMachine {
     fn handle(&self, request: Request) {
         let (status, content_type, body) = match self.route(&request) {
             Ok(r) => r,
-            Err(e) => (500, "application/json", json!({ "error": format!("{e:#}") }).to_string()),
+            Err(e) => (500, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes()),
+        };
+        // Built files have a fingerprint in their name, so they never change.
+        let cache = if request.url().starts_with("/assets/") && status == 200 {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-store"
         };
         let response = Response::new(
             status.into(),
             vec![
                 header("Content-Type", content_type),
-                header("Cache-Control", "no-store"),
+                header("Cache-Control", cache),
                 header("X-Content-Type-Options", "nosniff"),
                 header("Referrer-Policy", "no-referrer"),
             ],
-            Cursor::new(body.into_bytes()),
+            Cursor::new(body),
             None,
             None,
         );
         let _ = request.respond(response);
     }
 
-    fn route(&self, request: &Request) -> Result<(u16, &'static str, String)> {
+    fn route(&self, request: &Request) -> Result<(u16, &'static str, Vec<u8>)> {
         let host = request_header(request, "Host").unwrap_or_default();
         if !allowed_host(&host, &self.extra_hosts) {
-            return Ok((421, "application/json", json!({ "error": format!("this page isn't served at {host}") }).to_string()));
+            return Ok((421, "application/json", json!({ "error": format!("this page isn't served at {host}") }).to_string().into_bytes()));
         }
         let path = request.url().split('?').next().unwrap_or("/");
         match (request.method(), path) {
-            (Method::Get, "/") | (Method::Get, "/index.html") => Ok((200, "text/html; charset=utf-8", INDEX_HTML.to_string())),
             (Method::Get, "/config.json") => Ok((
                 200,
                 "application/json",
-                json!({ "supabase_url": self.supabase.url, "supabase_key": self.supabase.key }).to_string(),
+                json!({ "supabase_url": self.supabase.url, "supabase_key": self.supabase.key }).to_string().into_bytes(),
             )),
             (Method::Post, "/api/session") => self.session(request),
-            (_, "/api/session") => Ok((405, "application/json", json!({ "error": "use POST" }).to_string())),
-            _ => Ok((404, "application/json", json!({ "error": "not found" }).to_string())),
+            (_, "/api/session") => Ok((405, "application/json", json!({ "error": "use POST" }).to_string().into_bytes())),
+            (Method::Get, p) if p.starts_with("/api/") => Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes())),
+            (Method::Get, "/") | (Method::Get, "/index.html") => Ok((200, "text/html; charset=utf-8", index_html())),
+            (Method::Get, p) => match asset(p) {
+                Some(bytes) => Ok((200, content_type(p), bytes.to_vec())),
+                // A missing built file is a real 404; any other address is a
+                // page of the web app.
+                None if p.starts_with("/assets/") || p.contains('.') => {
+                    Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes()))
+                }
+                None => Ok((200, "text/html; charset=utf-8", index_html())),
+            },
+            _ => Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes())),
         }
     }
 
-    fn session(&self, request: &Request) -> Result<(u16, &'static str, String)> {
+    fn session(&self, request: &Request) -> Result<(u16, &'static str, Vec<u8>)> {
         let peer: IpAddr = request.remote_addr().map(|a| a.ip()).context("no address for this visit")?;
         let visit = match identity::visitor(peer, |name| request_header(request, name), identity::local_person) {
             Ok(v) => v,
-            Err(e) => return Ok((403, "application/json", json!({ "error": format!("{e:#}") }).to_string())),
+            Err(e) => return Ok((403, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes())),
         };
         let person = visit.person();
         let session = self.supabase.sign_in_person(person)?;
@@ -115,7 +161,8 @@ impl WebMachine {
                 "refresh_token": session.refresh_token,
                 "expires_in": session.expires_in,
             })
-            .to_string(),
+            .to_string()
+            .into_bytes(),
         ))
     }
 }

@@ -90,7 +90,19 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - [x] People table in `omicron`: `people list`, `people add`, `people remove`
       (by name or Tailscale login). Machines too: `machines list`,
       `machines add`, `machines remove`.
-- [ ] Web page (installable on the phone) and the same things in `omicron`.
+- [x] Web page: Projects list, start a Project, each Project's statuses side
+      by side, add tasks, and a task view for title, notes, status, date, who
+      it's given to, labels, checklist, Reviewed, Mark done and delete.
+      Project settings for the name, statuses (add, rename, move the Done
+      mark, remove) and members. Updates live from the change list. Fits a
+      phone (one status per screen width, swipe across). Built into the
+      `omicron` program (`crates/omicron/build.rs`, `dev/web.sh`). Browser
+      tests in `e2e/tests/projects.spec.js`; screenshots with
+      `OMICRON_SCREENSHOTS=1 dev/e2e.sh screenshots`.
+- [ ] Installable on the phone: icons in the manifest (it has none yet).
+- [ ] Drag tasks between statuses and reorder them (now: pick the status in
+      the task view; new tasks go to the bottom).
+- [ ] Labels: rename, remove, colors (the `color` column is unused).
 
 ## 4. Claude sessions
 - [ ] `omicron sessions`: start a new session (pick Project, give a name), or

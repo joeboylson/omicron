@@ -1,0 +1,104 @@
+// @ts-check
+// Screenshots of the web page with made-up data, for looking at by eye.
+// Only runs when asked: OMICRON_SCREENSHOTS=1 bash dev/e2e.sh screenshots
+// Saved to ~/omicron-e2e-results/screenshots on the test machine.
+const { test, expect, devices } = require("@playwright/test");
+const path = require("node:path");
+const { startOmicron, unique, sessionFor, rest, visitAs } = require("./omicron");
+
+test.skip(!process.env.OMICRON_SCREENSHOTS, "set OMICRON_SCREENSHOTS=1 to take screenshots");
+
+const out = path.join(process.env.HOME ?? ".", "omicron-e2e-results", "screenshots");
+let omicron;
+test.beforeAll(async () => {
+  omicron = await startOmicron();
+});
+test.afterAll(() => omicron?.stop());
+
+test("screenshots", async ({ browser, request }) => {
+  test.setTimeout(120_000);
+  const login = `${unique("joe")}@example.com`;
+  const me = await sessionFor(request, omicron, login, "Joe Boylson");
+  const sam = await sessionFor(request, omicron, `${unique("sam")}@example.com`, "Sam Boylson");
+  const call = (method, p, data) => rest(request, me, method, p, data);
+
+  const project = (await call("POST", "/rest/v1/rpc/start_project", { name: "House and garden" }));
+  await call("POST", "/rest/v1/rpc/start_project", { name: "Groceries" });
+  const omicronProject = await call("POST", "/rest/v1/rpc/start_project", { name: "Omicron" });
+  await call("POST", "/rest/v1/project_members", { project_id: project.id, person_id: sam.person_id });
+  const statuses = await call("GET", `/rest/v1/statuses?project_id=eq.${project.id}&select=id,name`);
+  const todo = statuses.find((s) => s.name === "To do").id;
+  const done = statuses.find((s) => s.name === "Done").id;
+  const [doing] = await call("POST", "/rest/v1/statuses", { project_id: project.id, name: "Doing", position: 0.5 });
+  const [waiting] = await call("POST", "/rest/v1/statuses", { project_id: project.id, name: "Waiting on someone", position: 0.75 });
+  const labels = Object.fromEntries(
+    await Promise.all(
+      ["outside", "car", "shopping", "kids"].map(async (name) => [
+        name,
+        (await call("POST", "/rest/v1/labels", { project_id: project.id, name }))[0].id,
+      ]),
+    ),
+  );
+  const add = async (status, title, extra = {}, labelNames = [], checklist = []) => {
+    const [t] = await call("POST", "/rest/v1/tasks", { project_id: project.id, status_id: status, title, ...extra });
+    for (const l of labelNames) await call("POST", "/rest/v1/task_labels", { task_id: t.id, label_id: labels[l] });
+    for (const [i, [text, isDone]] of checklist.entries()) {
+      await call("POST", "/rest/v1/checklist_items", { task_id: t.id, text, done: isDone, position: i });
+    }
+    return t;
+  };
+  const [doingId, waitingId] = [doing.id, waiting.id];
+  await add(todo, "Clean out the gutters", { due_on: "2026-11-22" }, ["outside"]);
+  await add(todo, "Book the winter tyre swap", { assignee_person_id: sam.person_id }, ["car"]);
+  await add(todo, "Birthday present for Mia", { due_on: "2026-12-04", notes: "She wants the big Lego set." }, ["shopping", "kids"]);
+  const gate = await add(
+    doingId,
+    "Fix the back gate",
+    { due_on: "2026-11-15", assignee_person_id: me.person_id, notes: "The latch is loose and the bottom hinge is bent. Hardware store has both." },
+    ["outside"],
+    [["Buy a new latch", true], ["Buy a hinge", true], ["Fit them", false]],
+  );
+  await add(doingId, "Sort the garage shelves", {}, [], [["Paint cans", true], ["Tools", false], ["Bikes", false], ["Camping gear", false]]);
+  await add(waitingId, "Quote for the new fence", { notes: "Asked two companies on Monday." }, ["outside"]);
+  await add(done, "Renew the car insurance", {}, ["car"]);
+  await add(done, "Pick up the dry cleaning");
+
+  // A Claude session marks one task for review.
+  const [code] = await call("GET", `/rest/v1/statuses?project_id=eq.${omicronProject.id}&name=eq.To%20do&select=id`);
+  await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Wire up the web page" });
+  const machine = unique("mac-mini");
+  omicron.cli("machines", "register", machine, "--all-projects");
+  omicron.cli("tasks", "needs-review", omicronProject.id, "1", "--as-machine");
+  // The house task gets it too, so it shows on the main screenshot.
+  omicron.cli("tasks", "needs-review", project.id, String(gate.number), "--as-machine");
+
+  const shoot = async (page, name) => {
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(out, `${name}.png`) });
+  };
+
+  for (const [kind, options] of [
+    ["desktop", { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 }],
+    ["phone", { ...devices["iPhone 13"] }],
+  ]) {
+    for (const scheme of ["light", "dark"]) {
+      const context = await browser.newContext({ ...options, colorScheme: scheme });
+      const page = await context.newPage();
+      await visitAs(page, omicron, login, "Joe Boylson");
+      await page.goto(omicron.url);
+      await expect(page.getByRole("link", { name: /Groceries/ })).toBeVisible();
+      await shoot(page, `${kind}-${scheme}-1-projects`);
+      await page.getByRole("link", { name: /and garden/ }).click();
+      await expect(page.getByRole("button", { name: /Fix the back gate/ })).toBeVisible();
+      await shoot(page, `${kind}-${scheme}-2-project`);
+      await page.getByRole("button", { name: /Fix the back gate/ }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await shoot(page, `${kind}-${scheme}-3-task`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Project settings" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await shoot(page, `${kind}-${scheme}-4-settings`);
+      await context.close();
+    }
+  }
+});

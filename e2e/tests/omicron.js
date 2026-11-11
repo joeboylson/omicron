@@ -1,6 +1,6 @@
 // Start a real `omicron serve` for a test file, with its own settings folder
 // and a made-up Tailscale identity for "this machine".
-const { spawn } = require("node:child_process");
+const { spawn, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -30,8 +30,9 @@ function tailscaleStatus(dir, login, displayName) {
 }
 
 /**
- * Start `omicron serve` on a free port. Returns { url, me, stop }, where `me`
- * is the person this machine belongs to.
+ * Start `omicron serve` on a free port. Returns { url, me, cli, stop }, where
+ * `me` is the person this machine belongs to and `cli(...args)` runs the
+ * `omicron` command with the same settings.
  */
 async function startOmicron() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "omicron-e2e-"));
@@ -70,6 +71,7 @@ async function startOmicron() {
   return {
     url,
     me,
+    cli: (...args) => execFileSync(need("OMICRON_BIN"), args, { env, encoding: "utf8" }),
     stop: () => {
       child.kill();
       fs.rmSync(home, { recursive: true, force: true });
@@ -77,4 +79,41 @@ async function startOmicron() {
   };
 }
 
-module.exports = { startOmicron, unique, need };
+/** A Supabase login for `login`, as the Web Machine hands one out. */
+async function sessionFor(request, omicron, login, name) {
+  const res = await request.post(`${omicron.url}/api/session`, {
+    headers: { "tailscale-user-login": login, "tailscale-user-name": name },
+  });
+  if (!res.ok()) throw new Error(`no session for ${login}: ${await res.text()}`);
+  return res.json();
+}
+
+/** Call Supabase's REST API as the person in `session`. */
+async function rest(request, session, method, path, data) {
+  const res = await request.fetch(`${need("OMICRON_SUPABASE_URL")}${path}`, {
+    method,
+    headers: {
+      apikey: need("OMICRON_SUPABASE_KEY"),
+      Authorization: `Bearer ${session.access_token}`,
+      Prefer: "return=representation",
+    },
+    data,
+  });
+  if (!res.ok()) throw new Error(`${method} ${path}: ${res.status()} ${await res.text()}`);
+  return res.json();
+}
+
+/**
+ * Make requests to the omicron server look like they came through
+ * `tailscale serve`. Only requests to omicron get the headers, not the ones
+ * the page makes to Supabase.
+ */
+async function visitAs(page, omicron, login, name) {
+  await page.route(`${omicron.url}/**`, (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), "tailscale-user-login": login, "tailscale-user-name": name },
+    }),
+  );
+}
+
+module.exports = { startOmicron, unique, need, sessionFor, rest, visitAs };

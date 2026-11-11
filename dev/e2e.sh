@@ -17,6 +17,8 @@ export CARGO_TARGET_DIR=$HOME/target
 export OMICRON_BIN=$CARGO_TARGET_DIR/debug/omicron
 
 cd "$HOME/omicron"
+OMICRON_WEB_DIST=$(bash dev/web.sh)
+export OMICRON_WEB_DIST
 "$HOME/.cargo/bin/cargo" build -q
 
 # node_modules lives on the VM's disk, not in the mounted folder.
