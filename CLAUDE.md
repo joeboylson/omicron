@@ -81,6 +81,12 @@ dev web page on this Mac (http://127.0.0.1:9011, from `dev/mac.sh`) shows it,
 signed in as Joe. Tests run on the same Supabase, so reseed after them.
 `dev/seed/shots.js` takes screenshots of it.
 
+The real web page only believes a Tailscale login that comes through the
+home lab's gate: the gate adds the secret in `~/.omicron/gate-secret` as the
+`Omicron-Gate-Secret` header. To change the secret, update the file and
+home_lab's `.env` (`OMICRON_GATE_SECRET`), then `docker compose up -d
+omicron-gate` in home_lab.
+
 Errors the web page catches (a crash, a background error, a failed change)
 are sent to its Web Machine and logged as `page error [...]` lines: in
 `~/.omicron/serve.log` for the real page and `~/.omicron-dev/serve.log` for
