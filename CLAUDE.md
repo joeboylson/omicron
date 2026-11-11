@@ -94,6 +94,10 @@ Repeated steps, in `scripts/` (run on the Mac):
 - `scripts/finish-task.sh <n> "<report>" [images...]`: finish an Omicron
   task like a session does: tick its checklist, post the report with the
   last commit's hash (and screenshots) marked for review, move it to Review.
+- `scripts/backup.sh`: copy the real Supabase (database and uploaded files)
+  to `~/.omicron/backups`, keeping 21 days; `--install` runs it nightly.
+- `scripts/restore.sh <date|latest> --scratch|--real`: put a copy back, into
+  a scratch database to check it, or over the real one.
 
 ## How to work here
 
