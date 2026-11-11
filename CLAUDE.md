@@ -37,7 +37,10 @@ teams of Claude sessions (rewritten from legion).
   everything the web page can.
 - Old tools (legion, lethe, seraph, janus, board, machine-pick,
   claude-sessions) are references for ideas only. Rewrite, don't copy code in.
-  They live in `~/@/1_Projects/agent_orchestration/` and `~/@/1_Projects/infra/`.
+  legion, lethe and claude-code-session-manager are in `~/@/1_Projects/tools/`,
+  janus is in `~/@/1_Projects/dev/janus`. The source for seraph, board,
+  machine-pick and claude-sessions isn't on this Mac any more (only the
+  `seraph` program in `~/.local/bin`); `ref/BRAINSTORM.md` has the notes on them.
 
 ## Running tests
 

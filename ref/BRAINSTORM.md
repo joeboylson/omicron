@@ -158,7 +158,7 @@ Plain words most people know, no military terms. Each one is chosen so it doesn'
 
 - With these words, Supabase gets: teams, jobs and their status, and workers.
 - "Squad" earlier in this doc means the same thing as **team**.
-- What legion is today (from `agent_orchestration/legion/docs/legion.md`):
+- What legion is today (from `legion/docs/legion.md`, now in `~/@/1_Projects/tools/legion`):
   - Written in Rust (`crates/legion`, `legiond`, `legion-client`, `legion-proto`), plus a Tauri app in `app/`.
   - A background program, `legiond`, runs a team of Claude Code sessions for each folder.
   - Its words: **commander** (the lead session, the only one that starts or stops sessions), **operator** (any other session, named for its job), **pipeline** (who a mission goes to next), **deployment** (one commander and its operators, in one folder, on one pipeline), **mission** (one task, in a file that never changes), **strategist**, **part**, **escalation**, **callout**.
