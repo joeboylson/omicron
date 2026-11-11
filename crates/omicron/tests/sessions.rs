@@ -716,8 +716,11 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{id}"), Some(json!({ "created_at": "2020-01-01T00:00:00Z" }))).unwrap();
     let claimed = s.request_as(&login, "POST", "/rest/v1/rpc/claim_dispatch", Some(json!({ "dispatch": id }))).unwrap();
     assert_eq!(claimed, json!([]));
-    // Only the functions change a request.
-    assert!(s.request_as(&login, "PATCH", &format!("/rest/v1/dispatches?id=eq.{id}"), Some(json!({ "state": "done" }))).is_err());
+    // Only the functions change a request: a direct edit changes nothing
+    // (refused, or no rows, depending on the database's default grants).
+    let _ = s.request_as(&login, "PATCH", &format!("/rest/v1/dispatches?id=eq.{id}"), Some(json!({ "state": "done" })));
+    let still = s.admin_request("GET", &format!("/rest/v1/dispatches?id=eq.{id}&select=state"), None).unwrap();
+    assert_eq!(still[0]["state"], "pending");
 
     // Given up: failed, with the reason, and it can't be given up twice.
     let gave = s.request_as(&login, "POST", "/rest/v1/rpc/give_up_dispatch", Some(json!({ "dispatch": id, "why": "nobody took it" }))).unwrap();

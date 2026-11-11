@@ -105,7 +105,10 @@ fn help_lists_the_commands() {
 fn start_at_login_prints_the_service_file() {
     let home = new_home();
     let out = ok(omicron(&home, &["daemon", "start-at-login", "--print"]));
-    assert!(out.contains(&format!("OMICRON_HOME={}", home.display())), "{out}");
+    // systemd (Linux) says NAME=value; launchd (macOS) says <key>NAME</key><string>value</string>.
+    let home_set = out.contains(&format!("OMICRON_HOME={}", home.display()))
+        || out.contains(&format!("<key>OMICRON_HOME</key><string>{}</string>", home.display()));
+    assert!(home_set, "{out}");
     assert!(out.contains("OMICRON_DAEMON_SERVICE"), "{out}");
     assert!(out.contains(" daemon") || out.contains("<string>daemon</string>"), "{out}");
 }

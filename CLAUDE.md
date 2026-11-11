@@ -41,45 +41,40 @@ teams of Claude sessions (rewritten from legion).
 
 ## Running tests
 
-Everything runs in the `omicron-dev` multipass VM, which has this folder
-mounted at `~/omicron` and a self-hosted Supabase at `~/supabase`.
+One Supabase, Omicron's real one, runs in Colima (Colima has 3 GB and is
+shared with the home lab, so keep it lean). Only the parts Omicron uses run:
+`omicron-supabase-db`, `-auth`, `-rest`, `-storage`, `-envoy` and
+`realtime-dev.omicron-realtime` (start them with `docker start`; studio, edge
+functions, imgproxy, meta and the pooler stay off). Its compose folder is
+inside the Colima VM at `/home/ubuntu/supabase-real` (`colima ssh`). API
+127.0.0.1:8100, tailnet :8452. It can't be reset. Ask the home-lab session
+before stopping Colima or any container that isn't Omicron's own.
 
 ```sh
-multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/supabase/migrate.sh   # apply new migrations (--reset to start over)
-multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/supabase/test.sh      # every Rust test, including the Supabase ones
-multipass exec omicron-dev -- bash /home/ubuntu/omicron/dev/e2e.sh                # browser tests (Playwright) against the real `omicron serve`
+bash scripts/test.sh                    # every Rust test, on this Mac
+bash scripts/test.sh --test sessions    # one test file (any cargo test arguments)
 ```
 
-New VM: `dev/vm/setup.sh`, then `dev/supabase/install.sh`.
+Tests run against the real Supabase in their own throwaway people, machines
+and Projects (logins like name-1234abcd@example.com), never the Omicron
+Project. `scripts/test.sh` cleans up everything a run made, even when tests
+fail (`--clean-only <time>` after an interrupted run). It also hides this
+Mac's own Tailscale login from the tests.
 
-No multipass? `bash dev/docker/setup.sh` makes an `omicron-dev` Docker container
-with the same paths. Run the same scripts with
-`docker exec -u ubuntu omicron-dev bash /home/ubuntu/omicron/dev/...`.
-`bash dev/docker/systemd-test.sh` checks `omicron daemon start-at-login`
-against a real systemd.
+Apply a new migration to it with `scripts/migrate.sh` and the database
+connection string, or through `docker exec -i omicron-supabase-db psql -U
+postgres` (see `dev/supabase/migrate.sh` for how they're recorded).
 
-The real Omicron runs on this Mac (atlas), against the real Supabase:
-`bash dev/mac.sh` builds, installs `~/.local/bin/omicron`, and restarts the
-web page (127.0.0.1:9010, on the tailnet admin-only at
-https://atlas.taileedd95.ts.net:8451 through the home lab's gate) and the
-daemon, in the tmux sessions `omicron-serve` and `omicron-daemon`. Claude
-sessions get Omicron's hooks with `claude --settings
+The browser tests (`e2e/`, Playwright) and the made-up seed data used the old
+test Supabase and `omicron-dev` container, which are stopped for good; they
+need a new home before they run again.
+
+The real Omicron runs on this Mac (atlas): `bash dev/mac.sh` builds,
+installs `~/.local/bin/omicron`, and restarts the web page (127.0.0.1:9010,
+on the tailnet admin-only at https://atlas.taileedd95.ts.net:8451 through the
+home lab's gate) and the daemon, in the tmux sessions `omicron-serve` and
+`omicron-daemon`. Claude sessions get Omicron's hooks with `claude --settings
 ~/.omicron/claude/settings.json`; Claude Code's own settings are left alone.
-
-Two Supabases run in Colima (both inside `omicron-dev`'s reach):
-- **Test** (`~/supabase`, API 127.0.0.1:8000, tailnet :8450): tests use it and
-  `migrate.sh --reset` wipes it.
-- **Real** (`~/supabase-real`, API 127.0.0.1:8100, tailnet :8452): Omicron's
-  own data. `dev/supabase/install-real.sh` set it up; apply migrations with
-  `OMICRON_SUPABASE_DIR=~/supabase-real bash ~/omicron/dev/supabase/migrate.sh`.
-  It can't be reset.
-
-To click around in made-up data, `docker exec -u ubuntu omicron-dev bash
-/home/ubuntu/omicron/dev/seed/seed.sh` wipes the test Supabase and fills it
-(people, five Projects, machines, Claude sessions, handoff notes, chat); the
-dev web page on this Mac (http://127.0.0.1:9011, from `dev/mac.sh`) shows it,
-signed in as Joe. Tests run on the same Supabase, so reseed after them.
-`dev/seed/shots.js` takes screenshots of it.
 
 The real web page only believes a Tailscale login that comes through the
 home lab's gate: the gate adds the secret in `~/.omicron/gate-secret` as the
@@ -100,6 +95,8 @@ Repeated steps, in `scripts/` (run on the Mac):
 - `scripts/finish-task.sh <n> "<report>" [images...]`: finish an Omicron
   task like a session does: tick its checklist, post the report with the
   last commit's hash (and screenshots) marked for review, move it to Review.
+- `scripts/test.sh [cargo test args]`: the Rust tests on this Mac against
+  the one Supabase, cleaning up after (see "Running tests").
 - `scripts/backup.sh`: copy the real Supabase (database and uploaded files)
   to `~/.omicron/backups`, keeping 21 days; `--install` runs it nightly.
 - `scripts/restore.sh <date|latest> --scratch|--real`: put a copy back, into
