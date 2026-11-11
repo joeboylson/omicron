@@ -31,6 +31,9 @@ import {
 } from "@/components/ui/select";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
+import { statusColor, type Color } from "@/lib/colors";
+import { ColorDot } from "@/components/ColorDot";
+import { LabelBadge, NeedsReview } from "@/components/TaskCard";
 
 const NOBODY = "nobody";
 
@@ -132,7 +135,7 @@ function TaskForm({
 
       {task.needs_review && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 text-sm" data-testid="needs-review">
-          <Badge>Needs review</Badge>
+          <NeedsReview />
           <span className="min-w-[12rem] flex-1 text-muted-foreground">A Claude session asked for this to be checked.</span>
           <Button size="sm" variant="outline" onClick={() => save({ needs_review: false })}>
             <Check /> Reviewed
@@ -152,7 +155,10 @@ function TaskForm({
             <SelectContent align="end">
               {project.statuses.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
-                  {s.name}
+                  <span className="flex items-center gap-2">
+                    <ColorDot color={statusColor(s)} />
+                    {s.name}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -241,9 +247,13 @@ function TaskForm({
                   className="flex min-h-9 items-center"
                   onClick={() => change(() => setLabel(db, task, l.id, !on))}
                 >
-                  <Badge variant={on ? "default" : "outline"} className="cursor-pointer px-3 py-1 font-normal">
-                    {l.name}
-                  </Badge>
+                  {l.color ? (
+                    <LabelBadge name={l.name} color={l.color as Color} pressed={on} />
+                  ) : (
+                    <Badge variant={on ? "default" : "outline"} className="cursor-pointer px-3 py-1 font-normal">
+                      {l.name}
+                    </Badge>
+                  )}
                 </button>
               );
             })}
@@ -409,7 +419,7 @@ function TaskForm({
         )}
         <Button
           variant={sure ? "destructive" : "ghost"}
-          className="ml-auto"
+          className={cn("ml-auto", !sure && "text-destructive hover:text-destructive")}
           onClick={() => (sure ? change(async () => (await deleteTask(db, task), onClose())) : setSure(true))}
           onBlur={() => setSure(false)}
         >

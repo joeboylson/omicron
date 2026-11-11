@@ -84,7 +84,13 @@ function machine(name) {
   };
 }
 
-async function project(owner, name, statuses, labels) {
+/** Statuses and labels are names, or [name, color]. */
+async function project(owner, name, statusList, labelList) {
+  const split = (x) => (Array.isArray(x) ? x : [x, null]);
+  const statuses = statusList.map((x) => split(x)[0]);
+  const statusColors = Object.fromEntries(statusList.map(split));
+  const labels = labelList.map((x) => split(x)[0]);
+  const labelColors = Object.fromEntries(labelList.map(split));
   const p = await owner.call("POST", "/rest/v1/rpc/start_project", { name });
   // Replace the starting To do / Done with this Project's own list.
   const start = await owner.call("GET", `/rest/v1/statuses?project_id=eq.${p.id}&select=id,name,is_done`);
@@ -101,8 +107,13 @@ async function project(owner, name, statuses, labels) {
     }
   }
   for (const s of start) if (!statuses.includes(s.name)) await owner.call("DELETE", `/rest/v1/statuses?id=eq.${s.id}`);
+  for (const s of statuses) {
+    if (statusColors[s]) await owner.call("PATCH", `/rest/v1/statuses?id=eq.${ids[s]}`, { color: statusColors[s] });
+  }
   const labelIds = {};
-  for (const l of labels) labelIds[l] = (await owner.call("POST", "/rest/v1/labels", { project_id: p.id, name: l }))[0].id;
+  for (const l of labels) {
+    labelIds[l] = (await owner.call("POST", "/rest/v1/labels", { project_id: p.id, name: l, color: labelColors[l] }))[0].id;
+  }
   let position = 0;
   return {
     id: p.id,
@@ -142,12 +153,12 @@ async function project(owner, name, statuses, labels) {
     const nina = await person(omicron, "nina.okafor@example.com", "Nina Okafor");
 
     // ---- House and garden: Joe and Claire.
-    const house = await project(joe, "House and garden", ["To do", "Doing", "Waiting on someone", "Done"], [
-      "outside",
-      "car",
-      "kids",
-      "bills",
-      "shopping",
+    const house = await project(joe, "House and garden", ["To do", ["Doing", "blue"], ["Waiting on someone", "orange"], "Done"], [
+      ["outside", "green"],
+      ["car", "blue"],
+      ["kids", "pink"],
+      ["bills", "red"],
+      ["shopping", "purple"],
     ]);
     await house.member(claire);
     await house.task(joe, "To do", "Clean out the gutters", { due: 9, labels: ["outside"], notes: "Before the first big storm. Ladder is in the garage." });
@@ -158,7 +169,7 @@ async function project(owner, name, statuses, labels) {
       notes: "She wants the big Lego set, or the art kit if that's sold out.",
       comments: [[joe, "The Lego one is on sale at the toy shop until Friday."]],
     });
-    await house.task(joe, "To do", "Renew the parking permit", { due: 2, labels: ["car", "bills"] });
+    await house.task(joe, "To do", "Renew the parking permit", { due: -2, labels: ["car", "bills"], notes: "The old one ran out. Online form, needs the reg number." });
     await house.task(claire, "To do", "Pick a paint colour for the hallway", {
       checklist: [["Get three sample pots", false], ["Paint test squares", false], ["Decide", false]],
     });
@@ -184,7 +195,11 @@ async function project(owner, name, statuses, labels) {
     await house.task(joe, "Done", "Book Mia's dentist check-up", { labels: ["kids"] });
 
     // ---- Groceries: quick list.
-    const groceries = await project(claire, "Groceries", ["To buy", "In the basket", "Done"], ["fresh", "pantry", "household"]);
+    const groceries = await project(claire, "Groceries", ["To buy", ["In the basket", "blue"], "Done"], [
+      ["fresh", "green"],
+      ["pantry", "brown"],
+      ["household", "teal"],
+    ]);
     await groceries.member(joe);
     for (const [s, t, l] of [
       ["To buy", "Milk", "fresh"],
@@ -202,7 +217,11 @@ async function project(owner, name, statuses, labels) {
     }
 
     // ---- Lisbon trip: three people, chat on.
-    const trip = await project(joe, "Lisbon trip", ["To book", "Booked", "Packed", "Done"], ["travel", "money", "food"]);
+    const trip = await project(joe, "Lisbon trip", [["To book", "orange"], ["Booked", "blue"], ["Packed", "purple"], "Done"], [
+      ["travel", "teal"],
+      ["money", "yellow"],
+      ["food", "red"],
+    ]);
     await trip.member(claire);
     await trip.member(sam);
     await trip.task(joe, "To book", "Airport transfer", { due: 30, labels: ["travel"], to: sam });
@@ -227,7 +246,10 @@ async function project(owner, name, statuses, labels) {
     }
 
     // ---- Wedding photos: Joe and Nina.
-    const photos = await project(joe, "Wedding photos", ["To sort", "Editing", "Sent", "Done"], ["album", "prints"]);
+    const photos = await project(joe, "Wedding photos", ["To sort", ["Editing", "indigo"], ["Sent", "purple"], "Done"], [
+      ["album", "pink"],
+      ["prints", "brown"],
+    ]);
     await photos.member(nina);
     await photos.task(nina, "To sort", "Pick the 40 for the album", { labels: ["album"], to: joe, due: 14 });
     await photos.task(joe, "Editing", "Colour-correct the ceremony set", { to: nina, checklist: [["Indoor", true], ["Outdoor", false]] });
@@ -235,7 +257,13 @@ async function project(owner, name, statuses, labels) {
     await photos.task(joe, "Done", "Back up every card", {});
 
     // ---- Omicron: Joe, plus Claude sessions on two machines.
-    const code = await project(joe, "Omicron", ["Backlog", "To do", "Doing", "Review", "Done"], ["web", "cli", "database", "bug", "docs"]);
+    const code = await project(joe, "Omicron", ["Backlog", ["To do", "teal"], ["Doing", "blue"], ["Review", "orange"], "Done"], [
+      ["web", "blue"],
+      ["cli", "purple"],
+      ["database", "teal"],
+      ["bug", "red"],
+      ["docs", "brown"],
+    ]);
     const mini = machine("mac-mini");
     const studio = machine("studio");
     const build = machine("build-box");

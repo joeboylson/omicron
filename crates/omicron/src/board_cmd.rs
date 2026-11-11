@@ -26,6 +26,36 @@ pub enum Statuses {
         #[arg(long)]
         done: bool,
     },
+    /// Give a status a color: red, orange, yellow, green, teal, blue,
+    /// indigo, purple, pink, brown or gray
+    Color { project: String, status: String, color: String },
+}
+
+#[derive(Subcommand)]
+pub enum Labels {
+    /// List a Project's labels and their colors
+    List { project: String },
+    /// Give a label a color (it's made if it doesn't exist): red, orange,
+    /// yellow, green, teal, blue, indigo, purple, pink, brown or gray
+    Color { project: String, label: String, color: String },
+}
+
+pub fn labels(cmd: Labels, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    match cmd {
+        Labels::List { project } => {
+            let p = board.project(&project)?;
+            for (name, color) in board.labels(&p)? {
+                println!("{name}{}", color.map(|c| format!(" [{c}]")).unwrap_or_default());
+            }
+        }
+        Labels::Color { project, label, color } => {
+            let p = board.project(&project)?;
+            board.color_label(&p, &label, &color)?;
+            println!("{label} is {} in {}.", color.to_lowercase(), p.name);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Subcommand)]
@@ -131,13 +161,19 @@ pub fn statuses(cmd: Statuses, as_machine: bool) -> Result<()> {
         Statuses::List { project } => {
             let p = board.project(&project)?;
             for s in board.statuses(&p)? {
-                println!("{}{}", s.name, if s.is_done { " (Done)" } else { "" });
+                let color = s.color.as_deref().map(|c| format!(" [{c}]")).unwrap_or_default();
+                println!("{}{}{color}", s.name, if s.is_done { " (Done)" } else { "" });
             }
         }
         Statuses::Add { project, name, done } => {
             let p = board.project(&project)?;
             let s = board.add_status(&p, &name, done)?;
             println!("Added {} to {}{}.", s.name, p.name, if s.is_done { " as its Done status" } else { "" });
+        }
+        Statuses::Color { project, status, color } => {
+            let p = board.project(&project)?;
+            board.color_status(&p, &status, &color)?;
+            println!("{status} is {} in {}.", color.to_lowercase(), p.name);
         }
     }
     Ok(())

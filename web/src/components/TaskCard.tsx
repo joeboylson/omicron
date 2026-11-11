@@ -3,6 +3,8 @@ import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { tint, type Color } from "@/lib/colors";
+import { ColorDot } from "@/components/ColorDot";
 
 export function TaskCard({ project, task, onOpen }: { project: ProjectData; task: Task; onOpen: () => void }) {
   const labels = project.labels.filter((l) => task.labelIds.includes(l.id));
@@ -25,18 +27,19 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
       </div>
       {(task.needs_review || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {task.needs_review && <Badge>Needs review</Badge>}
+          {task.needs_review && <NeedsReview />}
           {labels.map((l) => (
-            <Badge key={l.id} variant="secondary" className="font-normal">
-              {l.name}
-            </Badge>
+            <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />
           ))}
         </div>
       )}
       {(task.due_on || task.checklist.length > 0 || task.comments.length > 0 || assignee || session) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {task.due_on && (
-            <span className="flex items-center gap-1">
+            <span
+              className={cn("flex items-center gap-1", !done && isOverdue(task.due_on) && "text-destructive")}
+              title={!done && isOverdue(task.due_on) ? "Overdue" : undefined}
+            >
               <CalendarDays className="h-3.5 w-3.5" />
               {formatDate(task.due_on)}
             </span>
@@ -90,4 +93,41 @@ export function initials(name: string): string {
     .slice(0, 2)
     .map((w) => w[0]!.toUpperCase())
     .join("");
+}
+
+/** Past its date (today doesn't count). */
+export function isOverdue(iso: string): boolean {
+  const today = new Date();
+  const t = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return iso < t;
+}
+
+/** The Needs review mark: orange, Apple's color for "look at this". */
+export function NeedsReview() {
+  return (
+    <Badge className="border-transparent font-medium text-white hover:opacity-90" style={{ background: "var(--sys-orange)" }}>
+      Needs review
+    </Badge>
+  );
+}
+
+/** A label, washed in its color, with its name in the normal text color so it stays readable. */
+export function LabelBadge({ name, color, pressed }: { name: string; color: Color | null; pressed?: boolean }) {
+  if (!color) {
+    return (
+      <Badge variant={pressed === false ? "outline" : "secondary"} className="font-normal">
+        {name}
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1.5 border-transparent font-normal text-foreground"
+      style={pressed === false ? { borderColor: tint(color, 45) } : { background: tint(color) }}
+    >
+      <ColorDot color={color} className="h-2 w-2" />
+      {name}
+    </Badge>
+  );
 }

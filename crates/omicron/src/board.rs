@@ -25,6 +25,19 @@ pub struct Status {
     pub name: String,
     pub position: f64,
     pub is_done: bool,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+/// The colors a status or label can have: Apple's system colors, by name.
+pub const COLORS: &[&str] = &["red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "brown", "gray"];
+
+fn check_color(color: &str) -> Result<String> {
+    let c = color.to_ascii_lowercase();
+    if !COLORS.contains(&c.as_str()) {
+        bail!("{color} isn't one of the colors: {}", COLORS.join(", "));
+    }
+    Ok(c)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -291,7 +304,7 @@ impl Board {
 
     pub fn statuses(&self, project: &Project) -> Result<Vec<Status>> {
         Ok(serde_json::from_value(self.get(&format!(
-            "/rest/v1/statuses?project_id=eq.{}&select=id,name,position,is_done&order=position,name",
+            "/rest/v1/statuses?project_id=eq.{}&select=id,name,position,is_done,color&order=position,name",
             project.id
         ))?)?)
     }
@@ -301,7 +314,7 @@ impl Board {
         let last = self.statuses(project)?.iter().map(|s| s.position).fold(0.0, f64::max);
         let rows = self.send(
             "POST",
-            "/rest/v1/statuses?select=id,name,position,is_done",
+            "/rest/v1/statuses?select=id,name,position,is_done,color",
             json!({ "project_id": project.id, "name": name, "position": last + 1.0, "is_done": done }),
         )?;
         Ok(serde_json::from_value(rows[0].clone())?)
@@ -313,6 +326,37 @@ impl Board {
             let names: Vec<&str> = all.iter().map(|s| s.name.as_str()).collect();
             anyhow!("{} has no status called {name}. It has: {}", project.name, names.join(", "))
         })
+    }
+
+    /// Give a status a color.
+    pub fn color_status(&self, project: &Project, status: &str, color: &str) -> Result<()> {
+        let color = check_color(color)?;
+        let s = self
+            .statuses(project)?
+            .into_iter()
+            .find(|s| s.name.eq_ignore_ascii_case(status))
+            .with_context(|| format!("{} has no status called {status}", project.name))?;
+        self.send("PATCH", &format!("/rest/v1/statuses?id=eq.{}", s.id), json!({ "color": color }))?;
+        Ok(())
+    }
+
+    /// A Project's labels and their colors.
+    pub fn labels(&self, project: &Project) -> Result<Vec<(String, Option<String>)>> {
+        let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&select=name,color&order=name", project.id))?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| (r["name"].as_str().unwrap_or("").to_string(), r["color"].as_str().map(String::from)))
+            .collect())
+    }
+
+    /// Give a label a color (making the label if it doesn't exist).
+    pub fn color_label(&self, project: &Project, label: &str, color: &str) -> Result<()> {
+        let color = check_color(color)?;
+        let id = self.label_id(project, label)?;
+        self.send("PATCH", &format!("/rest/v1/labels?id=eq.{id}"), json!({ "color": color }))?;
+        Ok(())
     }
 
     fn label_id(&self, project: &Project, name: &str) -> Result<String> {

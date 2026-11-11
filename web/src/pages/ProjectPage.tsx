@@ -11,6 +11,8 @@ import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
+import { ColorDot } from "@/components/ColorDot";
+import { statusColor } from "@/lib/colors";
 import { Chat } from "@/components/Chat";
 
 export function ProjectPage({ id }: { id: string }) {
@@ -114,6 +116,7 @@ function Column({
       className="flex w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
+        <ColorDot color={statusColor(status)} />
         {status.name}
         <span className="font-mono font-normal text-muted-foreground">{tasks.length}</span>
         {status.is_done && (

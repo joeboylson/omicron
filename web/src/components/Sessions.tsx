@@ -30,7 +30,8 @@ export function Sessions({ project, sessions, handoffs }: { project: string; ses
               >
                 <span
                   aria-hidden
-                  className={cn("h-1.5 w-1.5 rounded-full", s.state === "open" ? "bg-foreground" : "border border-muted-foreground")}
+                  className={cn("h-1.5 w-1.5 rounded-full", s.state !== "open" && "border border-muted-foreground")}
+                  style={s.state === "open" ? { background: "var(--sys-green)" } : undefined}
                 />
                 <span className="font-medium">{s.name}</span>
                 <span className="text-muted-foreground">
@@ -84,7 +85,11 @@ function SessionNotes({ project, session, notes }: { project: string; session: C
               <li key={n.id} className="grid gap-1.5 px-4 py-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-mono">#{n.number}</span>
-                  <Badge variant={n.state === "waiting" ? "default" : "outline"} className="font-normal">
+                  <Badge
+                    variant="outline"
+                    className={cn("font-normal", n.state === "waiting" && "border-transparent text-white")}
+                    style={n.state === "waiting" ? { background: "var(--sys-orange)" } : undefined}
+                  >
                     {NOTE_STATE[n.state]}
                   </Badge>
                   <time className="whitespace-nowrap font-mono" dateTime={n.written_at}>

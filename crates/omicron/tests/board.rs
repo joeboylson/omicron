@@ -280,3 +280,15 @@ fn machines_are_added_to_projects_from_the_terminal() {
     assert_eq!(ok(&me, &["machines", "remove", &name, &project]).trim(), format!("Took {name} out of {project}."));
     assert!(fails(&me, &["machines", "remove", &name, &project]).contains("isn't in"));
 }
+
+#[test]
+fn statuses_and_labels_get_colors() {
+    let s = supabase_or_skip!();
+    let (me, project) = person_with_project(&s, "Pat");
+    assert_eq!(ok(&me, &["statuses", "color", &project, "to do", "Blue"]).trim(), format!("to do is blue in {project}."));
+    assert_eq!(ok(&me, &["statuses", "list", &project]), "To do [blue]\nDone (Done)\n");
+    ok(&me, &["labels", "color", &project, "urgent", "red"]);
+    ok(&me, &["tasks", "add", &project, "Pay the bill", "--label", "bills"]);
+    assert_eq!(ok(&me, &["labels", "list", &project]), "bills\nurgent [red]\n");
+    assert!(fails(&me, &["statuses", "color", &project, "Done", "magenta"]).contains("isn't one of the colors"));
+}

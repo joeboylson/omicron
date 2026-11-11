@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { must } from "./omicron";
 
 export type ProjectSummary = { id: string; name: string; taskCount: number };
-export type Status = { id: string; name: string; position: number; is_done: boolean };
+export type Status = { id: string; name: string; position: number; is_done: boolean; color: string | null };
 export type Label = { id: string; name: string; color: string | null };
 export type Person = { id: string; display_name: string };
 export type Comment = { id: string; author: string; session: string | null; body: string; created_at: string };
@@ -62,7 +62,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
   const [project, statuses, labels, members, tasks, sessions, handoffs] = await Promise.all([
     db.from("projects").select("id,name,chat_enabled").eq("id", id).maybeSingle(),
-    db.from("statuses").select("id,name,position,is_done").eq("project_id", id).order("position").order("name"),
+    db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
     db.from("project_members").select("people(id,display_name)").eq("project_id", id),
     db
@@ -241,4 +241,12 @@ export async function sendChat(db: SupabaseClient, projectId: string, body: stri
 
 export async function setChat(db: SupabaseClient, projectId: string, on: boolean) {
   must(await db.from("projects").update({ chat_enabled: on }).eq("id", projectId));
+}
+
+export async function setStatusColor(db: SupabaseClient, status: Status, color: string) {
+  must(await db.from("statuses").update({ color }).eq("id", status.id));
+}
+
+export async function setLabelColor(db: SupabaseClient, label: Label, color: string) {
+  must(await db.from("labels").update({ color }).eq("id", label.id));
 }

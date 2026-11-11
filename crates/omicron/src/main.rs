@@ -66,6 +66,9 @@ enum Command {
     /// A Project's statuses (its columns)
     #[command(subcommand)]
     Statuses(board_cmd::Statuses),
+    /// A Project's labels and their colors
+    #[command(subcommand)]
+    Labels(board_cmd::Labels),
     /// Tasks: add, move, finish, label, checklists
     #[command(subcommand)]
     Tasks(board_cmd::Tasks),
@@ -176,6 +179,7 @@ fn run(cli: Cli) -> Result<()> {
             omicron::web::WebMachine { supabase, public_supabase_url, extra_hosts: hosts }.serve(port)
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
+        Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Chat(cmd) => chat_cmd::chat(cmd, cli.as_machine),

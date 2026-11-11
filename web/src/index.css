@@ -11,19 +11,33 @@
     --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
+    /* Apple's system colors (light), for meaning: status and label colors,
+       red for destructive actions, orange for attention. */
+    --sys-red: #ff3b30;
+    --sys-orange: #ff9500;
+    --sys-yellow: #ffcc00;
+    --sys-green: #34c759;
+    --sys-teal: #30b0c7;
+    --sys-blue: #007aff;
+    --sys-indigo: #5856d6;
+    --sys-purple: #af52de;
+    --sys-pink: #ff2d55;
+    --sys-brown: #a2845e;
+    --sys-gray: #8e8e93;
+    /* The tint for buttons and links: system blue. */
+    --primary: 211 100% 50%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9%;
     --muted: 0 0% 96.1%;
     --muted-foreground: 0 0% 45.1%;
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 3 100% 59%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 89.8%;
     --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --ring: 211 100% 50%;
     --radius: 0.5rem;
   }
 
@@ -35,19 +49,30 @@
       --card-foreground: 0 0% 98%;
       --popover: 0 0% 3.9%;
       --popover-foreground: 0 0% 98%;
-      --primary: 0 0% 98%;
-      --primary-foreground: 0 0% 9%;
+      --sys-red: #ff453a;
+      --sys-orange: #ff9f0a;
+      --sys-yellow: #ffd60a;
+      --sys-green: #30d158;
+      --sys-teal: #40c8e0;
+      --sys-blue: #0a84ff;
+      --sys-indigo: #5e5ce6;
+      --sys-purple: #bf5af2;
+      --sys-pink: #ff375f;
+      --sys-brown: #ac8e68;
+      --sys-gray: #98989d;
+      --primary: 210 100% 52%;
+      --primary-foreground: 0 0% 100%;
       --secondary: 0 0% 14.9%;
       --secondary-foreground: 0 0% 98%;
       --muted: 0 0% 14.9%;
       --muted-foreground: 0 0% 63.9%;
       --accent: 0 0% 14.9%;
       --accent-foreground: 0 0% 98%;
-      --destructive: 0 62.8% 30.6%;
+      --destructive: 3 100% 61%;
       --destructive-foreground: 0 0% 98%;
       --border: 0 0% 14.9%;
       --input: 0 0% 14.9%;
-      --ring: 0 0% 83.1%;
+      --ring: 210 100% 52%;
     }
   }
 

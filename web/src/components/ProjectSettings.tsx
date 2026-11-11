@@ -10,6 +10,8 @@ import {
   removeMember,
   renameProject,
   renameStatus,
+  setLabelColor,
+  setStatusColor,
   type Person,
   type ProjectData,
   type Status,
@@ -21,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
+import { statusColor, type Color } from "@/lib/colors";
+import { ColorSelect } from "@/components/ColorDot";
 
 export function ProjectSettings({
   project,
@@ -104,6 +108,25 @@ export function ProjectSettings({
           </form>
         </Group>
 
+        {project.labels.length > 0 && (
+          <Group title="Labels" note="Labels are made from a task's Labels box.">
+            <ul className="divide-y">
+              {project.labels.map((l) => (
+                <li key={l.id}>
+                  <Row>
+                    <span className="flex-1 py-2 text-[15px] sm:text-sm">{l.name}</span>
+                    <ColorSelect
+                      value={(l.color as Color | null) ?? "gray"}
+                      label={`Color of label ${l.name}`}
+                      onChange={(c) => change(() => setLabelColor(db, l, c))}
+                    />
+                  </Row>
+                </li>
+              ))}
+            </ul>
+          </Group>
+        )}
+
         <Group title="Members">
           <ul className="divide-y">
             {project.members.map((m) => (
@@ -117,7 +140,7 @@ export function ProjectSettings({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="-mr-2 text-muted-foreground"
+                      className="-mr-2 text-destructive hover:text-destructive"
                       aria-label={`Remove ${m.display_name}`}
                       onClick={() => change(() => removeMember(db, project.id, m.id))}
                     >
@@ -166,6 +189,12 @@ function StatusRow({
   return (
     <li>
       <Row>
+        <ColorSelect
+          value={statusColor(status)}
+          label={`Color of ${status.name}`}
+          className="-ml-2"
+          onChange={(c) => change(() => setStatusColor(db, status, c))}
+        />
         <Input
           value={name}
           aria-label={`Status name: ${status.name}`}
@@ -189,7 +218,7 @@ function StatusRow({
         <Button
           variant="ghost"
           size="icon"
-          className="-mr-2 shrink-0 text-muted-foreground"
+          className="-mr-2 shrink-0 text-destructive hover:text-destructive disabled:text-muted-foreground"
           aria-label={`Remove status ${status.name}`}
           disabled={status.is_done || inUse}
           onClick={() => change(() => deleteStatus(db, status))}

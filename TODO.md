@@ -112,7 +112,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       install the page.
 - [ ] Drag tasks between statuses and reorder them (now: pick the status in
       the task view; new tasks go to the bottom).
-- [ ] Labels: rename, remove, colors (the `color` column is unused).
+- [x] Colors (Apple's system colors, light and dark): statuses and labels
+      each have one (`omicron statuses color`, `omicron labels color`, or
+      Project settings); blue for buttons and links, red for delete and
+      overdue dates, orange for Needs review, green for open sessions.
+- [ ] Labels: rename and remove.
 
 ## 4. Claude sessions
 - [x] Decided (10 Nov 2026): Omicron doesn't start or host sessions. It keeps
