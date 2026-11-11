@@ -58,6 +58,11 @@ with the same paths. Run the same scripts with
 `bash dev/docker/systemd-test.sh` checks `omicron daemon start-at-login`
 against a real systemd.
 
+The test web page is on the tailnet, admin only, at
+https://atlas.taileedd95.ts.net:8451 (the home-lab session runs the gate in
+front). `bash dev/docker/serve.sh` (re)starts the `omicron serve` behind it
+with the current code; `serve.sh stop` stops it. It uses the test Supabase.
+
 ## How to work here
 
 - Keep every file for this project in this folder.
