@@ -33,13 +33,13 @@ fn signed_out_machines_have_no_person() {
 
 #[test]
 fn a_visit_from_this_machine_is_this_machines_person() {
-    let visit = visitor(localhost(), |_| None, || Ok(me())).unwrap();
+    let visit = visitor(localhost(), |_| None, None, || Ok(me())).unwrap();
     assert_eq!(visit, Visit::Local(me()));
 }
 
 #[test]
 fn ipv6_localhost_counts_as_this_machine() {
-    let visit = visitor("::1".parse().unwrap(), |_| None, || Ok(me())).unwrap();
+    let visit = visitor("::1".parse().unwrap(), |_| None, None, || Ok(me())).unwrap();
     assert_eq!(visit, Visit::Local(me()));
 }
 
@@ -50,7 +50,7 @@ fn a_visit_through_tailscale_is_the_visitor() {
         "Tailscale-User-Name" => Some("Other Person".to_string()),
         _ => None,
     };
-    let visit = visitor(localhost(), header, || panic!("shouldn't look up this machine's person")).unwrap();
+    let visit = visitor(localhost(), header, None, || panic!("shouldn't look up this machine's person")).unwrap();
     assert_eq!(
         visit,
         Visit::Tailnet(TailscalePerson { login: "other@example.com".into(), display_name: "Other Person".into() })
@@ -60,13 +60,13 @@ fn a_visit_through_tailscale_is_the_visitor() {
 #[test]
 fn a_blank_login_header_counts_as_no_header() {
     let header = |name: &str| (name == "Tailscale-User-Login").then(|| "  ".to_string());
-    assert_eq!(visitor(localhost(), header, || Ok(me())).unwrap(), Visit::Local(me()));
+    assert_eq!(visitor(localhost(), header, None, || Ok(me())).unwrap(), Visit::Local(me()));
 }
 
 #[test]
 fn visits_from_other_addresses_are_refused() {
     let header = |_: &str| Some("other@example.com".to_string());
-    let err = visitor("100.64.0.5".parse().unwrap(), header, || Ok(me())).unwrap_err().to_string();
+    let err = visitor("100.64.0.5".parse().unwrap(), header, None, || Ok(me())).unwrap_err().to_string();
     assert!(err.contains("refused"), "{err}");
 }
 
