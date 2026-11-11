@@ -187,6 +187,16 @@ Plain words most people know, no military terms. Each one is chosen so it doesn'
 - A Claude session can run a legion squad if I want it to.
 - A Claude session is not a legion commander.
 
+### Decided while building (10–11 Nov 2026)
+- Omicron itself runs on the Mac (atlas); tests run in the `omicron-dev` container. The home lab puts the real page (:8451) and a dev page with seed data (:8453) on the tailnet, admin only for now.
+- Two Supabases: real data, and dev/test data with seed data to reset to.
+- Web page: Apple's Human Interface Guidelines, plain shadcn components, Geist and Geist Mono, Apple's system colors used sparingly.
+- `omicron machines pick` opens ssh to the machine's tailnet name.
+- `omicron accounts` is a full rewrite of janus (save, switch, usage, switch at a limit, one session on one account, usage on the web page).
+- Sessions follow this doc (11 Nov): Omicron starts sessions and Dispatch opens them. A sent task waits until I tell the session to get its tasks or press Dispatch; sessions never start tasks on their own.
+- **Where Omicron's sessions run:** not tmux and not Claude's remote-control. Omicron hosts them itself, like `dtach`: a small detached `omicron` host process per session owns its terminal (a pseudo-terminal) and a socket in `~/.omicron/run/`. `omicron sessions attach <name>` (or the picker) connects to it; a key detaches. It survives the daemon restarting. Dispatch reopens a closed session with the task as Claude's first message; for an open one the host types the task in.
+- Reports follow rules: `/s` style, no jargon, no made-up terms, at most 500 words.
+
 ## Notes from seraph (how computers talk through Supabase)
 Source: `agent_orchestration/seraph`, mainly `src/daemon.rs` and `supabase/migrations/20261018000500_many_machines.sql`.
 

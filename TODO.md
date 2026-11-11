@@ -210,6 +210,41 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - [ ] Pick a worker and jump into its live terminal.
 - [ ] Open a team's folder in VS Code.
 
+## Tonight (11 Nov 2026), in order
+Built from `ref/BRAINSTORM.md`. Each step: tests, screenshots for anything
+visible, a commit, rebuild the Mac's pages. Decisions that need Joe go in
+"Questions for Joe" and the run moves on.
+
+1. Sessions follow the doc:
+   - Session host (dtach-style, no tmux): `omicron` hosts each session in its
+     own detached process with a pseudo-terminal; `omicron sessions attach`
+     and detach; survives daemon restarts.
+   - `omicron sessions new` (pick a Project, give a name; the Claude session
+     gets the same name).
+   - Pickup only when told: drop the automatic hand-over at the end of each
+     turn; add `omicron tasks mine` for "go get your tasks".
+   - Dispatch: a requests table; the target machine's daemon hears it live,
+     claims it (only one can), reopens the session in its host with the task
+     as the first message (or types it into an open one), and reports back.
+     Fails at once if the machine is asleep, or if nobody claims it in time.
+     A Dispatch button on the web page.
+   - Report rules in every hand-over: `/s` style, no jargon, no made-up
+     terms, at most 500 words.
+   - Gone: also when the transcript is deleted or the machine removed; a
+     gone session's tasks can be given to someone else.
+2. Session picker (full-screen list of this machine's sessions; Enter
+   attaches, or reopens a closed one) and `/rename` sync (watch the
+   transcript's `custom-title` line).
+3. Web page gaps: People table (everyone, their Projects, add and remove);
+   chat hidden when off (turned on in Project settings); drag tasks between
+   statuses; rename and remove labels.
+4. Teams (rewrite of legion), as far as it gets: read legion, write
+   `ref/TEAMS.md`, then build out (teams, jobs and status, workers in
+   Supabase; the rest on the machine running the team; workers run in the
+   session host; `omicron teams` picker to jump into a worker; open a team's
+   folder in VS Code).
+5. Housekeeping: fix old tool paths in `CLAUDE.md`.
+
 ## Questions for Joe
 Decisions an unattended run found it needed; it carried on with other work.
 - (none yet)
