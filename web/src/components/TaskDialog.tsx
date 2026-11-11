@@ -6,7 +6,6 @@ import {
   addChecklistItem,
   addLabel,
   deleteChecklistItem,
-  deleteTask,
   DISPATCH_CLAIM_SECONDS,
   giveUpDispatch,
   requestDispatch,
@@ -48,11 +47,14 @@ export function TaskDialog({
   task,
   onClose,
   onChanged,
+  onDelete,
 }: {
   project: ProjectData;
   task: Task | null;
   onClose: () => void;
   onChanged: () => void;
+  /** Delete it (the page keeps an Undo for a few seconds). */
+  onDelete: (task: Task) => void;
 }) {
   return (
     <Dialog open={task !== null} onOpenChange={(open) => !open && onClose()}>
@@ -61,7 +63,7 @@ export function TaskDialog({
         // Don't jump into the title: on a phone that opens the keyboard.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {task && <TaskForm key={task.id} project={project} task={task} onClose={onClose} onChanged={onChanged} />}
+        {task && <TaskForm key={task.id} project={project} task={task} onChanged={onChanged} onDelete={onDelete} />}
       </DialogContent>
     </Dialog>
   );
@@ -70,20 +72,19 @@ export function TaskDialog({
 function TaskForm({
   project,
   task,
-  onClose,
   onChanged,
+  onDelete,
 }: {
   project: ProjectData;
   task: Task;
-  onClose: () => void;
   onChanged: () => void;
+  onDelete: (task: Task) => void;
 }) {
   const { db, act } = useApp();
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
   const [newItem, setNewItem] = useState("");
   const [newLabel, setNewLabel] = useState("");
-  const [sure, setSure] = useState(false);
   // Ticks show straight away, before the save comes back.
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
   // Once a reload shows the saved value, stop showing our own. A reload
@@ -388,12 +389,11 @@ function TaskForm({
           </Button>
         )}
         <Button
-          variant={sure ? "destructive" : "ghost"}
-          className={cn("ml-auto", !sure && "text-destructive hover:text-destructive")}
-          onClick={() => (sure ? change(async () => (await deleteTask(db, task), onClose())) : setSure(true))}
-          onBlur={() => setSure(false)}
+          variant="ghost"
+          className="ml-auto text-destructive hover:text-destructive"
+          onClick={() => onDelete(task)}
         >
-          <Trash2 /> {sure ? "Delete for good" : "Delete task"}
+          <Trash2 /> Delete task
         </Button>
       </div>
     </>

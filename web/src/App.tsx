@@ -10,6 +10,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { KeysPage } from "@/pages/KeysPage";
 import { applyAppearance, loadAppearance } from "@/lib/theme";
 import { reportError } from "@/lib/report";
+import { ToastProvider } from "@/lib/toast";
 
 export default function App() {
   const [session, setSession] = useState<{ db: SupabaseClient; me: Me } | null>(null);
@@ -78,6 +79,7 @@ export default function App() {
   const projectId = path.match(/^\/p\/([0-9a-f-]{36})$/)?.[1] ?? null;
   return (
     <AppContext.Provider value={app}>
+      <ToastProvider>
       <div className="flex min-h-dvh flex-col">
         {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : path === "/settings" ? <SettingsPage /> : path === "/keys" ? <KeysPage /> : <ProjectsPage />}
         {error && (
@@ -92,6 +94,7 @@ export default function App() {
           </div>
         )}
       </div>
+      </ToastProvider>
     </AppContext.Provider>
   );
 }

@@ -812,3 +812,60 @@ test("API keys: make one for a new machine, see it, switch it off, remove it", a
   });
   expect(res.status()).toBe(403);
 });
+
+test("deleting a task can be undone, and it's gone for good after", async ({ page, request }) => {
+  const me = await newPerson(page, request);
+  const name = unique("House");
+  const id = await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Fix the gate");
+  const card = page.getByRole("button", { name: /#1 Fix the gate/ });
+
+  await card.click();
+  await page.getByRole("button", { name: "Delete task" }).click();
+  await expect(card).toHaveCount(0);
+  const toast = page.getByRole("status").filter({ hasText: "Deleted #1 Fix the gate" });
+  await expect(toast).toBeVisible();
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect(card).toBeVisible();
+
+  await card.click();
+  await page.getByRole("button", { name: "Delete task" }).click();
+  await expect(card).toHaveCount(0);
+  // Not undone: deleted in the database a few seconds later.
+  await expect
+    .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&select=id`)).length, { timeout: 10000 })
+    .toBe(0);
+});
+
+test("search and filters narrow the board", async ({ page, request }) => {
+  await newPerson(page, request, "Robin Example");
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Fix the gate");
+  for (const t of ["Paint the fence", "Water plants"]) {
+    await page.getByLabel("New task in To do").fill(t);
+    await page.getByRole("button", { name: "Add task", exact: true }).click();
+    await expect(column(page, "To do").getByRole("button", { name: new RegExp(t) })).toBeVisible();
+  }
+  const cards = () => column(page, "To do").getByRole("button", { name: /^#\d+ / });
+  await expect(cards()).toHaveCount(3);
+
+  await page.getByLabel("Search tasks").fill("fence");
+  await expect(cards()).toHaveCount(1);
+  await expect(cards().first()).toContainText("Paint the fence");
+  await page.getByLabel("Search tasks").fill("#3");
+  await expect(cards()).toHaveCount(1);
+  await expect(cards().first()).toContainText("Water plants");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(cards()).toHaveCount(3);
+
+  // Mine: given to me.
+  await cards().first().click();
+  await pick(page, "Given to", "Robin Example");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Mine" }).click();
+  await expect(cards()).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(cards()).toHaveCount(3);
+});

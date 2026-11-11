@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronLeft, MessageCircle, Plus, Settings } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, MessageCircle, Plus, Search, Settings } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addTask, loadProject, moveTask, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
+import { addTask, deleteTask, loadProject, moveTask, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
 import {
   DndContext,
   DragOverlay,
@@ -30,17 +31,26 @@ import { NavBar } from "@/components/NavBar";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
 import { Chat } from "@/components/Chat";
+import { useToast } from "@/lib/toast";
 
 export function ProjectPage({ id }: { id: string }) {
-  const { db, act } = useApp();
+  const { db, act, me } = useApp();
   // undefined: still loading. null: not found, or no longer a member.
-  const [project, setProject] = useState<ProjectData | null | undefined>(undefined);
+  const [loaded, setProject] = useState<ProjectData | null | undefined>(undefined);
   const [openTask, setOpenTask] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
   const [collapsed, setCollapsed] = useStored<string[]>(`omicron.collapsedTopics.${id}`, []);
   const [dragging, setDragging] = useState<Task | null>(null);
+  // Search and filters (not kept: a fresh look each visit).
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<{ mine: boolean; review: boolean; due: boolean; label: string | null }>({
+    mine: false,
+    review: false,
+    due: false,
+    label: null,
+  });
   const sensors = useSensors(
     // A small move starts a drag, so a click still opens the task.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -58,6 +68,40 @@ export function ProjectPage({ id }: { id: string }) {
   }, [db, act, id]);
   useEffect(reload, [reload]);
   useChanges(db, id, reload);
+  let project = loaded;
+  const toast = useToast();
+  // Deleted tasks hide at once and are deleted for good a few seconds
+  // later, unless Undo is pressed (or straight away if the page closes).
+  const [hidden, setHidden] = useState<string[]>([]);
+  const pending = useRef(new Map<string, { task: Task; timer: ReturnType<typeof setTimeout> }>());
+  const finishDelete = useCallback(
+    (id: string) => {
+      const p = pending.current.get(id);
+      if (!p) return;
+      clearTimeout(p.timer);
+      pending.current.delete(id);
+      act(() => deleteTask(db, p.task)).then(reload);
+    },
+    [db, act, reload],
+  );
+  useEffect(() => () => [...pending.current.keys()].forEach(finishDelete), [finishDelete]);
+  const removeTask = (t: Task) => {
+    setOpenTask(null);
+    setHidden((h) => [...h, t.id]);
+    pending.current.set(t.id, { task: t, timer: setTimeout(() => finishDelete(t.id), 6000) });
+    toast({
+      message: `Deleted #${t.number} ${t.title}`,
+      action: {
+        label: "Undo",
+        run: () => {
+          const p = pending.current.get(t.id);
+          if (p) clearTimeout(p.timer);
+          pending.current.delete(t.id);
+          setHidden((h) => h.filter((x) => x !== t.id));
+        },
+      },
+    });
+  };
 
   if (project === undefined) return <p className="p-4 text-muted-foreground">Loading…</p>;
   if (project === null) {
@@ -71,6 +115,17 @@ export function ProjectPage({ id }: { id: string }) {
     );
   }
 
+  // Tasks waiting to be deleted (Undo) aren't shown.
+  if (hidden.length > 0) project = { ...project, tasks: project.tasks.filter((t) => !hidden.includes(t.id)) };
+  const filtering = query.trim() !== "" || filters.mine || filters.review || filters.due || filters.label !== null;
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const soon = Date.now() + 7 * 86400000;
+  const matches = (t: Task) =>
+    words.every((w) => `#${t.number} ${t.title} ${t.notes}`.toLowerCase().includes(w)) &&
+    (!filters.mine || t.assignee_person_id === me.personId) &&
+    (!filters.review || t.needs_review) &&
+    (!filters.due || (t.due_on !== null && new Date(t.due_on).getTime() <= soon)) &&
+    (filters.label === null || t.labelIds.includes(filters.label));
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
 
@@ -124,7 +179,67 @@ export function ProjectPage({ id }: { id: string }) {
         }
       />
       <Sessions project={project} onChanged={reload} />
-      <div className="flex items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
+      <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
+        <div className="relative w-full sm:w-56">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search tasks"
+            aria-label="Search tasks"
+            className="h-9 pl-8"
+          />
+        </div>
+        <div role="group" aria-label="Filters" className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              ["mine", "Mine"],
+              ["review", "Needs review"],
+              ["due", "Due soon"],
+            ] as const
+          ).map(([k, label]) => (
+            <Button
+              key={k}
+              variant={filters[k] ? "secondary" : "ghost"}
+              size="sm"
+              aria-pressed={filters[k]}
+              className={cn("h-8 rounded-full border", filters[k] && "border-transparent")}
+              onClick={() => setFilters({ ...filters, [k]: !filters[k] })}
+            >
+              {label}
+            </Button>
+          ))}
+          {project.labels.length > 0 && (
+            <Select value={filters.label ?? "any"} onValueChange={(v) => setFilters({ ...filters, label: v === "any" ? null : v })}>
+              <SelectTrigger aria-label="Filter by label" className={cn("h-8 w-auto gap-1 rounded-full px-3 text-sm", filters.label && "bg-secondary")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any label</SelectItem>
+                {project.labels.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {filtering && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-[var(--sys-blue)]"
+              onClick={() => {
+                setQuery("");
+                setFilters({ mine: false, review: false, due: false, label: null });
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+        <span className="hidden flex-1 sm:block" />
         <span id="group-by" className="text-sm text-muted-foreground">
           Group by
         </span>
@@ -168,7 +283,7 @@ export function ProjectPage({ id }: { id: string }) {
               topicId={null}
               grouped={false}
               label={s.name}
-              tasks={project.tasks.filter((t) => t.status_id === s.id)}
+              tasks={project.tasks.filter((t) => t.status_id === s.id && matches(t))}
               onOpen={(t) => setOpenTask(t.number)}
               onAdded={reload}
             />
@@ -177,6 +292,7 @@ export function ProjectPage({ id }: { id: string }) {
       ) : (
         <Lanes
           project={project}
+          matches={matches}
           collapsed={collapsed}
           onToggle={(key) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key])}
           onOpen={(t) => setOpenTask(t.number)}
@@ -192,7 +308,7 @@ export function ProjectPage({ id }: { id: string }) {
           )}
         </DragOverlay>
       </DndContext>
-      <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload} />
+      <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload} onDelete={removeTask} />
       <Chat project={project} open={chatOpen && project.chatEnabled} onOpenChange={setChatOpen} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
     </main>
@@ -226,6 +342,7 @@ const NO_TOPIC = "none";
 /** One row per topic (and one for tasks without a topic), each with the status columns. */
 function Lanes({
   project,
+  matches,
   collapsed,
   onToggle,
   onOpen,
@@ -233,6 +350,8 @@ function Lanes({
   onSettings,
 }: {
   project: ProjectData;
+  /** Search and filters: which tasks show. */
+  matches: (t: Task) => boolean;
   collapsed: string[];
   onToggle: (key: string) => void;
   onOpen: (t: Task) => void;
@@ -252,7 +371,7 @@ function Lanes({
         </p>
       )}
       {lanes.map((lane) => {
-        const tasks = project.tasks.filter((t) => t.topic_id === lane.topicId);
+        const tasks = project.tasks.filter((t) => t.topic_id === lane.topicId && matches(t));
         const open = !collapsed.includes(lane.key);
         return (
           <section key={lane.key} aria-label={lane.name} className="flex flex-col">
