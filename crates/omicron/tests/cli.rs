@@ -102,6 +102,23 @@ fn help_lists_the_commands() {
 }
 
 #[test]
+fn start_at_login_prints_the_service_file() {
+    let home = new_home();
+    let out = ok(omicron(&home, &["daemon", "start-at-login", "--print"]));
+    assert!(out.contains(&format!("OMICRON_HOME={}", home.display())), "{out}");
+    assert!(out.contains("OMICRON_DAEMON_SERVICE"), "{out}");
+    assert!(out.contains(" daemon") || out.contains("<string>daemon</string>"), "{out}");
+}
+
+#[test]
+fn start_at_login_needs_a_registered_machine() {
+    let home = new_home();
+    ok(omicron(&home, &["setup", "--url", "http://example.invalid", "--key", "pub"]));
+    let err = fails(omicron(&home, &["daemon", "start-at-login"]));
+    assert!(err.contains("register"), "{err}");
+}
+
+#[test]
 fn setup_saves_settings_only_this_user_can_read() {
     let home = new_home();
     ok(omicron(&home, &["setup", "--url", "http://example.invalid", "--key", "pub"]));

@@ -55,6 +55,8 @@ New VM: `dev/vm/setup.sh`, then `dev/supabase/install.sh`.
 No multipass? `bash dev/docker/setup.sh` makes an `omicron-dev` Docker container
 with the same paths. Run the same scripts with
 `docker exec -u ubuntu omicron-dev bash /home/ubuntu/omicron/dev/...`.
+`bash dev/docker/systemd-test.sh` checks `omicron daemon start-at-login`
+against a real systemd.
 
 ## How to work here
 

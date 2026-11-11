@@ -397,6 +397,17 @@ fn machines_unseen_for_30_days_are_switched_off_until_switched_back_on() {
     let said: Vec<String> = daemon.errors.iter().collect();
     assert!(said.iter().any(|l| l.contains("switched off") && l.contains("switch-on")), "{said:?}");
 
+    // Started at login, the same stop is a normal finish, so the service
+    // doesn't keep restarting it.
+    let out = Command::new(env!("CARGO_BIN_EXE_omicron"))
+        .env("OMICRON_HOME", &home)
+        .env("OMICRON_DAEMON_SERVICE", "1")
+        .arg("daemon")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("switched off"));
+
     // Switched back on from a machine with the secret key, it runs again.
     let web = std::env::temp_dir().join(format!("omicron-test-{}", Uuid::new_v4().simple()));
     std::fs::create_dir_all(&web).unwrap();

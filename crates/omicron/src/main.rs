@@ -46,7 +46,10 @@ enum Command {
     },
     /// Run in the background: show this machine as awake, catch up on
     /// missed changes, then print each new change as one JSON line
-    Daemon,
+    Daemon {
+        #[command(subcommand)]
+        action: Option<DaemonAction>,
+    },
     /// Machines: register this one, check in
     #[command(subcommand)]
     Machines(Machines),
@@ -62,6 +65,19 @@ enum Command {
     /// People: link Tailscale identities
     #[command(subcommand)]
     People(People),
+}
+
+#[derive(Subcommand)]
+enum DaemonAction {
+    /// Start the daemon now and each time you log in (launchd on macOS,
+    /// systemd on Linux)
+    StartAtLogin {
+        /// Only print the service file and where it would go
+        #[arg(long)]
+        print: bool,
+    },
+    /// Stop the daemon and stop starting it at login
+    StopAtLogin,
 }
 
 #[derive(Subcommand)]
@@ -134,7 +150,31 @@ fn run(cli: Cli) -> Result<()> {
             let supabase = Config::load()?.supabase()?;
             omicron::web::WebMachine { supabase, extra_hosts: hosts }.serve(port)
         }
-        Command::Daemon => daemon(),
+        Command::Daemon { action: None } => daemon(),
+        Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {
+            let file = omicron::login::this_service_file()?;
+            println!("# {}", file.path.display());
+            print!("{}", file.contents);
+            Ok(())
+        }
+        Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: false }) } => {
+            // Check it can run before asking the system to keep starting it.
+            Config::load()?.machine_key()?;
+            let path = omicron::login::start_at_login()?;
+            println!("The daemon is running and will start each time you log in ({}).", path.display());
+            println!("Its errors go to {}.", config::home()?.join("daemon.log").display());
+            if omicron::login::System::here()? == omicron::login::System::Linux {
+                println!("On a machine nobody logs in to, also run `loginctl enable-linger` so it starts at boot.");
+            }
+            Ok(())
+        }
+        Command::Daemon { action: Some(DaemonAction::StopAtLogin) } => {
+            match omicron::login::stop_at_login()? {
+                Some(path) => println!("Stopped the daemon and removed {}.", path.display()),
+                None => println!("The daemon wasn't set to start at login."),
+            }
+            Ok(())
+        }
         Command::Machines(Machines::List) => board_cmd::list_machines(cli.as_machine),
         Command::Machines(Machines::Add { machine, project }) => board_cmd::add_machine(&machine, &project, cli.as_machine),
         Command::Machines(Machines::Remove { machine, project }) => board_cmd::remove_machine(&machine, &project, cli.as_machine),
@@ -287,7 +327,14 @@ fn daemon() -> Result<()> {
     let row = me.get(0).context("this machine's record is missing")?;
     let name = row["name"].as_str().unwrap_or("?").to_string();
     if row["active"].as_bool() == Some(false) {
-        bail!("{name} is switched off (machines are switched off after 30 days unseen). Switch it back on from a Web Machine with `omicron machines switch-on {name}`.");
+        let why = format!("{name} is switched off (machines are switched off after 30 days unseen). Switch it back on from a Web Machine with `omicron machines switch-on {name}`.");
+        // Started at login, this is a normal stop, so the service doesn't
+        // keep restarting it.
+        if std::env::var(omicron::login::SERVICE_ENV).is_ok_and(|v| v == "1") {
+            eprintln!("omicron: {why}");
+            return Ok(());
+        }
+        bail!(why);
     }
     let mut state = State::load()?;
     let stop = std::sync::atomic::AtomicBool::new(false);

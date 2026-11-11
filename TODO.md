@@ -73,7 +73,13 @@ Built in this order. Each part replaces an old tool only once it's ready.
       `omicron machines switch-on <name>` (secret key) brings it back. A
       running daemon records it's still around each time it renews its login
       (about hourly), so a machine in use never expires.
-- [ ] Run `omicron daemon` at login (launchd on macOS, systemd on Linux).
+- [x] Run `omicron daemon` at login: `omicron daemon start-at-login` (and
+      `stop-at-login`) writes a launchd agent on macOS or a systemd user
+      service on Linux and starts it. It restarts after a failure but not
+      after a switched-off stop. Tested against real systemd in a container
+      (`dev/docker/systemd-test.sh`).
+- [ ] Try `start-at-login` on a real Mac (launchd). Only the file it writes
+      is tested so far.
 
 ## 3. Projects and tasks (replaces Trello)
 - [x] Projects with members, per-Project statuses, and one Done status. New
