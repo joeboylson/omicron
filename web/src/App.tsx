@@ -10,6 +10,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { KeysPage } from "@/pages/KeysPage";
 import { applyAppearance, loadAppearance } from "@/lib/theme";
 import { reportError } from "@/lib/report";
+import { BoardSkeleton } from "@/components/Skeleton";
 import { ToastProvider } from "@/lib/toast";
 import { CommandMenu } from "@/components/CommandMenu";
 import { GlobalCommands } from "@/components/GlobalCommands";
@@ -75,7 +76,11 @@ export default function App() {
     );
   }
   if (!app) {
-    return <p className="p-6 text-muted-foreground">Signing in…</p>;
+    return (
+      <div className="flex min-h-dvh flex-col">
+        <BoardSkeleton />
+      </div>
+    );
   }
 
   const projectId = path.match(/^\/p\/([0-9a-f-]{36})$/)?.[1] ?? null;

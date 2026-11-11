@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Loading, Skeleton } from "@/components/Skeleton";
 
 /** The Project's chat, in a sheet. Live while it's open. */
 export function Chat({
@@ -63,7 +64,11 @@ function Messages({ project }: { project: ProjectData }) {
     <>
       <div className="min-h-40 flex-1 overflow-y-auto rounded-xl border bg-card">
         {messages === null ? (
-          <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+          <Loading label="Loading messages" className="grid gap-3 p-4">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className={i % 2 ? "ml-auto h-10 w-1/2" : "h-10 w-2/3"} />
+            ))}
+          </Loading>
         ) : messages.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">No messages yet.</p>
         ) : (

@@ -13,6 +13,7 @@ export default {
         mono: ["'Geist Mono Variable'", "ui-monospace", "monospace"],
       },
       colors: {
+        link: { DEFAULT: "hsl(var(--link))", inverse: "hsl(var(--link-inverse))" },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

@@ -25,12 +25,16 @@
     --sys-brown: #a2845e;
     --sys-gray: #8e8e93;
     /* The tint for buttons and links: system blue. */
-    --primary: 211 100% 50%;
+    --primary: 211 100% 42%;
+    /* Blue text (links, text buttons): dark enough to read on the page, and
+       the opposite for the dark toast. */
+    --link: 211 100% 40%;
+    --link-inverse: 210 100% 66%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9%;
     --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
+    --muted-foreground: 0 0% 40%;
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
     --destructive: 3 100% 59%;
@@ -66,7 +70,9 @@
       --sys-pink: #ff375f;
       --sys-brown: #ac8e68;
       --sys-gray: #98989d;
-      --primary: 210 100% 52%;
+      --primary: 211 100% 45%;
+      --link: 210 100% 66%;
+      --link-inverse: 211 100% 40%;
       --primary-foreground: 0 0% 100%;
       --secondary: 0 0% 14.9%;
       --secondary-foreground: 0 0% 98%;
@@ -100,7 +106,9 @@
         --sys-pink: #ff375f;
         --sys-brown: #ac8e68;
         --sys-gray: #98989d;
-        --primary: 210 100% 52%;
+        --primary: 211 100% 45%;
+        --link: 210 100% 66%;
+        --link-inverse: 211 100% 40%;
         --primary-foreground: 0 0% 100%;
         --secondary: 0 0% 14.9%;
         --secondary-foreground: 0 0% 98%;

@@ -885,7 +885,8 @@ test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) =>
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
-  // c adds a task; / searches.
+  // c adds a task; / searches (once the board is there).
+  await expect(column(page, "To do")).toBeVisible();
   await page.keyboard.press("c");
   await expect(page.getByLabel("New task in To do")).toBeFocused();
   await page.keyboard.type("Plant tulips");

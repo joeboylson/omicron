@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Group } from "@/components/Grouped";
+import { ListSkeleton } from "@/components/Skeleton";
 import { cn } from "@/lib/utils";
 
 function seen(iso: string | null): string {
@@ -82,7 +83,7 @@ export function KeysPage() {
           note="Each machine has its own key, used by its daemon and its Claude sessions. People never use keys; they sign in with Tailscale. Switched off, a machine's key stops working until it's switched on again."
         >
           {machines === null ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">Loading…</p>
+            <ListSkeleton rows={2} />
           ) : shown.length === 0 ? (
             <div className="grid justify-items-start gap-3 px-4 py-4">
               <p className="text-sm text-muted-foreground">No machines in your Projects yet.</p>

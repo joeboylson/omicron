@@ -31,6 +31,7 @@ import { NavBar } from "@/components/NavBar";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
 import { Chat } from "@/components/Chat";
+import { BoardSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/lib/toast";
 import { typing, useCommands } from "@/lib/commands";
 
@@ -143,7 +144,7 @@ export function ProjectPage({ id }: { id: string }) {
     });
   };
 
-  if (project === undefined) return <p className="p-4 text-muted-foreground">Loading…</p>;
+  if (project === undefined) return <BoardSkeleton />;
   if (project === null) {
     return (
       <main className="p-4">
@@ -270,7 +271,7 @@ export function ProjectPage({ id }: { id: string }) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-[var(--sys-blue)]"
+              className="h-8 text-link"
               onClick={() => {
                 setQuery("");
                 setFilters({ mine: false, review: false, due: false, label: null });
@@ -294,7 +295,7 @@ export function ProjectPage({ id }: { id: string }) {
               onClick={() => setGroupBy(g)}
               className={cn(
                 "min-h-8 rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                groupBy === g ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+                groupBy === g ? "bg-background font-medium shadow-sm" : "text-foreground/75 hover:text-foreground",
               )}
             >
               {g === "status" ? "Status" : "Status and topic"}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NavBar } from "@/components/NavBar";
+import { ProjectsSkeleton } from "@/components/Skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export function ProjectsPage() {
@@ -70,7 +71,7 @@ export function ProjectsPage() {
     />
     <main className="mx-auto w-full max-w-3xl px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
       {projects === null ? (
-        <p className="text-muted-foreground">Loading…</p>
+        <ProjectsSkeleton />
       ) : projects.length === 0 ? (
         <div className="grid justify-items-start gap-3 py-6">
           <p className="text-muted-foreground">No Projects yet. Start one, or ask someone to add you to theirs.</p>

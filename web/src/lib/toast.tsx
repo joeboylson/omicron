@@ -35,7 +35,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {toast.action && (
               <button
                 type="button"
-                className="-my-1 rounded-md px-2 py-1 font-semibold text-[var(--sys-blue)] hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-my-1 rounded-md px-2 py-1 font-semibold text-link-inverse hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   toast.action!.run();
                   setToast(null);

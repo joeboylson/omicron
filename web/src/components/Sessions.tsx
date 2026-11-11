@@ -141,7 +141,7 @@ function SessionNotes({
                 );
               }}
             >
-              <SelectTrigger aria-label={`Give ${session.name}'s open tasks to`} className={cn(bare, "px-0 text-[var(--sys-blue)]")}>
+              <SelectTrigger aria-label={`Give ${session.name}'s open tasks to`} className={cn(bare, "px-0 text-link")}>
                 <SelectValue placeholder={tasks.length === 1 ? "Give it to…" : `Give all ${tasks.length} to…`} />
               </SelectTrigger>
               <SelectContent>

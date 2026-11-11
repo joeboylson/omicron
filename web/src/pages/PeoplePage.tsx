@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Group } from "@/components/Grouped";
+import { ListSkeleton } from "@/components/Skeleton";
 
 function initials(name: string): string {
   return name
@@ -71,7 +72,9 @@ export function PeoplePage() {
           />
         </div>
         {people === null ? (
-          <p className="text-muted-foreground">Loading…</p>
+          <Group title="People">
+            <ListSkeleton rows={4} />
+          </Group>
         ) : (
           <Group
             title={`${shown.length} ${shown.length === 1 ? "person" : "people"}`}
