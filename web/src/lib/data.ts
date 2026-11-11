@@ -250,3 +250,19 @@ export async function setStatusColor(db: SupabaseClient, status: Status, color: 
 export async function setLabelColor(db: SupabaseClient, label: Label, color: string) {
   must(await db.from("labels").update({ color }).eq("id", label.id));
 }
+
+export type UsageWindow = { percent: number; resets_at: string | null } | null;
+export type MachineAccounts = {
+  in_use: string | null;
+  accounts: { name: string; five_hour: UsageWindow; weekly: UsageWindow }[];
+  auto: { primary: string; secondary: string; held: string | null } | null;
+};
+export type MachineSummary = { id: string; name: string; active: boolean; accounts: MachineAccounts };
+
+/** Machines that report their Claude accounts. */
+export async function listMachineAccounts(db: SupabaseClient): Promise<MachineSummary[]> {
+  const rows = must(
+    await db.from("machines").select("id,name,active,claude_accounts").not("claude_accounts", "is", null).order("name"),
+  ) as any[];
+  return rows.map((r) => ({ id: r.id, name: r.name, active: r.active, accounts: r.claude_accounts }));
+}

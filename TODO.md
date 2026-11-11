@@ -197,8 +197,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       pasted token (`~/.omicron/accounts/<name>.token`, private); then it
       starts `claude` with `CLAUDE_CODE_OAUTH_TOKEN`. Warns a month before the
       token's year is up; `--new-token` replaces it.
-- [ ] Web page: each machine's account and usage (names and percentages
-      only; logins never leave the machine).
+- [x] Web page: a Machines list on the Projects page with each machine's
+      Claude account in use and every saved account's 5-hour and weekly use
+      (green, orange from 70%, red from 90%). The daemon reports it through
+      `report_claude_accounts` when it changes (names, numbers and reset
+      times only; logins never leave the machine).
 
 ## 7. Teams (rewrite of legion)
 - [ ] `omicron teams`: leads, workers, roles, workflows, jobs, parts,

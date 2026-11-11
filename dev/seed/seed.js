@@ -333,6 +333,33 @@ async function project(owner, name, statusList, labelList) {
     // A Needs review mark from a session without a comment, too.
     webPage.cli("tasks", "needs-review", "Omicron", "9");
 
+    // Claude accounts each machine reports (names and numbers only).
+    const soon = (mins) => new Date(Date.now() + mins * 60000).toISOString();
+    const report = async (name, info) => {
+      const res = await fetch(`${SUPA}/rest/v1/machines?name=eq.${name}`, {
+        method: "PATCH",
+        headers: { apikey: SECRET, Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ claude_accounts: info }),
+      });
+      if (!res.ok) throw new Error(`report ${name}: ${await res.text()}`);
+    };
+    await report("mac-mini", {
+      in_use: "personal",
+      auto: { primary: "personal", secondary: "work", held: null },
+      accounts: [
+        { name: "personal", five_hour: { percent: 64, resets_at: soon(131) }, weekly: { percent: 41, resets_at: soon(4 * 1440) } },
+        { name: "work", five_hour: { percent: 12, resets_at: soon(210) }, weekly: { percent: 30, resets_at: soon(2 * 1440) } },
+      ],
+    });
+    await report("studio", {
+      in_use: "work",
+      auto: { primary: "personal", secondary: "work", held: "work" },
+      accounts: [
+        { name: "personal", five_hour: { percent: 3, resets_at: soon(290) }, weekly: { percent: 88, resets_at: soon(1440) } },
+        { name: "work", five_hour: { percent: 92, resets_at: soon(47) }, weekly: { percent: 75, resets_at: soon(3 * 1440) } },
+      ],
+    });
+
     // The docs window dies without closing: its session shows as stopped
     // once anything on build-box notices.
     docs.proc.kill();

@@ -19,13 +19,14 @@ const out = path.join(process.env.HOME, "omicron-e2e-results", "seed-shots");
     await page.route(`${url}/**`, (r) =>
       r.continue({ headers: { ...r.request().headers(), "tailscale-user-login": "joeboylson@github", "tailscale-user-name": "Joe Boylson" } }),
     );
-    const shot = async (name) => {
+    const shot = async (name, fullPage = false) => {
       await page.waitForTimeout(400);
-      await page.screenshot({ path: path.join(out, `${kind}-${name}.png`) });
+      await page.screenshot({ path: path.join(out, `${kind}-${name}.png`), fullPage });
     };
     await page.goto(url);
     await page.getByRole("link", { name: /^Wedding photos/ }).waitFor();
-    await shot("1-projects");
+    await page.getByRole("list", { name: "Machines" }).waitFor();
+    await shot("1-projects", true);
     await page.getByRole("link", { name: /^House and garden/ }).click();
     await page.getByRole("button", { name: /Fix the back gate/ }).waitFor();
     await shot("2-house");

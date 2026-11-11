@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { listProjects, startProject, type ProjectSummary } from "@/lib/data";
+import { listMachineAccounts, listProjects, startProject, type MachineSummary, type ProjectSummary } from "@/lib/data";
+import { Machines } from "@/components/Machines";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,10 +12,15 @@ import { NavBar } from "@/components/NavBar";
 export function ProjectsPage() {
   const { db, act, me } = useApp();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  const [machines, setMachines] = useState<MachineSummary[]>([]);
   const [name, setName] = useState("");
 
   const reload = useCallback(() => {
-    act(async () => setProjects(await listProjects(db)));
+    act(async () => {
+      const [p, m] = await Promise.all([listProjects(db), listMachineAccounts(db)]);
+      setProjects(p);
+      setMachines(m);
+    });
   }, [db, act]);
   useEffect(reload, [reload]);
   useChanges(db, null, reload);
@@ -82,6 +88,9 @@ export function ProjectsPage() {
           <Plus /> Start Project
         </Button>
       </form>
+      <div className="mt-8">
+        <Machines machines={machines} />
+      </div>
     </main>
     </>
   );

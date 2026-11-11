@@ -418,16 +418,35 @@ fn daemon() -> Result<()> {
     }
     // Switching Claude accounts on their own: Anthropic's usage numbers can
     // only be read by asking, so this checks every 2 minutes while it's on.
-    std::thread::spawn(|| loop {
-        if omicron::accounts::Auto::load().is_ok_and(|a| a.on()) {
-            match omicron::accounts::auto_tick() {
-                Ok(Some(m)) => eprintln!("omicron daemon: {m}"),
-                Ok(None) => {}
-                Err(e) => eprintln!("omicron daemon: checking accounts: {e:#}"),
+    // It also tells Supabase which account this machine uses and how much
+    // is left (names and numbers only), when that changes.
+    {
+        let (supabase, key) = (supabase.clone(), key.clone());
+        std::thread::spawn(move || {
+            let mut last_sent: Option<serde_json::Value> = None;
+            loop {
+                if !omicron::accounts::saved().unwrap_or_default().is_empty() {
+                    match omicron::accounts::refresh_usage() {
+                        Ok(Some(m)) => eprintln!("omicron daemon: {m}"),
+                        Ok(None) => {}
+                        Err(e) => eprintln!("omicron daemon: checking accounts: {e:#}"),
+                    }
+                    if let Ok(Some(info)) = omicron::accounts::report() {
+                        if last_sent.as_ref() != Some(&info) {
+                            let sent = supabase.sign_in_machine(&key).and_then(|login| {
+                                supabase.request_as(&login, "POST", "/rest/v1/rpc/report_claude_accounts", Some(json!({ "info": info })))
+                            });
+                            match sent {
+                                Ok(_) => last_sent = Some(info),
+                                Err(e) => eprintln!("omicron daemon: reporting accounts: {e:#}"),
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(120));
             }
-        }
-        std::thread::sleep(std::time::Duration::from_secs(120));
-    });
+        });
+    }
     let mut state = State::load()?;
     let stop = std::sync::atomic::AtomicBool::new(false);
 

@@ -592,3 +592,44 @@ pub fn save_session_token(name: &str, token: &str) -> Result<SessionToken> {
     write_object(&token_path(name)?, &doc, 0o600)?;
     Ok(t)
 }
+
+// ---- for the web page -----------------------------------------------------------
+
+/// What the web page shows about this machine's accounts: names, the one in
+/// use, percentages and reset times. Never logins or emails. None when
+/// there are no saved accounts.
+pub fn report() -> Result<Option<Value>> {
+    let all = saved()?;
+    if all.is_empty() {
+        return Ok(None);
+    }
+    let now = Utc::now();
+    let window = |w: Option<Window>| {
+        w.map(|w| w.at(now)).map(|w| serde_json::json!({ "percent": w.percent.round(), "resets_at": w.resets_at.map(|t| t.to_rfc3339()) }))
+    };
+    let accounts: Vec<Value> = all
+        .iter()
+        .map(|s| {
+            let u = last_usage(&s.name).unwrap_or_default();
+            serde_json::json!({ "name": s.name, "five_hour": window(u.five_hour), "weekly": window(u.weekly) })
+        })
+        .collect();
+    let auto = Auto::load()?;
+    Ok(Some(serde_json::json!({
+        "in_use": in_use()?,
+        "accounts": accounts,
+        "auto": auto.on().then(|| serde_json::json!({ "primary": auto.primary, "secondary": auto.secondary, "held": auto.held })),
+    })))
+}
+
+/// Refresh the numbers: through the switching rules when they're on (which
+/// check both accounts), otherwise by asking for each account's usage.
+pub fn refresh_usage() -> Result<Option<String>> {
+    if Auto::load()?.on() {
+        return auto_tick();
+    }
+    for s in saved()? {
+        check_usage(&s.name);
+    }
+    Ok(None)
+}
