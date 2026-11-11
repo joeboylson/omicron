@@ -16,6 +16,20 @@ export default function App() {
     signIn().then(setSession, (e) => setSignInError(e.message ?? String(e)));
   }, []);
 
+  // Errors outside drawing the page (timers, live updates) show in the
+  // error bar rather than vanishing.
+  useEffect(() => {
+    const show = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
+    const onError = (e: ErrorEvent) => show(e.error ?? e.message);
+    const onRejection = (e: PromiseRejectionEvent) => show(e.reason);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
   const act = useCallback(async (work: () => Promise<unknown>) => {
     try {
       await work();

@@ -324,3 +324,17 @@ test("a Project's chat: turned on, a session named in it answers, live", async (
     win.kill();
   }
 });
+
+test("opening the chat doesn't stop the Project page's live updates", async ({ page, request }) => {
+  const me = await newPerson(page, request);
+  const projectId = await startProjectIn(page, unique("Code"));
+  await rest(request, me.session, "PATCH", `/rest/v1/projects?id=eq.${projectId}`, { chat_enabled: true });
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("No messages yet.");
+  await page.keyboard.press("Escape");
+
+  const [todo] = await rest(request, me.session, "GET", `/rest/v1/statuses?project_id=eq.${projectId}&name=eq.To%20do&select=id`);
+  await rest(request, me.session, "POST", "/rest/v1/tasks", { project_id: projectId, status_id: todo.id, title: "Added while the page is open" });
+  await expect(column(page, "To do").getByRole("button", { name: "#1 Added while the page is open" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

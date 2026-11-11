@@ -3,6 +3,11 @@
 // reloads what it shows when a line arrives, so a line heard twice is fine.
 
 import { useEffect, useRef } from "react";
+
+// Each listener gets its own channel name. Two channels with the same name
+// don't share: the live-updates library closes the first when the second
+// opens (the chat sheet was cutting off the Project page's updates).
+let next = 0;
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -19,7 +24,7 @@ export function useChanges(db: SupabaseClient, projectId: string | null, reload:
       timer = setTimeout(() => latest.current(), 100);
     };
     const channel = db
-      .channel(`changes:${projectId ?? "all"}`)
+      .channel(`changes:${projectId ?? "all"}:${++next}`)
       .on(
         "postgres_changes",
         {
