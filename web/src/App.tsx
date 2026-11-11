@@ -5,6 +5,7 @@ import { AppContext, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
+import { reportError } from "@/lib/report";
 
 export default function App() {
   const [session, setSession] = useState<{ db: SupabaseClient; me: Me } | null>(null);
@@ -13,13 +14,19 @@ export default function App() {
   const path = usePath();
 
   useEffect(() => {
-    signIn().then(setSession, (e) => setSignInError(e.message ?? String(e)));
+    signIn().then(setSession, (e) => {
+      reportError("sign-in", e);
+      setSignInError(e.message ?? String(e));
+    });
   }, []);
 
   // Errors outside drawing the page (timers, live updates) show in the
   // error bar rather than vanishing.
   useEffect(() => {
-    const show = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
+    const show = (e: unknown) => {
+      reportError("uncaught", e);
+      setError(e instanceof Error ? e.message : String(e));
+    };
     const onError = (e: ErrorEvent) => show(e.error ?? e.message);
     const onRejection = (e: PromiseRejectionEvent) => show(e.reason);
     window.addEventListener("error", onError);
@@ -36,6 +43,7 @@ export default function App() {
       setError(null);
       return true;
     } catch (e) {
+      reportError("action", e);
       setError(e instanceof Error ? e.message : String(e));
       return false;
     }

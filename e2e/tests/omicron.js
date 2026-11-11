@@ -71,6 +71,8 @@ async function startOmicron() {
   return {
     url,
     me,
+    /** What `omicron serve` has printed to its error output so far. */
+    log: () => stderr,
     cli: (...args) => execFileSync(need("OMICRON_BIN"), args, { env, encoding: "utf8" }),
     /**
      * Run a Claude Code hook as if from the window with process id `window`.

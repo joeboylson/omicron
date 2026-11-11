@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { reportError } from "@/lib/report";
 
 /**
  * Catches an error that would otherwise leave a blank page, and says what
@@ -14,6 +15,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
 
   componentDidCatch(error: Error) {
     console.error("Omicron page error:", error);
+    reportError("crash", error);
   }
 
   render() {

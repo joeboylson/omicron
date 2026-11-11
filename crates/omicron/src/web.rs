@@ -10,6 +10,8 @@
 //! - `GET /config.json`: where Supabase is, and its publishable key.
 //! - `POST /api/session`: works out who the visitor is and hands back a
 //!   Supabase login for them. The page then talks to Supabase directly.
+//! - `POST /api/page-error`: the page reports an error it caught; it's
+//!   printed to this program's error output (the Web Machine's log).
 
 use crate::identity::{self, Visit};
 use crate::supa::Supabase;
@@ -93,8 +95,8 @@ impl WebMachine {
         Ok(())
     }
 
-    fn handle(&self, request: Request) {
-        let (status, content_type, body) = match self.route(&request) {
+    fn handle(&self, mut request: Request) {
+        let (status, content_type, body) = match self.route(&mut request) {
             Ok(r) => r,
             Err(e) => (500, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes()),
         };
@@ -119,7 +121,7 @@ impl WebMachine {
         let _ = request.respond(response);
     }
 
-    fn route(&self, request: &Request) -> Result<(u16, &'static str, Vec<u8>)> {
+    fn route(&self, request: &mut Request) -> Result<(u16, &'static str, Vec<u8>)> {
         let host = request_header(request, "Host").unwrap_or_default();
         if !allowed_host(&host, &self.extra_hosts) {
             return Ok((421, "application/json", json!({ "error": format!("this page isn't served at {host}") }).to_string().into_bytes()));
@@ -144,6 +146,7 @@ impl WebMachine {
                 .into_bytes(),
             )),
             (Method::Post, "/api/session") => self.session(request),
+            (Method::Post, "/api/page-error") => Ok(page_error(request)),
             (_, "/api/session") => Ok((405, "application/json", json!({ "error": "use POST" }).to_string().into_bytes())),
             (Method::Get, p) if p.starts_with("/api/") => Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes())),
             (Method::Get, "/") | (Method::Get, "/index.html") => Ok((200, "text/html; charset=utf-8", index_html())),
@@ -184,6 +187,28 @@ impl WebMachine {
             .into_bytes(),
         ))
     }
+}
+
+/// Log an error the page caught. Only the first 8 KB is read, and only a
+/// few fields are kept, each cut short, so a page can't flood the log.
+fn page_error(request: &mut Request) -> (u16, &'static str, Vec<u8>) {
+    use std::io::Read;
+    let mut body = Vec::new();
+    let _ = request.as_reader().take(8192).read_to_end(&mut body);
+    let report: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+    let field = |name: &str, max: usize| -> String {
+        let v = report[name].as_str().unwrap_or("").replace(['\n', '\r'], " ⏎ ");
+        v.chars().take(max).collect()
+    };
+    eprintln!(
+        "page error [{}] {} | at {} | {} | {}",
+        field("kind", 20),
+        field("message", 500),
+        field("url", 200),
+        field("agent", 200),
+        field("stack", 1500)
+    );
+    (204, "application/json", Vec::new())
 }
 
 fn header(name: &str, value: &str) -> Header {

@@ -81,6 +81,11 @@ dev web page on this Mac (http://127.0.0.1:9011, from `dev/mac.sh`) shows it,
 signed in as Joe. Tests run on the same Supabase, so reseed after them.
 `dev/seed/shots.js` takes screenshots of it.
 
+Errors the web page catches (a crash, a background error, a failed change)
+are sent to its Web Machine and logged as `page error [...]` lines: in
+`~/.omicron/serve.log` for the real page and `~/.omicron-dev/serve.log` for
+the dev page.
+
 ## How to work here
 
 - Keep every file for this project in this folder.

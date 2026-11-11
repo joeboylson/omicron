@@ -91,3 +91,13 @@ test("the page can be installed as an app", async ({ page }) => {
   const { installabilityErrors } = await cdp.send("Page.getInstallabilityErrors");
   expect(installabilityErrors).toEqual([]);
 });
+
+test("errors the page catches show on screen and reach the server's log", async ({ page }) => {
+  await page.goto(omicron.url);
+  await expect(page.getByTestId("me")).toBeVisible();
+  await page.evaluate(() => {
+    window.dispatchEvent(new ErrorEvent("error", { error: new Error("boom from a timer") }));
+  });
+  await expect(page.getByRole("alert")).toContainText("boom from a timer");
+  await expect.poll(() => omicron.log()).toContain("page error [uncaught] boom from a timer");
+});
