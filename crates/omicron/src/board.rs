@@ -195,6 +195,30 @@ pub struct Comment {
     pub session: Option<String>,
     pub body: String,
     pub at: String,
+    /// Its images' paths in the `comment-images` bucket.
+    pub images: Vec<String>,
+}
+
+/// Where comments' images are kept.
+pub const IMAGES_BUCKET: &str = "comment-images";
+const IMAGE_LIMIT: u64 = 10 * 1024 * 1024;
+
+/// The kind of image a file is, from its name: png, jpeg, gif or webp.
+pub fn image_type(path: &std::path::Path) -> Result<&'static str> {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    Ok(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => bail!("{} isn't an image Omicron keeps (PNG, JPEG, GIF or WebP)", path.display()),
+    })
+}
+
+/// The file name an image was added with (its path ends `<random>-<name>`).
+pub fn image_name(path: &str) -> &str {
+    let file = path.rsplit('/').next().unwrap_or(path);
+    file.split_once('-').map_or(file, |(_, name)| name)
 }
 
 /// A message in a Project's chat.
@@ -678,7 +702,7 @@ impl Board {
 
     pub fn comments(&self, task: &Task) -> Result<Vec<Comment>> {
         let rows = self.get(&format!(
-            "/rest/v1/comments?task_id=eq.{}&select=author_name,body,created_at,sessions(name)&order=created_at",
+            "/rest/v1/comments?task_id=eq.{}&select=author_name,body,created_at,images,sessions(name)&order=created_at",
             task.id
         ))?;
         Ok(rows
@@ -690,13 +714,45 @@ impl Board {
                 session: v["sessions"]["name"].as_str().map(String::from),
                 body: v["body"].as_str().unwrap_or("").to_string(),
                 at: v["created_at"].as_str().unwrap_or("").to_string(),
+                images: v["images"].as_array().into_iter().flatten().filter_map(|i| i.as_str().map(String::from)).collect(),
             })
             .collect())
     }
 
-    /// Comment on a task, naming the Claude session it comes from, if any.
-    pub fn add_comment(&self, task: &Task, body: &str, session_id: Option<&str>) -> Result<()> {
-        self.send("POST", "/rest/v1/comments", json!({ "task_id": task.id, "body": body, "session_id": session_id }))?;
+    /// Read one of a comment's images.
+    pub fn image(&self, path: &str) -> Result<Vec<u8>> {
+        self.supabase.download_as(&self.session, IMAGES_BUCKET, path)
+    }
+
+    /// Comment on a task, naming the Claude session it comes from, if any,
+    /// with images (files on this machine) uploaded first.
+    pub fn add_comment(
+        &self,
+        project: &Project,
+        task: &Task,
+        body: &str,
+        session_id: Option<&str>,
+        images: &[std::path::PathBuf],
+    ) -> Result<()> {
+        let mut paths = Vec::new();
+        for file in images {
+            let kind = image_type(file)?;
+            let size = std::fs::metadata(file).with_context(|| format!("can't read {}", file.display()))?.len();
+            if size > IMAGE_LIMIT {
+                bail!("{} is {} MB; images can be at most 10 MB", file.display(), size / (1024 * 1024));
+            }
+            let name: String = file
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("image")
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() || ".-_".contains(c) { c } else { '_' })
+                .collect();
+            let path = format!("{}/{}-{name}", project.id, uuid::Uuid::new_v4().simple());
+            self.supabase.upload_as(&self.session, IMAGES_BUCKET, &path, &std::fs::read(file)?, kind)?;
+            paths.push(path);
+        }
+        self.send("POST", "/rest/v1/comments", json!({ "task_id": task.id, "body": body, "session_id": session_id, "images": paths }))?;
         Ok(())
     }
 

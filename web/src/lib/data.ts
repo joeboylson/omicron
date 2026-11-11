@@ -10,7 +10,15 @@ export type Label = { id: string; name: string; color: string | null };
 /** A second way to group tasks: rows on the board, like "Joe's to-do". */
 export type Topic = { id: string; name: string; position: number };
 export type Person = { id: string; display_name: string };
-export type Comment = { id: string; author: string; session: string | null; body: string; created_at: string };
+export type Comment = {
+  id: string;
+  author: string;
+  session: string | null;
+  body: string;
+  created_at: string;
+  /** Its images' paths in Storage (see IMAGES_BUCKET). */
+  images: string[];
+};
 export type ChecklistItem = { id: string; text: string; done: boolean; position: number };
 export type Task = {
   id: string;
@@ -88,7 +96,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db
       .from("tasks")
       .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,sessions(name)),dispatches(id,state,result,error,created_at)",
+        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at)",
       )
       .eq("project_id", id)
       .order("position")
@@ -137,6 +145,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
           session: c.sessions?.name ?? null,
           body: c.body,
           created_at: c.created_at,
+          images: c.images ?? [],
         }))
         .sort((a: Comment, b: Comment) => a.created_at.localeCompare(b.created_at)),
       dispatches: [...(t.dispatches ?? [])].sort((a: Dispatch, b: Dispatch) => b.created_at.localeCompare(a.created_at)),
@@ -264,8 +273,50 @@ export async function removeSession(db: SupabaseClient, session: ClaudeSession) 
   must(await db.from("sessions").delete().eq("id", session.id));
 }
 
-export async function addComment(db: SupabaseClient, task: Task, body: string) {
-  must(await db.from("comments").insert({ task_id: task.id, body }));
+export async function addComment(db: SupabaseClient, task: Task, body: string, images: string[] = []) {
+  must(await db.from("comments").insert({ task_id: task.id, body, images }));
+}
+
+/** Where comments' images are kept: private, filed under each Project. */
+export const IMAGES_BUCKET = "comment-images";
+export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+export const IMAGE_LIMIT = 10 * 1024 * 1024;
+export const IMAGES_PER_COMMENT = 10;
+
+/** Why a file can't be added as an image, or null if it can. */
+export function imageProblem(file: File): string | null {
+  if (!IMAGE_TYPES.includes(file.type)) return `${file.name} isn't a PNG, JPEG, GIF or WebP image.`;
+  if (file.size > IMAGE_LIMIT) return `${file.name} is over 10 MB.`;
+  return null;
+}
+
+/** Upload an image for a comment in this Project. Returns its path. */
+export async function uploadImage(db: SupabaseClient, projectId: string, file: File): Promise<string> {
+  const name = (file.name || "image").replace(/[^A-Za-z0-9._-]/g, "_");
+  const path = `${projectId}/${randomId()}-${name}`;
+  const { error } = await db.storage.from(IMAGES_BUCKET).upload(path, file, { contentType: file.type });
+  if (error) throw new Error(error.message);
+  return path;
+}
+
+/** 32 random hex digits. (Not crypto.randomUUID: that only works on https pages.) */
+export function randomId(): string {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The name an image was added with. */
+export function imageName(path: string): string {
+  const file = path.split("/").pop() ?? path;
+  const dash = file.indexOf("-");
+  return dash < 0 ? file : file.slice(dash + 1);
+}
+
+/** Links to show images by (they work for an hour). */
+export async function imageLinks(db: SupabaseClient, paths: string[]): Promise<Record<string, string>> {
+  if (paths.length === 0) return {};
+  const { data, error } = await db.storage.from(IMAGES_BUCKET).createSignedUrls(paths, 3600);
+  if (error) throw new Error(error.message);
+  return Object.fromEntries((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
 }
 
 export async function loadChat(db: SupabaseClient, projectId: string): Promise<ChatMessage[]> {

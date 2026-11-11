@@ -8,6 +8,9 @@ const path = require("node:path");
 const url = process.env.OMICRON_DEV_URL || "http://host.lima.internal:9011";
 const out = path.join(process.env.HOME, "omicron-e2e-results", "seed-shots");
 
+// The page in use, for a picture of it if a step fails.
+let failing;
+
 (async () => {
   const browser = await chromium.launch();
   for (const [kind, options] of [
@@ -15,6 +18,7 @@ const out = path.join(process.env.HOME, "omicron-e2e-results", "seed-shots");
     ["phone", { ...devices["iPhone 13"] }],
   ]) {
     const page = await (await browser.newContext({ ...options, colorScheme: kind === "phone" ? "dark" : "light" })).newPage();
+    failing = page;
     // Visit as Joe, the way tailscale serve says who's visiting.
     await page.route(`${url}/**`, (r) =>
       r.continue({ headers: { ...r.request().headers(), "tailscale-user-login": "joeboylson@github", "tailscale-user-name": "Joe Boylson" } }),
@@ -50,6 +54,19 @@ const out = path.join(process.env.HOME, "omicron-e2e-results", "seed-shots");
     await page.getByTestId("dispatch").waitFor();
     await shot("4b-dispatched");
     await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: /Sessions strip on the web page/ }).click();
+    await page.getByRole("list", { name: "Comments" }).getByRole("img").first().waitFor();
+    await page.getByRole("list", { name: "Comments" }).scrollIntoViewIfNeeded();
+    await shot("4d-comment-images");
+    await page.getByRole("button", { name: /^Open sessions-strip.png/ }).click();
+    await page.locator('[role="dialog"] img[alt="sessions-strip.png"].object-contain').waitFor();
+    await page.waitForTimeout(300);
+    await shot("4e-image-full-size");
+    await page.keyboard.press("Escape");
+    await page.locator('[role="dialog"] img.object-contain').waitFor({ state: "detached" });
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     await page.getByRole("button", { name: /Document the hooks/ }).click();
     await page.getByTestId("dispatch").waitFor();
     await shot("4c-dispatch-failed");
@@ -64,7 +81,8 @@ const out = path.join(process.env.HOME, "omicron-e2e-results", "seed-shots");
     await shot("6-lisbon");
   }
   await browser.close();
-})().catch((e) => {
+})().catch(async (e) => {
   console.error(e);
+  await failing?.screenshot({ path: path.join(out, "failed.png") }).catch(() => {});
   process.exit(1);
 });

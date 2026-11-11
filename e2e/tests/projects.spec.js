@@ -442,3 +442,59 @@ test("topics group the board into rows, as well as by status", async ({ page, re
   await expect(column(page, "To do")).toContainText("Fix the gate");
   await expect(column(page, "To do")).toContainText("Water the plants");
 });
+
+test("comments hold images: picked, dropped, or posted by a session, and open full size", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Fix the gate");
+  await page.getByRole("button", { name: "#1 Fix the gate" }).click();
+
+  // A tiny real PNG.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  // Picked with the button: uploads at once, then sends with the comment.
+  await page.getByLabel("Images to add").setInputFiles([{ name: "gate.png", mimeType: "image/png", buffer: png }]);
+  const pending = page.getByRole("list", { name: "New images" });
+  await expect(pending.getByRole("img", { name: "gate.png" })).toBeVisible();
+  await expect(pending.getByLabel("Adding gate.png")).toHaveCount(0);
+  // Not an image: said so, and it isn't sent.
+  await page.getByLabel("Images to add").setInputFiles([{ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") }]);
+  await expect(pending.getByRole("alert")).toHaveText("notes.txt isn't a PNG, JPEG, GIF or WebP image.");
+  await page.getByRole("button", { name: "Remove notes.txt" }).click();
+
+  // Dropped onto the comment box.
+  const drop = await page.evaluateHandle((b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], "dropped.png", { type: "image/png" }));
+    return dt;
+  }, png.toString("base64"));
+  await page.getByLabel("New comment").dispatchEvent("drop", { dataTransfer: drop });
+  await expect(pending.getByRole("img")).toHaveCount(2);
+
+  await page.getByLabel("New comment").fill("Before and after.");
+  await page.getByRole("button", { name: "Send" }).click();
+  const comments = page.getByRole("list", { name: "Comments" });
+  await expect(comments).toContainText("Before and after.");
+  await expect(comments.getByRole("img", { name: "gate.png" })).toBeVisible();
+  await expect(comments.getByRole("img", { name: "dropped.png" })).toBeVisible();
+  await expect(pending).toHaveCount(0);
+
+  // Opens full size.
+  await comments.getByRole("button", { name: "Open gate.png" }).click();
+  const viewer = page.getByRole("dialog", { name: "gate.png" });
+  await expect(viewer.getByRole("img", { name: "gate.png" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  // Focus goes back to the image that was opened.
+  await expect(comments.getByRole("button", { name: "Open gate.png" })).toBeFocused();
+
+  // A Claude session posts a screenshot with its report, from the command.
+  const shot = require("node:path").join(require("node:os").tmpdir(), `${unique("shot")}.png`);
+  require("node:fs").writeFileSync(shot, png);
+  omicron.cli("tasks", "comment", name, "1", "Done, screenshot attached.", "--image", shot, "--as-machine");
+  await expect(comments.getByRole("listitem").filter({ hasText: "Done, screenshot attached." }).getByRole("img")).toBeVisible();
+});

@@ -158,6 +158,37 @@ impl Supabase {
         self.call(method, path, &secret, None, body, prefer)
     }
 
+    /// Save a file in Storage as a signed-in person or machine.
+    pub fn upload_as(&self, session: &Session, bucket: &str, path: &str, bytes: &[u8], content_type: &str) -> Result<()> {
+        let res = ureq::post(&format!("{}/storage/v1/object/{bucket}/{path}", self.url))
+            .set("apikey", &self.key)
+            .set("Authorization", &format!("Bearer {}", session.access_token))
+            .set("Content-Type", content_type)
+            .send_bytes(bytes);
+        match res {
+            Ok(_) => Ok(()),
+            Err(ureq::Error::Status(code, r)) => Err(anyhow!(SupabaseError { code, message: r.into_string().unwrap_or_default() })),
+            Err(e) => Err(anyhow!("couldn't reach Supabase at {}: {e}", self.url)),
+        }
+    }
+
+    /// Read a file from Storage as a signed-in person or machine.
+    pub fn download_as(&self, session: &Session, bucket: &str, path: &str) -> Result<Vec<u8>> {
+        let res = ureq::get(&format!("{}/storage/v1/object/authenticated/{bucket}/{path}", self.url))
+            .set("apikey", &self.key)
+            .set("Authorization", &format!("Bearer {}", session.access_token))
+            .call();
+        match res {
+            Ok(r) => {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut r.into_reader(), &mut bytes)?;
+                Ok(bytes)
+            }
+            Err(ureq::Error::Status(code, r)) => Err(anyhow!(SupabaseError { code, message: r.into_string().unwrap_or_default() })),
+            Err(e) => Err(anyhow!("couldn't reach Supabase at {}: {e}", self.url)),
+        }
+    }
+
     /// A request made as a signed-in person or machine. The database's own
     /// rules decide what they can see and change.
     pub fn request_as(&self, session: &Session, method: &str, path: &str, body: Option<Value>) -> Result<Value> {

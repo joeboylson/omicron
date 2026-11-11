@@ -86,6 +86,15 @@ are sent to its Web Machine and logged as `page error [...]` lines: in
 `~/.omicron/serve.log` for the real page and `~/.omicron-dev/serve.log` for
 the dev page.
 
+## Scripts
+
+Repeated steps, in `scripts/` (run on the Mac):
+- `scripts/shots.sh [folder]`: screenshots of the dev web page (seeded
+  data), desktop and phone, copied to a folder here.
+- `scripts/finish-task.sh <n> "<report>" [images...]`: finish an Omicron
+  task like a session does: tick its checklist, post the report with the
+  last commit's hash (and screenshots) marked for review, move it to Review.
+
 ## How to work here
 
 - Keep every file for this project in this folder.

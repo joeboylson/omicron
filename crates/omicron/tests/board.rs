@@ -5,7 +5,7 @@
 //! Runs only when the test Supabase is set up (see `dev/supabase/test.sh`).
 
 use omicron::supa::Supabase;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use uuid::Uuid;
@@ -340,4 +340,62 @@ fn topics_group_tasks_into_rows() {
     let task = s.admin_request("GET", &format!("/rest/v1/tasks?title=eq.Buy milk&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap();
     let err = s.admin_request("PATCH", &format!("/rest/v1/tasks?id=eq.{}", task[0]["id"].as_str().unwrap()), Some(serde_json::json!({ "topic_id": theirs[0]["id"] })));
     assert!(err.unwrap_err().to_string().contains("another Project"));
+}
+
+/// A real (tiny) PNG.
+const PNG: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+    0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63,
+    0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+    0xae, 0x42, 0x60, 0x82,
+];
+
+#[test]
+fn comments_can_hold_images() {
+    let s = supabase_or_skip!();
+    let (pat, project) = person_with_project(&s, "Pat");
+    ok(&pat, &["tasks", "add", &project, "Fix the gate"]);
+    let shot = pat.home.join("gate photo.png");
+    std::fs::write(&shot, PNG).unwrap();
+    let notes = pat.home.join("notes.txt");
+    std::fs::write(&notes, "hi").unwrap();
+
+    // Images only, no text, is fine; other files aren't images.
+    assert!(fails(&pat, &["tasks", "comment", &project, "1", ""]).contains("write something, or add an image"));
+    assert!(fails(&pat, &["tasks", "comment", &project, "1", "x", "--image", notes.to_str().unwrap()]).contains("isn't an image"));
+    let shown = ok(&pat, &["tasks", "comment", &project, "1", "", "--image", shot.to_str().unwrap(), "--image", shot.to_str().unwrap()]);
+    assert!(shown.contains("[images: gate_photo.png, gate_photo.png]"), "{shown}");
+
+    // A Claude session in the Project saves them to look at.
+    let (mac, mac_id) = machine(&s);
+    let pid = s.admin_request("GET", &format!("/rest/v1/projects?name=eq.{project}&select=id"), None).unwrap()[0]["id"].clone();
+    s.admin_request("POST", "/rest/v1/project_machines", Some(json!({ "project_id": pid, "machine_id": mac_id }))).unwrap();
+    let to = mac.home.join("seen");
+    let saved = ok(&mac, &["tasks", "images", &project, "1", "--to", to.to_str().unwrap(), "--as-machine"]);
+    let files: Vec<&str> = saved.lines().collect();
+    assert_eq!(files.len(), 2);
+    assert!(files[0].ends_with("1-gate_photo.png"));
+    assert_eq!(std::fs::read(files[0]).unwrap(), PNG);
+
+    // Someone outside the Project can't read them.
+    let (outsider, _) = machine(&s);
+    let path = s.admin_request("GET", &format!("/rest/v1/comments?project_id=eq.{}&select=images", pid.as_str().unwrap()), None).unwrap()[0]["images"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let config: Value = serde_json::from_str(&std::fs::read_to_string(outsider.home.join("config.json")).unwrap()).unwrap();
+    let key: omicron::supa::MachineKey = config["machine_key"].as_str().unwrap().parse().unwrap();
+    let login = s.sign_in_machine(&key).unwrap();
+    assert!(s.download_as(&login, "comment-images", &path).is_err());
+    // Nor file one under this Project.
+    assert!(s.upload_as(&login, "comment-images", &format!("{}/x.png", pid.as_str().unwrap()), PNG, "image/png").is_err());
+
+    // A comment can't point at images filed under another Project.
+    let mac_login = {
+        let config: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("config.json")).unwrap()).unwrap();
+        s.sign_in_machine(&config["machine_key"].as_str().unwrap().parse().unwrap()).unwrap()
+    };
+    let mine = s.admin_request("GET", &format!("/rest/v1/tasks?title=eq.Fix the gate&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap();
+    let err = s.request_as(&mac_login, "POST", "/rest/v1/comments", Some(json!({ "task_id": mine[0]["id"], "body": "x", "images": [format!("{}/y.png", Uuid::new_v4())] })));
+    assert!(err.unwrap_err().to_string().contains("its own Project"));
 }

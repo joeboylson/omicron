@@ -324,7 +324,18 @@ async function project(owner, name, statusList, labelList) {
     };
     await sendTo(stripTask, "web-page");
     webPage.cli("tasks", "mine");
-    webPage.cli("tasks", "comment", "Omicron", String(stripTask.number), "Done: open sessions first, closed ones faded, tap one for its handoff notes. Screenshots are in the PR.", "--review");
+    webPage.cli(
+      "tasks",
+      "comment",
+      "Omicron",
+      String(stripTask.number),
+      "Done: open sessions first, closed ones faded, tap one for its handoff notes. Screenshots on desktop and phone attached.",
+      "--review",
+      "--image",
+      path.join(__dirname, "fixtures", "sessions-strip.png"),
+      "--image",
+      path.join(__dirname, "fixtures", "sessions-strip-phone.png"),
+    );
     await sendTo(parserTask, "parser");
     parser.cli("tasks", "mine");
     parser.cli("tasks", "comment", "Omicron", String(parserTask.number), "Inserts and updates work and are tested. Deletes next.");

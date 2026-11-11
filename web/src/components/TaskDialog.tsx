@@ -4,7 +4,6 @@ import { useApp } from "@/lib/app";
 import { useAwakeMachines } from "@/lib/awake";
 import {
   addChecklistItem,
-  addComment,
   addLabel,
   deleteChecklistItem,
   deleteTask,
@@ -38,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
 import { LabelBadge, NeedsReview } from "@/components/TaskCard";
+import { Comments } from "@/components/Comments";
 
 const NOBODY = "nobody";
 
@@ -81,7 +81,6 @@ function TaskForm({
   const [notes, setNotes] = useState(task.notes);
   const [newItem, setNewItem] = useState("");
   const [newLabel, setNewLabel] = useState("");
-  const [comment, setComment] = useState("");
   const [sure, setSure] = useState(false);
   // Ticks show straight away, before the save comes back.
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
@@ -378,53 +377,7 @@ function TaskForm({
         </form>
       </Group>
 
-      <Group title="Comments">
-        {task.comments.length > 0 && (
-          <ul aria-label="Comments" className="divide-y">
-            {task.comments.map((c) => (
-              <li key={c.id} className="grid gap-1 px-4 py-3 text-[15px] sm:text-sm">
-                <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">{c.author}</span>
-                  {c.session && (
-                    <span className="flex items-center gap-1">
-                      <Terminal className="h-3 w-3" aria-hidden />
-                      <span className="font-mono">{c.session}</span>
-                    </span>
-                  )}
-                  <time className="ml-auto font-mono" dateTime={c.created_at} title={new Date(c.created_at).toLocaleString()}>
-                    {when(c.created_at)}
-                  </time>
-                </div>
-                <p className="whitespace-pre-wrap break-words">{c.body}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const body = comment.trim();
-            if (body) change(async () => (await addComment(db, task, body), setComment("")));
-          }}
-        >
-          <Row className="items-end py-2">
-            <Textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
-              }}
-              placeholder="Add a comment"
-              aria-label="New comment"
-              rows={1}
-              className="min-h-10 resize-none border-0 bg-transparent px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
-            <Button type="submit" variant="ghost" size="sm" disabled={!comment.trim()}>
-              Send
-            </Button>
-          </Row>
-        </form>
-      </Group>
+      <Comments project={project} task={task} change={change} when={when} />
 
       <div className="flex flex-wrap gap-2 pt-2">
         {done && !isDone && (

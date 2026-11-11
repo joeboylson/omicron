@@ -165,10 +165,24 @@ pub enum Tasks {
     Comment {
         project: String,
         number: i64,
+        /// The comment ("" for images only)
         text: String,
         /// Also mark it as needing review (a Claude session's report)
         #[arg(long)]
         review: bool,
+        /// An image to add (PNG, JPEG, GIF or WebP, up to 10 MB). Can be
+        /// given up to 10 times.
+        #[arg(long = "image")]
+        images: Vec<std::path::PathBuf>,
+    },
+    /// Save the images in a task's comments to a folder, to look at them
+    Images {
+        project: String,
+        number: i64,
+        /// Where to save them (a new folder under the system's temp folder
+        /// if left out)
+        #[arg(long)]
+        to: Option<std::path::PathBuf>,
     },
 }
 
@@ -292,7 +306,13 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
                 Some(s) => format!("{} (session {s})", c.author),
                 None => c.author.clone(),
             };
-            println!("  {who}, {}: {}", c.at.get(..16).unwrap_or(&c.at).replace('T', " "), c.body);
+            let images = if c.images.is_empty() {
+                String::new()
+            } else {
+                let names: Vec<&str> = c.images.iter().map(|i| omicron::board::image_name(i)).collect();
+                format!(" [images: {}]", names.join(", "))
+            };
+            println!("  {who}, {}: {}{images}", c.at.get(..16).unwrap_or(&c.at).replace('T', " "), c.body);
         }
         Ok(())
     };
@@ -389,7 +409,33 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = board.set_needs_review(&p, number, false)?;
             changed(&p, t)
         }
-        Tasks::Comment { project, number, text, review } => {
+        Tasks::Images { project, number, to } => {
+            let p = board.project(&project)?;
+            let t = board.task(&p, number)?;
+            let images: Vec<String> = board.comments(&t)?.into_iter().flat_map(|c| c.images).collect();
+            if images.is_empty() {
+                println!("#{number} has no images in its comments.");
+                return Ok(());
+            }
+            let dir = match to {
+                Some(d) => d,
+                None => std::env::temp_dir().join(format!("omicron-images-{}", uuid::Uuid::new_v4().simple())),
+            };
+            std::fs::create_dir_all(&dir)?;
+            for (i, path) in images.iter().enumerate() {
+                let file = dir.join(format!("{}-{}", i + 1, omicron::board::image_name(path)));
+                std::fs::write(&file, board.image(path)?)?;
+                println!("{}", file.display());
+            }
+            Ok(())
+        }
+        Tasks::Comment { project, number, text, review, images } => {
+            if text.trim().is_empty() && images.is_empty() {
+                bail!("write something, or add an image with --image");
+            }
+            if images.len() > 10 {
+                bail!("a comment can have at most 10 images");
+            }
             let words = text.split_whitespace().count();
             if review && words > crate::sessions_cmd::REPORT_WORDS {
                 bail!(
@@ -408,7 +454,7 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             } else {
                 None
             };
-            board.add_comment(&t, &text, session_id.as_deref())?;
+            board.add_comment(&p, &t, &text, session_id.as_deref(), &images)?;
             let t = if review { board.set_needs_review(&p, number, true)? } else { t };
             changed(&p, t)
         }
