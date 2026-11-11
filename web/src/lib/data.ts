@@ -39,7 +39,11 @@ export type Task = {
   comments: Comment[];
   /** Requests to hand it to its session, newest first. */
   dispatches: Dispatch[];
+  /** Team jobs it's linked to. */
+  jobs: JobLink[];
 };
+/** A team's job, as linked from a task. */
+export type JobLink = { id: string; team: string; number: number; title: string; state: string; step: string | null };
 export type Dispatch = {
   id: string;
   state: "pending" | "claimed" | "done" | "failed";
@@ -113,7 +117,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db
       .from("tasks")
       .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at)",
+        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
       )
       .eq("project_id", id)
       .order("position")
@@ -171,6 +175,10 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
         }))
         .sort((a: Comment, b: Comment) => a.created_at.localeCompare(b.created_at)),
       dispatches: [...(t.dispatches ?? [])].sort((a: Dispatch, b: Dispatch) => b.created_at.localeCompare(a.created_at)),
+      jobs: (t.task_jobs ?? [])
+        .map((l: any) => l.jobs)
+        .filter(Boolean)
+        .map((j: any) => ({ id: j.id, team: j.teams?.name ?? "", number: j.number, title: j.title, state: j.state, step: j.step })),
     })),
     sessions: (must(sessions) as any[]).map((r) => ({
       id: r.id,
@@ -518,4 +526,20 @@ export async function switchMachine(db: SupabaseClient, id: string, on: boolean)
 
 export async function removeMachine(db: SupabaseClient, id: string) {
   await machinesApi(db, `/${id}/remove`);
+}
+
+/** Every team job in a Project, to link tasks to. */
+export async function listProjectJobs(db: SupabaseClient, projectId: string): Promise<JobLink[]> {
+  const rows = must(
+    await db.from("jobs").select("id,number,title,state,step,teams(name)").eq("project_id", projectId).order("number"),
+  ) as any[];
+  return rows.map((j) => ({ id: j.id, team: j.teams?.name ?? "", number: j.number, title: j.title, state: j.state, step: j.step }));
+}
+
+export async function linkJob(db: SupabaseClient, task: Task, jobId: string) {
+  must(await db.from("task_jobs").insert({ task_id: task.id, job_id: jobId }));
+}
+
+export async function unlinkJob(db: SupabaseClient, task: Task, jobId: string) {
+  must(await db.from("task_jobs").delete().eq("task_id", task.id).eq("job_id", jobId));
 }

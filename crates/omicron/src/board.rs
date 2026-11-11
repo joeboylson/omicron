@@ -1123,6 +1123,38 @@ impl Board {
         Ok(())
     }
 
+    /// Link a task to a team's job (both in the same Project).
+    pub fn link_job(&self, task: &Task, team: &TeamRow, number: i64) -> Result<Job> {
+        let job = self.job(team, number)?;
+        self.send("POST", "/rest/v1/task_jobs", json!({ "task_id": task.id, "job_id": job.id })).map_err(|e| {
+            if e.to_string().contains("duplicate key") {
+                anyhow!("#{} is already linked to {} job #{number}", task.number, team.name)
+            } else {
+                e
+            }
+        })?;
+        Ok(job)
+    }
+
+    pub fn unlink_job(&self, task: &Task, team: &TeamRow, number: i64) -> Result<()> {
+        let job = self.job(team, number)?;
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/task_jobs?task_id=eq.{}&job_id=eq.{}", task.id, job.id), None)?;
+        Ok(())
+    }
+
+    /// A task's linked jobs: (team name, job).
+    pub fn task_jobs(&self, task: &Task) -> Result<Vec<(String, Job)>> {
+        let rows = self.get(&format!("/rest/v1/task_jobs?task_id=eq.{}&select=jobs(*,teams(name))", task.id))?;
+        let mut out = Vec::new();
+        for r in rows.as_array().into_iter().flatten() {
+            let team = r["jobs"]["teams"]["name"].as_str().unwrap_or("").to_string();
+            let job: Job = serde_json::from_value(r["jobs"].clone())?;
+            out.push((team, job));
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.number.cmp(&b.1.number)));
+        Ok(out)
+    }
+
     pub fn jobs(&self, team: &TeamRow) -> Result<Vec<Job>> {
         Ok(serde_json::from_value(self.get(&format!("/rest/v1/jobs?team_id=eq.{}&order=number", team.id))?)?)
     }

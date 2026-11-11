@@ -129,6 +129,29 @@ fn a_folder_is_set_up_its_team_started_and_given_jobs() {
     let (_, out) = omicron(&home, &folder, &["teams", "list"]);
     assert!(out.lines().any(|l| l.starts_with(&format!("{team}\trunning\tdefault\t2 open jobs\t"))), "{out}");
 
+    // A task links to jobs: shown on the task with each job's state.
+    let (ok1, out) = omicron(&home, &folder, &["tasks", "add", &pname, "Ship the login page"]);
+    assert!(ok1, "{out}");
+    let (okl, out) = omicron(&home, &folder, &["tasks", "link", &pname, "1", &team, "1"]);
+    assert!(okl, "{out}");
+    assert!(out.contains(&format!("  Job: {team} #1 Add a login page (waiting)")), "{out}");
+    omicron(&home, &folder, &["tasks", "link", &pname, "1", &team, "2"]);
+    let (_, out) = omicron(&home, &folder, &["tasks", "show", &pname, "1"]);
+    assert!(out.contains(&format!("#2 Fix the footer (waiting)")), "{out}");
+    let (okd, out) = omicron(&home, &folder, &["tasks", "link", &pname, "1", &team, "1"]);
+    assert!(!okd && out.contains("already linked"), "{out}");
+    omicron(&home, &folder, &["tasks", "unlink", &pname, "1", &team, "2"]);
+    let (_, out) = omicron(&home, &folder, &["tasks", "show", &pname, "1"]);
+    assert!(!out.contains("Fix the footer"), "{out}");
+
+    // Only jobs of teams in the task's own Project.
+    let other = call(&s, &pat, "POST", "/rest/v1/rpc/start_project", json!({ "name": format!("Other-{}", Uuid::new_v4()) })).unwrap();
+    let st = call(&s, &pat, "GET", &format!("/rest/v1/statuses?project_id=eq.{}&select=id&limit=1", other["id"].as_str().unwrap()), Value::Null).unwrap();
+    let task = call(&s, &pat, "POST", "/rest/v1/tasks", json!({ "project_id": other["id"], "status_id": st[0]["id"], "title": "Elsewhere" })).unwrap();
+    let job = s.admin_request("GET", &format!("/rest/v1/jobs?title=eq.Fix the footer&select=id,teams!inner(name)&teams.name=eq.{team}"), None).unwrap();
+    let err = call(&s, &pat, "POST", "/rest/v1/task_jobs", json!({ "task_id": task[0]["id"], "job_id": job[0]["id"] }));
+    assert!(err.unwrap_err().to_string().contains("its own Project"));
+
     // Stopped, then started again: the same team, jobs kept.
     omicron(&home, &folder, &["teams", "stop", &team]);
     let (_, out) = omicron(&home, &folder, &["teams", "list"]);

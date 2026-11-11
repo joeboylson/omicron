@@ -188,6 +188,10 @@ pub enum Tasks {
     Send { project: String, number: i64, session: String },
     /// In a Claude session: the tasks given to it ("go get your tasks")
     Mine,
+    /// Link a task to a team's job (the session handles the task, the team the job)
+    Link { project: String, number: i64, team: String, job: i64 },
+    /// Unlink a task from a team's job
+    Unlink { project: String, number: i64, team: String, job: i64 },
     /// Hand a task to its Claude session now, on the session's machine:
     /// typed into it if it's running in Omicron's host, otherwise reopened
     /// there with the task. Fails if the machine is asleep.
@@ -333,6 +337,10 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
     let changed = |p: &Project, t: Task| -> Result<()> {
         let statuses = board.statuses(p)?;
         print_task(p, &statuses, &t);
+        for (team, j) in board.task_jobs(&t)? {
+            let with = j.step.as_ref().map(|s| format!(", {s}")).unwrap_or_default();
+            println!("  Job: {team} #{} {} ({}{with})", j.number, j.title, j.state);
+        }
         for c in board.comments(&t)? {
             let who = match &c.session {
                 Some(s) => format!("{} (session {s})", c.author),
@@ -498,6 +506,20 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             changed(&p, t)
         }
         Tasks::Mine => crate::sessions_cmd::tasks_mine(),
+        Tasks::Link { project, number, team, job } => {
+            let p = board.project(&project)?;
+            let t = board.task(&p, number)?;
+            let tm = board.team(&team)?;
+            board.link_job(&t, &tm, job)?;
+            changed(&p, board.task(&p, number)?)
+        }
+        Tasks::Unlink { project, number, team, job } => {
+            let p = board.project(&project)?;
+            let t = board.task(&p, number)?;
+            let tm = board.team(&team)?;
+            board.unlink_job(&t, &tm, job)?;
+            changed(&p, t)
+        }
         Tasks::Dispatch { project, number } => crate::dispatch_cmd::dispatch(&project, number, as_machine),
         Tasks::Send { project, number, session } => {
             let p = board.project(&project)?;
