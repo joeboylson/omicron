@@ -5,6 +5,7 @@ use omicron::identity::{self, TailscalePerson};
 use serde_json::json;
 use uuid::Uuid;
 
+mod accounts_cmd;
 mod board_cmd;
 mod chat_cmd;
 mod handoff_cmd;
@@ -85,6 +86,9 @@ enum Command {
     /// A Project's chat, for people and Claude sessions
     #[command(subcommand)]
     Chat(chat_cmd::Chat),
+    /// Claude accounts on this machine: save, switch (rewrite of janus)
+    #[command(subcommand)]
+    Accounts(accounts_cmd::Accounts),
     /// Claude Code hooks (set up by `omicron sessions setup-claude`)
     #[command(subcommand, hide = true)]
     Hook(sessions_cmd::Hook),
@@ -183,6 +187,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Chat(cmd) => chat_cmd::chat(cmd, cli.as_machine),
+        Command::Accounts(cmd) => accounts_cmd::accounts(cmd),
         Command::Daemon { action: None } => daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {
             let file = omicron::login::this_service_file()?;

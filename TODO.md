@@ -177,7 +177,20 @@ Built in this order. Each part replaces an old tool only once it's ready.
       machine with `ssh <its tailnet name>` (decided 11 Nov 2026). Each
       daemon announces its tailnet name with its "awake" status; with no name
       given it lists them and asks for a number.
-- [ ] `omicron accounts`: switch Claude accounts (rewrite of janus).
+- [x] Decided (11 Nov 2026): a full rewrite of janus inside Omicron.
+- [x] `omicron accounts add | list | use | remove`: save the login Claude Code
+      has now under a name, and swap saved logins in (Keychain on a Mac,
+      `~/.claude/.credentials.json` on Linux; `~/.claude.json` for who it
+      is). Saved logins stay on the machine in `~/.omicron/accounts/`. The
+      account in use is saved again before each switch, so renewed tokens
+      aren't lost. Tested on Linux files (`tests/accounts.rs`); the Keychain
+      path isn't tried on the Mac yet.
+- [ ] Usage: each account's 5-hour and weekly use (the endpoint Claude Code's
+      /usage reads), and switching on its own at a limit (in the daemon).
+- [ ] `omicron accounts run <name>`: one session that stays on one account
+      (`claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN`).
+- [ ] Web page: each machine's account and usage (names and percentages
+      only; logins never leave the machine).
 
 ## 7. Teams (rewrite of legion)
 - [ ] `omicron teams`: leads, workers, roles, workflows, jobs, parts,

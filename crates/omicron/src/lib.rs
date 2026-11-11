@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod board;
 pub mod config;
 pub mod identity;
