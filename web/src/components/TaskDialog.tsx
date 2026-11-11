@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { Check, Plus, Terminal, Trash2, X } from "lucide-react";
 import { useApp } from "@/lib/app";
 import {
   addChecklistItem,
@@ -19,7 +19,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
@@ -154,22 +162,57 @@ function TaskForm({
             Given to
           </Label>
           <Select
-            value={task.assignee_person_id ?? NOBODY}
-            onValueChange={(v) => save({ assignee_person_id: v === NOBODY ? null : v })}
+            value={
+              task.assignee_session_id
+                ? `session:${task.assignee_session_id}`
+                : task.assignee_person_id
+                  ? `person:${task.assignee_person_id}`
+                  : NOBODY
+            }
+            onValueChange={(v) => {
+              const [kind, id] = v.split(":");
+              save({
+                assignee_person_id: kind === "person" ? id : null,
+                assignee_session_id: kind === "session" ? id : null,
+              });
+            }}
           >
             <SelectTrigger id="task-assignee" className={cn(bare, "w-auto gap-1 text-muted-foreground")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
               <SelectItem value={NOBODY}>Nobody</SelectItem>
-              {project.members.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.display_name}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                <SelectLabel>People</SelectLabel>
+                {project.members.map((m) => (
+                  <SelectItem key={m.id} value={`person:${m.id}`}>
+                    {m.display_name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+              {project.sessions.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Claude sessions</SelectLabel>
+                  {project.sessions.map((c) => (
+                    <SelectItem key={c.id} value={`session:${c.id}`} disabled={c.state !== "open" && c.id !== task.assignee_session_id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
         </Row>
+        {task.assignee_session_id && (
+          <Row className="text-sm text-muted-foreground" >
+            <Terminal className="h-4 w-4" aria-hidden />
+            <span data-testid="pickup">
+              {task.picked_up_at
+                ? "Picked up by the session."
+                : "Waiting for the session to pick it up at the end of its turn."}
+            </span>
+          </Row>
+        )}
       </Group>
 
       <Group title="Labels">

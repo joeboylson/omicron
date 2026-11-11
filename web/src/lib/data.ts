@@ -19,6 +19,9 @@ export type Task = {
   needs_review: boolean;
   position: number;
   assignee_person_id: string | null;
+  /** The Claude session it was sent to, and when the session picked it up. */
+  assignee_session_id: string | null;
+  picked_up_at: string | null;
   labelIds: string[];
   checklist: ChecklistItem[];
 };
@@ -52,7 +55,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db
       .from("tasks")
       .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,task_labels(label_id),checklist_items(id,text,done,position)",
+        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,task_labels(label_id),checklist_items(id,text,done,position)",
       )
       .eq("project_id", id)
       .order("position")
@@ -80,6 +83,8 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       needs_review: t.needs_review,
       position: t.position,
       assignee_person_id: t.assignee_person_id,
+      assignee_session_id: t.assignee_session_id,
+      picked_up_at: t.picked_up_at,
       labelIds: (t.task_labels ?? []).map((l: { label_id: string }) => l.label_id),
       checklist: [...(t.checklist_items ?? [])].sort((a: ChecklistItem, b: ChecklistItem) => a.position - b.position),
     })),
@@ -104,7 +109,9 @@ export async function addTask(db: SupabaseClient, project: ProjectData, statusId
   must(await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position }));
 }
 
-type TaskChange = Partial<Pick<Task, "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id">>;
+type TaskChange = Partial<
+  Pick<Task, "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id" | "assignee_session_id">
+>;
 
 export async function updateTask(db: SupabaseClient, project: ProjectData, task: Task, change: TaskChange) {
   const row: TaskChange & { position?: number } = { ...change };

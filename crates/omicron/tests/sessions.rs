@@ -234,3 +234,85 @@ fn only_the_sessions_machine_can_change_it() {
     assert_eq!(record(&s, &project, "mine")["state"], "open");
     w.kill().unwrap();
 }
+
+#[test]
+fn a_task_sent_to_a_session_is_handed_over_once() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let mut w = window();
+    let claude = Uuid::new_v4().to_string();
+    hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/w", "source": "startup" }));
+    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+
+    // Nothing sent yet: the Stop hook says nothing, so Claude stops as usual.
+    let stop = |m: &Computer| {
+        let mut child = command(m, Some(w.id()), &["hook", "stop"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        child.stdin.take().unwrap().write_all(json!({ "session_id": claude, "stop_hook_active": false }).to_string().as_bytes()).unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    assert_eq!(stop(&mac), "");
+
+    ok(&pat, None, &["tasks", "add", &project, "Write the parser"]);
+    ok(&pat, None, &["tasks", "add", &project, "Already finished"]);
+    ok(&pat, None, &["tasks", "done", &project, "2"]);
+    let sent = ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
+    assert!(sent.contains("sent to session parser"), "{sent}");
+    ok(&pat, None, &["tasks", "send", &project, "2", "parser"]);
+
+    // At the end of its turn, the session is told, and carries on.
+    let out: Value = serde_json::from_str(&stop(&mac)).unwrap();
+    assert_eq!(out["decision"], "block");
+    let reason = out["reason"].as_str().unwrap();
+    assert!(reason.contains(&format!("#1 in {project}: Write the parser")), "{reason}");
+    assert!(reason.contains("needs-review"), "{reason}");
+    assert!(!reason.contains("Already finished"), "finished tasks aren't handed over: {reason}");
+    // Only once.
+    assert_eq!(stop(&mac), "");
+
+    // Sent again: new again. This time a new conversation (/clear) gets it
+    // when it starts.
+    let (other, other_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &other_name, &project]);
+    let mut w2 = window();
+    hook(&other, w2.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
+    ok(&other, Some(w2.id()), &["sessions", "add", "helper", "--project", &project]);
+    ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
+    ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
+    hook(&mac, w.id(), "session-end", json!({ "session_id": claude, "reason": "clear" }));
+    let mut child = command(&mac, Some(w.id()), &["hook", "session-start"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "clear" }).to_string().as_bytes())
+        .unwrap();
+    let out: Value = serde_json::from_slice(&child.wait_with_output().unwrap().stdout).unwrap();
+    assert_eq!(out["hookSpecificOutput"]["hookEventName"], "SessionStart");
+    assert!(out["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("Write the parser"));
+
+    // Another machine can't take a session's tasks.
+    ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
+    ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
+    let key: omicron::supa::MachineKey = serde_json::from_str::<Value>(&std::fs::read_to_string(other.home.join("config.json")).unwrap()).unwrap()
+        ["machine_key"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let login = s.sign_in_machine(&key).unwrap();
+    let parser_id = s.admin_request("GET", &format!("/rest/v1/sessions?name=eq.parser&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let taken = s.request_as(&login, "POST", "/rest/v1/rpc/pick_up_tasks", Some(json!({ "session": parser_id }))).unwrap();
+    assert_eq!(taken, json!([]));
+    assert!(stop(&mac).contains("Write the parser"));
+    w.kill().unwrap();
+    w2.kill().unwrap();
+}

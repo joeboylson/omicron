@@ -128,8 +128,16 @@ Built in this order. Each part replaces an old tool only once it's ready.
       Claude Code sends, from a stand-in window process).
 - [ ] Picker to jump into a session (needs a way in: tmux, or the Claude app).
 - [ ] Keep the name in sync with `/rename`.
-- [ ] Dispatch: send a task to a session; reopen a closed one in the
-      background if its machine is awake; error if the machine is asleep.
+- [x] Dispatch: a task is given to a person or a Claude session
+      (`omicron tasks send <P> <n> <session>`, or "Given to" on the web
+      page). The session pulls it: its Stop hook hands new tasks over at the
+      end of each turn (Claude carries on with them), and SessionStart at the
+      start of a conversation. Each task is handed over once
+      (`pick_up_tasks` in the database); sending it again makes it new.
+      Tests in `tests/sessions.rs` and `e2e/tests/projects.spec.js`.
+- Dropped: "reopen a closed session in the background". Omicron doesn't
+  start sessions (decided 10 Nov 2026), so a task sent to a closed session
+  waits until it's opened again.
 - [ ] Reports as task comments, the Needs review mark, and the Reviewed button.
 - [ ] `omicron handoff`: handoff notes per session, picked up after `/clear`.
 

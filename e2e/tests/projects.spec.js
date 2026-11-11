@@ -239,3 +239,34 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
     win.kill();
   }
 });
+
+test("a task sent to a Claude session from the page is picked up by it", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+
+  const win = fakeWindow();
+  try {
+    const claude = crypto.randomUUID();
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
+    omicron.addSession(win.pid, "parser", name);
+    await expect(page.getByRole("region", { name: "Claude sessions" })).toContainText("parser");
+
+    const card = page.getByRole("button", { name: "#1 Write the parser" });
+    await card.click();
+    await pick(page, "Given to", "parser");
+    await expect(page.getByTestId("pickup")).toHaveText(/Waiting for the session/);
+
+    // The session's turn ends: it's told, and the page sees it was picked up.
+    const out = JSON.parse(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false }));
+    expect(out.decision).toBe("block");
+    expect(out.reason).toContain(`#1 in ${name}: Write the parser`);
+    await expect(page.getByTestId("pickup")).toHaveText("Picked up by the session.");
+    await page.keyboard.press("Escape");
+    await expect(card).toContainText("parser");
+    await expect(card).not.toContainText("waiting");
+  } finally {
+    win.kill();
+  }
+});

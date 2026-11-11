@@ -1,4 +1,4 @@
-import { CalendarDays, CheckSquare } from "lucide-react";
+import { CalendarDays, CheckSquare, Terminal } from "lucide-react";
 import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 export function TaskCard({ project, task, onOpen }: { project: ProjectData; task: Task; onOpen: () => void }) {
   const labels = project.labels.filter((l) => task.labelIds.includes(l.id));
   const assignee = project.members.find((m) => m.id === task.assignee_person_id);
+  const session = project.sessions.find((c) => c.id === task.assignee_session_id);
   const ticked = task.checklist.filter((c) => c.done).length;
   const done = project.statuses.find((s) => s.id === task.status_id)?.is_done ?? false;
   return (
@@ -32,7 +33,7 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
           ))}
         </div>
       )}
-      {(task.due_on || task.checklist.length > 0 || assignee) && (
+      {(task.due_on || task.checklist.length > 0 || assignee || session) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {task.due_on && (
             <span className="flex items-center gap-1">
@@ -46,6 +47,16 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
               <span className="font-mono">
                 {ticked}/{task.checklist.length}
               </span>
+            </span>
+          )}
+          {session && (
+            <span
+              className="ml-auto flex items-center gap-1"
+              title={task.picked_up_at ? `${session.name} picked it up` : `Waiting for ${session.name}`}
+            >
+              <Terminal className="h-3.5 w-3.5" />
+              <span className="font-mono">{session.name}</span>
+              {!task.picked_up_at && <span>· waiting</span>}
             </span>
           )}
           {assignee && (

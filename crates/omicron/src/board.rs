@@ -36,6 +36,8 @@ pub struct Task {
     pub status_id: String,
     pub due_on: Option<String>,
     pub assignee: Option<String>,
+    /// The Claude session it was sent to, if any.
+    pub session: Option<String>,
     pub needs_review: bool,
     pub labels: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
@@ -113,7 +115,7 @@ fn check_date(d: &str) -> Result<()> {
 }
 
 const TASK_FIELDS: &str = "id,number,title,notes,status_id,due_on,needs_review,position,\
-assignee:people(display_name),task_labels(labels(name)),checklist_items(id,text,done,position)";
+assignee:people(display_name),session:sessions(name),task_labels(labels(name)),checklist_items(id,text,done,position)";
 
 fn task_from(v: &Value) -> Result<Task> {
     let mut labels: Vec<String> = v["task_labels"]
@@ -134,6 +136,7 @@ fn task_from(v: &Value) -> Result<Task> {
         status_id: v["status_id"].as_str().unwrap_or("").to_string(),
         due_on: v["due_on"].as_str().map(String::from),
         assignee: v["assignee"]["display_name"].as_str().map(String::from),
+        session: v["session"]["name"].as_str().map(String::from),
         needs_review: v["needs_review"].as_bool().unwrap_or(false),
         labels,
         checklist,
@@ -434,6 +437,34 @@ impl Board {
     }
 
     /// Put the Needs review mark on (`true`, machines only) or take it off.
+    /// Send a task to a Claude session in the same Project. The session
+    /// picks it up at its next turn.
+    pub fn send_task(&self, project: &Project, number: i64, session: &str) -> Result<Task> {
+        let task = self.task(project, number)?;
+        let s = self.session(project, session)?;
+        self.update_task(&task, json!({ "assignee_session_id": s.id, "assignee_person_id": null }))?;
+        self.task(project, number)
+    }
+
+    /// Take the tasks sent to a session that it hasn't picked up yet, marking
+    /// them picked up. Returns (Project name, task) pairs.
+    pub fn pick_up_tasks(&self, session_id: &str) -> Result<Vec<(String, Task)>> {
+        let taken = self.send("POST", "/rest/v1/rpc/pick_up_tasks?select=id", json!({ "session": session_id }))?;
+        let ids: Vec<&str> = taken.as_array().into_iter().flatten().filter_map(|t| t["id"].as_str()).collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = self.get(&format!(
+            "/rest/v1/tasks?id=in.({})&select={TASK_FIELDS},projects(name)&order=number",
+            ids.join(",")
+        ))?;
+        rows.as_array()
+            .into_iter()
+            .flatten()
+            .map(|v| Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?)))
+            .collect()
+    }
+
     pub fn set_needs_review(&self, project: &Project, number: i64, on: bool) -> Result<Task> {
         let task = self.task(project, number)?;
         self.update_task(&task, json!({ "needs_review": on }))?;

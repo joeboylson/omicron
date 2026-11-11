@@ -80,6 +80,12 @@ test("screenshots", async ({ browser, request }) => {
     omicron.addSession(win.pid, name, omicronProject.id);
   }
   omicron.hook(windows[2].pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
+  // Task #2 sent to web-page, which picked it up; a third waits for parser.
+  const [{ id: webPage }] = await call("GET", `/rest/v1/sessions?project_id=eq.${omicronProject.id}&name=eq.web-page&select=id`);
+  const [{ id: parser }] = await call("GET", `/rest/v1/sessions?project_id=eq.${omicronProject.id}&name=eq.parser&select=id`);
+  await call("PATCH", `/rest/v1/tasks?project_id=eq.${omicronProject.id}&number=eq.2`, { assignee_session_id: webPage });
+  omicron.hook(windows[0].pid, "stop", { session_id: crypto.randomUUID(), stop_hook_active: false });
+  await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Parse the change list", assignee_session_id: parser });
   // The house task gets it too, so it shows on the main screenshot.
   omicron.cli("tasks", "needs-review", project.id, String(gate.number), "--as-machine");
 

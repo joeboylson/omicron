@@ -45,6 +45,8 @@ pub enum Hook {
     SessionStart,
     /// Claude Code's SessionEnd hook
     SessionEnd,
+    /// Claude Code's Stop hook: hands over tasks sent to this session
+    Stop,
 }
 
 pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
@@ -119,7 +121,7 @@ pub fn add_hooks(path: &std::path::Path, exe: &str) -> Result<()> {
         bail!("{} isn't a JSON object", path.display());
     }
     let hooks = settings.as_object_mut().unwrap().entry("hooks").or_insert_with(|| json!({}));
-    for (event, arg) in [("SessionStart", "session-start"), ("SessionEnd", "session-end")] {
+    for (event, arg) in [("SessionStart", "session-start"), ("SessionEnd", "session-end"), ("Stop", "stop")] {
         let list = hooks.as_object_mut().context("`hooks` isn't an object")?.entry(event).or_insert_with(|| json!([]));
         let list = list.as_array_mut().with_context(|| format!("`hooks.{event}` isn't a list"))?;
         list.retain(|group| !is_ours(group));
@@ -134,7 +136,7 @@ pub fn add_hooks(path: &std::path::Path, exe: &str) -> Result<()> {
 
 fn is_ours(group: &Value) -> bool {
     group["hooks"].as_array().is_some_and(|hs| {
-        hs.iter().any(|h| h["command"].as_str().is_some_and(|c| c.contains("omicron") && c.contains(" hook session-")))
+        hs.iter().any(|h| h["command"].as_str().is_some_and(|c| c.contains("omicron") && c.contains(" hook ")))
     })
 }
 
@@ -151,21 +153,59 @@ fn shell_quote(s: &str) -> String {
 pub fn hook(event: Hook) -> Result<()> {
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
-    if let Err(e) = run_hook(event, &input) {
-        eprintln!("omicron: {e:#}");
+    match run_hook(event, &input) {
+        Ok(Some(out)) => println!("{out}"),
+        Ok(None) => {}
+        Err(e) => eprintln!("omicron: {e:#}"),
     }
     Ok(())
 }
 
-fn run_hook(event: Hook, input: &str) -> Result<()> {
+/// What a session is told about tasks sent to it.
+fn tasks_message(tasks: &[(String, omicron::board::Task)]) -> String {
+    let mut text = format!(
+        "Omicron: {} sent to this session.\n",
+        if tasks.len() == 1 { "a task was".to_string() } else { format!("{} tasks were", tasks.len()) }
+    );
+    for (project, t) in tasks {
+        text.push_str(&format!("\n#{} in {project}: {}\n", t.number, t.title));
+        if !t.notes.is_empty() {
+            text.push_str(&format!("{}\n", t.notes));
+        }
+        text.push_str(&format!(
+            "Full task: `omicron tasks show '{project}' {n} --as-machine`. When it's done, mark it for review: `omicron tasks needs-review '{project}' {n} --as-machine`.\n",
+            n = t.number
+        ));
+    }
+    text
+}
+
+/// Returns what to print for Claude Code, if anything.
+fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     let input: Value = serde_json::from_str(input).context("the hook's input isn't JSON")?;
     let claude_id = input["session_id"].as_str().context("the hook's input has no session_id")?.to_string();
     let mut windows = Windows::load()?;
-    let gone = windows.sweep();
+    // Stop runs every turn, in every window: it only reads.
+    let gone = if matches!(event, Hook::Stop) { Vec::new() } else { windows.sweep() };
     let Some(pid) = this_window(&windows)? else {
-        windows.save()?;
-        return Ok(());
+        if !matches!(event, Hook::Stop) {
+            windows.save()?;
+        }
+        return Ok(None);
     };
+    if let Hook::Stop = event {
+        // The common case, each turn: nothing tracked, nothing to do.
+        let Some(id) = windows.windows.get(&pid).and_then(|w| w.session_id.clone()) else {
+            return Ok(None);
+        };
+        let tasks = sign_in(true)?.pick_up_tasks(&id)?;
+        if tasks.is_empty() {
+            return Ok(None);
+        }
+        // Blocking the stop makes Claude carry on, with this as the reason.
+        return Ok(Some(json!({ "decision": "block", "reason": tasks_message(&tasks) }).to_string()));
+    }
+    let mut pick_up = None;
     // What to tell Supabase, if anything. Untracked windows never call it.
     let mut updates: Vec<(String, Value)> = gone.into_iter().map(|id| (id, json!({ "state": "gone" }))).collect();
     match event {
@@ -181,9 +221,11 @@ fn run_hook(event: Hook, input: &str) -> Result<()> {
             if let Some(id) = &session_id {
                 windows.links.insert(claude_id.clone(), id.clone());
                 updates.push((id.clone(), json!({ "claude_session_id": claude_id, "folder": folder, "state": "open" })));
+                pick_up = Some(id.clone());
             }
             windows.windows.insert(pid, Window { claude_session_id: claude_id, folder, session_id, clearing: false });
         }
+        Hook::Stop => unreachable!(),
         Hook::SessionEnd => {
             if input["reason"] == "clear" {
                 // The window stays; SessionStart follows with the new id.
@@ -198,13 +240,24 @@ fn run_hook(event: Hook, input: &str) -> Result<()> {
         }
     }
     windows.save()?;
-    if !updates.is_empty() {
-        let board = sign_in(true)?;
-        for (id, change) in updates {
-            board.update_session(&id, change)?;
+    if updates.is_empty() && pick_up.is_none() {
+        return Ok(None);
+    }
+    let board = sign_in(true)?;
+    for (id, change) in updates {
+        board.update_session(&id, change)?;
+    }
+    // A conversation starting gets the tasks waiting for it.
+    if let Some(id) = pick_up {
+        let tasks = board.pick_up_tasks(&id)?;
+        if !tasks.is_empty() {
+            return Ok(Some(
+                json!({ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": tasks_message(&tasks) } })
+                    .to_string(),
+            ));
         }
     }
-    Ok(())
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -230,5 +283,6 @@ mod tests {
         assert_eq!(start[0]["hooks"][0]["command"], "lethe hook start");
         assert_eq!(start[1]["hooks"][0]["command"], "'/new place/omicron' hook session-start");
         assert_eq!(v["hooks"]["SessionEnd"].as_array().unwrap().len(), 1);
+        assert_eq!(v["hooks"]["Stop"][0]["hooks"][0]["command"], "'/new place/omicron' hook stop");
     }
 }

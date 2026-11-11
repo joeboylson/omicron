@@ -65,6 +65,9 @@ pub enum Tasks {
     NeedsReview { project: String, number: i64 },
     /// Take the Needs review mark off a task
     Reviewed { project: String, number: i64 },
+    /// Send a task to a Claude session in the Project. It picks the task up
+    /// at its next turn.
+    Send { project: String, number: i64, session: String },
 }
 
 /// Sign in for board commands.
@@ -134,6 +137,9 @@ pub fn one_line(t: &Task) -> String {
     }
     if let Some(a) = &t.assignee {
         parts.push(format!("to {a}"));
+    }
+    if let Some(s) = &t.session {
+        parts.push(format!("sent to session {s}"));
     }
     if !t.checklist.is_empty() {
         let done = t.checklist.iter().filter(|c| c.done).count();
@@ -225,6 +231,11 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
         Tasks::Reviewed { project, number } => {
             let p = board.project(&project)?;
             let t = board.set_needs_review(&p, number, false)?;
+            changed(&p, t)
+        }
+        Tasks::Send { project, number, session } => {
+            let p = board.project(&project)?;
+            let t = board.send_task(&p, number, &session)?;
             changed(&p, t)
         }
     }
