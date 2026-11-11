@@ -471,3 +471,77 @@ fn a_projects_chat_reaches_the_sessions_it_names() {
     assert!(!run(&pat, None, &["chat", "send", &project, "x"]).status.success());
     w.kill().unwrap();
 }
+
+#[test]
+fn a_new_session_starts_claude_in_the_host_and_records_it() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    // A short settings folder: the host's socket path has a length limit.
+    let (mac, mac_name) = machine(&s);
+    let short = PathBuf::from(format!("/tmp/os-{}", &Uuid::new_v4().simple().to_string()[..8]));
+    std::fs::rename(&mac.home, &short).unwrap();
+    let mac = Computer { home: short, tailscale: None };
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+
+    // A stand-in for claude: runs Omicron's start hook as Claude Code does
+    // (with the session id it was given), says it's ready, then waits.
+    let bin = mac.home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(
+        bin.join("claude"),
+        format!(
+            "#!/bin/sh\necho \"$@\" > \"$OMICRON_HOME/claude-args\"\nid=\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; esac; shift; done\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"startup\"}}' \"$id\" \"$PWD\" | {} hook session-start\necho stand-in claude ready\nexec cat\n",
+            env!("CARGO_BIN_EXE_omicron")
+        ),
+    )
+    .unwrap();
+    Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
+    let folder = mac.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let new = |name: &str| {
+        command(&mac, None, &["sessions", "new", name, "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
+            .env("PATH", &path)
+            .output()
+            .unwrap()
+    };
+
+    let out = new("parser");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains(&format!("Started parser in {project}")));
+
+    // It runs in the host, with the right options.
+    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !mac.home.join("claude-args").exists() {
+        assert!(std::time::Instant::now() < deadline, "claude never started");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let args = std::fs::read_to_string(mac.home.join("claude-args")).unwrap();
+    assert!(args.starts_with("--name parser --session-id "), "{args}");
+    assert!(args.contains(&format!("--settings {}", mac.home.join("claude/settings.json").display())), "{args}");
+    let settings: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("claude/settings.json")).unwrap()).unwrap();
+    assert!(settings["hooks"]["SessionStart"].is_array(), "Omicron's hooks are in its own settings file");
+
+    // Recorded, with the session id it was started with, and the start hook
+    // tied the window to the record.
+    let id = args.split_whitespace().nth(3).unwrap().to_string();
+    let r = record(&s, &project, "parser");
+    assert_eq!((r["state"].as_str(), r["claude_session_id"].as_str()), (Some("open"), Some(id.as_str())));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let w: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("windows.json")).unwrap_or_default()).unwrap_or_default();
+        if w["windows"].as_object().is_some_and(|m| m.values().any(|w| w["claude_session_id"] == json!(id) && w["session_id"].is_string())) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "the start hook never tied the window to the session: {w}");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    // The same name again is refused while it runs; it ends cleanly.
+    let again = new("parser");
+    assert!(!again.status.success() && String::from_utf8_lossy(&again.stderr).contains("already running"));
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+}

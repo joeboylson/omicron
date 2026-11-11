@@ -12,6 +12,20 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum Sessions {
+    /// Start a new Claude session in a Project, in Omicron's session host
+    /// (asks for whatever isn't given), and jump into it
+    New {
+        /// Its name, like `parser-work`. The Claude session gets it too.
+        name: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        /// The folder to work in (this one if left out)
+        #[arg(long)]
+        folder: Option<PathBuf>,
+        /// Start it without jumping in
+        #[arg(long)]
+        no_attach: bool,
+    },
     /// Record the Claude session this runs in, under a Project
     Add {
         /// A name for it, like `parser-work`
@@ -71,6 +85,7 @@ pub enum Hook {
 
 pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
     match cmd {
+        Sessions::New { name, project, folder, no_attach } => new_session(name, project, folder, no_attach)?,
         Sessions::Add { name, project } => {
             let mut windows = Windows::load()?;
             let pid = this_window(&windows)?.context("run this inside a Claude Code session")?;
@@ -383,4 +398,89 @@ mod tests {
         let skill = add_skill(&dir).unwrap();
         assert!(std::fs::read_to_string(skill).unwrap().starts_with("---\nname: omicron-handoff\n"));
     }
+}
+
+/// Omicron's own Claude Code settings file, with its hooks: sessions it
+/// starts load it with `claude --settings`, so Claude Code's settings are
+/// left alone.
+pub fn omicron_claude_settings() -> Result<PathBuf> {
+    let path = omicron::config::home()?.join("claude/settings.json");
+    let exe = std::env::current_exe()?.canonicalize()?;
+    add_hooks(&path, &exe.to_string_lossy())?;
+    Ok(path)
+}
+
+fn ask(question: &str) -> Result<String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        bail!("{question} (give it as an option when there's no one to ask)");
+    }
+    eprint!("{question} ");
+    std::io::stderr().flush()?;
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line)?;
+    Ok(line.trim().to_string())
+}
+
+/// `omicron sessions new`: record the session, then start Claude Code in the
+/// session host with that name and session id. Its start hook links the
+/// window to the record, so /clear and closing are followed as usual.
+fn new_session(name: Option<String>, project: Option<String>, folder: Option<PathBuf>, no_attach: bool) -> Result<()> {
+    // Sessions belong to the machine they run on.
+    let board = sign_in(true)?;
+    let project = match project {
+        Some(p) => board.project(&p)?,
+        None => {
+            let all = board.projects()?;
+            if all.is_empty() {
+                bail!("this machine isn't in any Project yet. Add it with `omicron machines add <machine> <Project>`.");
+            }
+            for (i, p) in all.iter().enumerate() {
+                eprintln!("{}. {}", i + 1, p.name);
+            }
+            let n: usize = ask("Which Project?")?.parse().context("type the Project's number")?;
+            all.into_iter().nth(n.wrapping_sub(1)).context("there's no Project with that number")?
+        }
+    };
+    let name = match name {
+        Some(n) => n,
+        None => ask("Name for the session (like parser-work):")?,
+    };
+    // Check the name works for the host before recording anything.
+    omicron::host::socket_path(&name)?;
+    if omicron::host::is_running(&name) {
+        bail!("a session called {name} is already running on this machine");
+    }
+    let folder = match folder {
+        Some(f) => f.canonicalize().with_context(|| format!("there's no folder {}", f.display()))?,
+        None => std::env::current_dir()?,
+    };
+    let claude_id = uuid::Uuid::new_v4().to_string();
+    let record = board.add_session(&project, &name, &claude_id, &folder.to_string_lossy())?;
+    let mut windows = Windows::load()?;
+    windows.links.insert(claude_id.clone(), record.id.clone());
+    windows.save()?;
+
+    let settings = omicron_claude_settings()?;
+    let command = vec![
+        "claude".to_string(),
+        "--name".into(),
+        name.clone(),
+        "--session-id".into(),
+        claude_id,
+        "--settings".into(),
+        settings.to_string_lossy().into_owned(),
+    ];
+    if let Err(e) = omicron::host::start(&name, &folder, &command, &[]) {
+        // Don't leave a record for a session that never started.
+        let _ = board.remove_session(&project, &name);
+        return Err(e);
+    }
+    println!("Started {name} in {} on this machine.", project.name);
+    if no_attach || !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        println!("Jump in with `omicron sessions attach {name}`.");
+        return Ok(());
+    }
+    omicron::host::attach(&name)?;
+    Ok(())
 }

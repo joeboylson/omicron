@@ -87,9 +87,13 @@ pub fn this_window(known: &Windows) -> Result<Option<u32>> {
 /// A Claude Code process: its program is `claude`, or lives in Claude's
 /// install folder (`.../claude/versions/2.1.0`), or is node running Claude.
 fn is_claude(args: &str) -> bool {
-    let program = args.split_whitespace().next().unwrap_or("");
+    let mut words = args.split_whitespace();
+    let program = words.next().unwrap_or("");
     let name = program.rsplit('/').next().unwrap_or("");
-    name == "claude" || program.contains("/claude/versions/") || (name == "node" && args.contains("claude-code"))
+    // A script run through its interpreter shows as `sh /path/claude ...`.
+    let script = matches!(name, "sh" | "bash" | "zsh")
+        && words.next().is_some_and(|w| w.rsplit('/').next() == Some("claude"));
+    name == "claude" || script || program.contains("/claude/versions/") || (name == "node" && args.contains("claude-code"))
 }
 
 /// Parent process ids and command lines, nearest first.
@@ -126,6 +130,8 @@ mod tests {
         assert!(is_claude("/Users/pat/.local/share/claude/versions/2.1.317 --resume"));
         assert!(is_claude("claude remote-control --name x"));
         assert!(is_claude("/usr/local/bin/claude"));
+        assert!(is_claude("/bin/sh /home/pat/bin/claude --name x"));
+        assert!(!is_claude("/bin/sh -c claude"));
         assert!(is_claude("node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"));
         assert!(!is_claude("/bin/zsh -l"));
         assert!(!is_claude("sh -c omicron hook session-start"));
