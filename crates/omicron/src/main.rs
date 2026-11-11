@@ -194,6 +194,12 @@ fn run(cli: Cli) -> Result<()> {
             let config = Config::load()?;
             let supabase = config.supabase()?;
             let public_supabase_url = config.public_supabase_url.clone();
+            // This computer's own Tailscale name is always fine, so
+            // `tailscale serve` works without saying it.
+            let mut hosts = hosts;
+            if let Some(name) = identity::local_tailnet_name() {
+                hosts.push(name);
+            }
             omicron::web::WebMachine { supabase, public_supabase_url, extra_hosts: hosts }.serve(port)
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
