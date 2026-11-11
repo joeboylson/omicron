@@ -57,9 +57,11 @@ export function ProjectPage({ id }: { id: string }) {
         }
         right={
           <>
-            <Button variant="ghost" size="icon" aria-label="Chat" onClick={() => setChatOpen(true)}>
-              <MessageCircle />
-            </Button>
+            {project.chatEnabled && (
+              <Button variant="ghost" size="icon" aria-label="Chat" onClick={() => setChatOpen(true)}>
+                <MessageCircle />
+              </Button>
+            )}
             <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
               <Settings />
             </Button>
@@ -115,7 +117,7 @@ export function ProjectPage({ id }: { id: string }) {
         />
       )}
       <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload} />
-      <Chat project={project} open={chatOpen} onOpenChange={setChatOpen} onChanged={reload} />
+      <Chat project={project} open={chatOpen && project.chatEnabled} onOpenChange={setChatOpen} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
     </main>
   );

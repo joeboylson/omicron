@@ -357,10 +357,16 @@ test("a Project's chat: turned on, a session named in it answers, live", async (
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
     omicron.addSession(win.pid, "parser", name);
 
+    // Off to start with: nobody sees it.
+    await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Project settings" }).click();
+    const chatSwitch = page.getByRole("switch", { name: "Chat for this Project" });
+    await expect(chatSwitch).toHaveAttribute("aria-checked", "false");
+    await chatSwitch.click();
+    await expect(chatSwitch).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Chat" }).click();
     const sheet = page.getByRole("dialog");
-    await expect(sheet).toContainText("Chat is off for this Project.");
-    await sheet.getByRole("button", { name: "Turn on chat" }).click();
     await sheet.getByLabel("New message").fill("@parser how far did you get?");
     await sheet.getByLabel("New message").press("Enter");
     const messages = sheet.getByRole("list", { name: "Messages" });
@@ -373,6 +379,13 @@ test("a Project's chat: turned on, a session named in it answers, live", async (
     await expect(messages.getByRole("listitem")).toHaveCount(2);
     await expect(messages.getByRole("listitem").last()).toContainText(`${machineName}parser`);
     await expect(messages.getByRole("listitem").last()).toContainText("Half way: parser done, errors next.");
+
+    // Turned off from settings: the chat and its button go away.
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Project settings" }).click();
+    await page.getByRole("switch", { name: "Chat for this Project" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
   } finally {
     win.kill();
   }

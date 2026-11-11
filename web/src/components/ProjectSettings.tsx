@@ -13,6 +13,7 @@ import {
   removeMember,
   renameProject,
   renameStatus,
+  setChat,
   setLabelColor,
   setStatusColor,
   type Person,
@@ -29,6 +30,7 @@ import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
 import { ColorSelect } from "@/components/ColorDot";
+import { Switch } from "@/components/ui/switch";
 
 export function ProjectSettings({
   project,
@@ -80,6 +82,22 @@ export function ProjectSettings({
                 else if (n !== project.name) change(() => renameProject(db, project.id, n));
               }}
               className={cn(bare, "px-0")}
+            />
+          </Row>
+        </Group>
+
+        <Group
+          title="Chat"
+          note="When it's off, nobody sees the chat, and Claude sessions aren't told about messages that name them."
+        >
+          <Row>
+            <span id="chat-switch" className="flex-1 text-[15px] sm:text-sm">
+              Chat for this Project
+            </span>
+            <Switch
+              aria-labelledby="chat-switch"
+              checked={project.chatEnabled}
+              onCheckedChange={(on) => change(() => setChat(db, project.id, on))}
             />
           </Row>
         </Group>

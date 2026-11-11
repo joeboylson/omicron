@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { loadChat, sendChat, setChat, type ChatMessage, type ProjectData } from "@/lib/data";
+import { loadChat, sendChat, type ChatMessage, type ProjectData } from "@/lib/data";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,12 +13,10 @@ export function Chat({
   project,
   open,
   onOpenChange,
-  onChanged,
 }: {
   project: ProjectData;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onChanged: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -33,23 +31,13 @@ export function Chat({
             it's told at the end of its next turn.
           </DialogDescription>
         </DialogHeader>
-        {open && (project.chatEnabled ? <Messages project={project} onChanged={onChanged} /> : <TurnOn project={project} onChanged={onChanged} />)}
+        {open && <Messages project={project} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function TurnOn({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
-  const { db, act } = useApp();
-  return (
-    <div className="grid gap-3 rounded-xl border bg-card p-4 text-sm">
-      <p>Chat is off for this Project.</p>
-      <Button onClick={async () => (await act(() => setChat(db, project.id, true))) && onChanged()}>Turn on chat</Button>
-    </div>
-  );
-}
-
-function Messages({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
+function Messages({ project }: { project: ProjectData }) {
   const { db, act, me } = useApp();
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [text, setText] = useState("");
@@ -130,14 +118,6 @@ function Messages({ project, onChanged }: { project: ProjectData; onChanged: () 
           Send
         </Button>
       </form>
-      <Button
-        variant="link"
-        size="sm"
-        className="h-auto justify-self-start p-0 text-xs text-muted-foreground"
-        onClick={async () => (await act(() => setChat(db, project.id, false))) && onChanged()}
-      >
-        Turn off chat
-      </Button>
     </>
   );
 }
