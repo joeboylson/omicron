@@ -754,3 +754,61 @@ test("appearance: Light, Dark or the system, saved with you and on every device"
   expect(await theme(page)).toBe("system");
   await other.close();
 });
+
+test("API keys: make one for a new machine, see it, switch it off, remove it", async ({ page, request }) => {
+  const me = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await page.goto(omicron.url);
+  await page.getByTestId("me").click();
+  await page.getByRole("button", { name: "API keys" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "API keys" })).toBeVisible();
+
+  const box = unique("box");
+  await page.getByRole("button", { name: "New key" }).first().click();
+  await page.getByLabel("Machine name").fill(box);
+  await page.getByLabel(name).check();
+  await page.getByRole("button", { name: "Make key" }).click();
+  const shown = page.getByTestId("new-key");
+  await expect(shown).toContainText("omicron machines use-key omk_");
+  const key = (await shown.textContent()).split(" ").pop();
+  await page.getByRole("button", { name: "Done" }).click();
+
+  // The key works: it signs in as the new machine, which is in the Project.
+  const [, id, secret] = key.match(/^omk_([0-9a-f]+)_(.+)$/);
+  const uuid = id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+  const login = await (
+    await request.post(`${need("OMICRON_SUPABASE_URL")}/auth/v1/token?grant_type=password`, {
+      headers: { apikey: need("OMICRON_SUPABASE_KEY") },
+      data: { email: `${uuid}@machines.omicron.invalid`, password: secret },
+    })
+  ).json();
+  expect(login.access_token).toBeTruthy();
+  const projects = await rest(request, login, "GET", "/rest/v1/projects?select=name");
+  expect(projects.map((p) => p.name)).toEqual([name]);
+
+  const row = page.getByRole("list", { name: "Machines" }).getByRole("listitem", { name: box });
+  await expect(row).toContainText("asleep · never seen");
+  await expect(row).toContainText(name);
+  await row.getByRole("button", { name: "Switch off" }).click();
+  await expect(row).toContainText("switched off");
+  // Switched off, the key gets nothing.
+  expect(await rest(request, login, "GET", "/rest/v1/projects?select=name")).toEqual([]);
+  await row.getByRole("button", { name: "Switch on" }).click();
+  await expect(row).toContainText("asleep");
+  // Removing asks first; Cancel keeps it.
+  await row.getByRole("button", { name: `Remove ${box}…` }).click();
+  await expect(row.getByRole("alert")).toContainText("This can't be undone.");
+  await row.getByRole("button", { name: "Cancel" }).click();
+  await expect(row.getByRole("alert")).toHaveCount(0);
+  await row.getByRole("button", { name: `Remove ${box}…` }).click();
+  await row.getByRole("button", { name: `Remove ${box}`, exact: true }).click();
+  await expect(row).toHaveCount(0);
+
+  // Machines outside your Projects can't be touched.
+  const others = await rest(request, me.session, "GET", `/rest/v1/machines?name=eq.${machineName}&select=id`);
+  const res = await request.post(`${omicron.url}/api/machines/${others[0].id}/remove`, {
+    headers: { Authorization: `Bearer ${me.session.access_token}`, "tailscale-user-login": me.login },
+  });
+  expect(res.status()).toBe(403);
+});

@@ -470,3 +470,52 @@ export async function moveTask(
   if (to.topicId !== undefined) row.topic_id = to.topicId;
   must(await db.from("tasks").update(row).eq("id", task.id));
 }
+
+/** A registered machine (each has its own API key). */
+export type MachineRow = {
+  id: string;
+  name: string;
+  active: boolean;
+  last_seen: string | null;
+  all_projects: boolean;
+  projectIds: string[];
+};
+
+export async function listMachines(db: SupabaseClient): Promise<MachineRow[]> {
+  const rows = must(await db.from("machines").select("id,name,active,last_seen,all_projects,project_machines(project_id)").order("name")) as any[];
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    active: r.active,
+    last_seen: r.last_seen,
+    all_projects: r.all_projects,
+    projectIds: (r.project_machines ?? []).map((m: { project_id: string }) => m.project_id),
+  }));
+}
+
+/** API keys go through the Web Machine (it has the secret key), as you. */
+async function machinesApi(db: SupabaseClient, path: string, body?: unknown): Promise<any> {
+  const { data } = await db.auth.getSession();
+  const res = await fetch(`/api/machines${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const text = await res.text();
+  const json = text ? JSON.parse(text) : null;
+  if (!res.ok) throw new Error(json?.error ?? res.statusText);
+  return json;
+}
+
+/** Register a machine in these Projects. Returns its API key (shown once). */
+export async function createMachineKey(db: SupabaseClient, name: string, projectIds: string[]): Promise<string> {
+  return (await machinesApi(db, "", { name, project_ids: projectIds })).key;
+}
+
+export async function switchMachine(db: SupabaseClient, id: string, on: boolean) {
+  await machinesApi(db, `/${id}/${on ? "switch-on" : "switch-off"}`);
+}
+
+export async function removeMachine(db: SupabaseClient, id: string) {
+  await machinesApi(db, `/${id}/remove`);
+}

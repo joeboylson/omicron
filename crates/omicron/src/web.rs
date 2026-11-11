@@ -147,6 +147,11 @@ impl WebMachine {
             )),
             (Method::Post, "/api/session") => self.session(request),
             (Method::Post, "/api/page-error") => Ok(page_error(request)),
+            (Method::Post, "/api/machines") => self.machines_api(request, None),
+            (Method::Post, p) if p.starts_with("/api/machines/") => {
+                let rest = p.trim_start_matches("/api/machines/").to_string();
+                self.machines_api(request, Some(rest))
+            }
             (_, "/api/session") => Ok((405, "application/json", json!({ "error": "use POST" }).to_string().into_bytes())),
             (Method::Get, p) if p.starts_with("/api/") => Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes())),
             (Method::Get, "/") | (Method::Get, "/index.html") => Ok((200, "text/html; charset=utf-8", index_html())),
@@ -160,6 +165,76 @@ impl WebMachine {
                 None => Ok((200, "text/html; charset=utf-8", index_html())),
             },
             _ => Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes())),
+        }
+    }
+
+    /// API keys, for people on the page (keys are only for machines, and
+    /// making one needs the secret key, which only a Web Machine has):
+    /// - POST /api/machines {name, project_ids}: register a machine in
+    ///   Projects you're in; its key comes back once.
+    /// - POST /api/machines/<id>/switch-off, /switch-on, /remove: for
+    ///   machines that share a Project with you.
+    /// The page sends its own login, and the database's rules say what that
+    /// person may see.
+    fn machines_api(&self, request: &mut Request, action: Option<String>) -> Result<(u16, &'static str, Vec<u8>)> {
+        let fail = |code: u16, msg: &str| Ok((code, "application/json", json!({ "error": msg }).to_string().into_bytes()));
+        let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
+            return fail(401, "sign in first");
+        };
+        let Ok(login) = self.supabase.session_for_token(&token) else { return fail(401, "that login doesn't work any more; reload the page") };
+        let me = self.supabase.request_as(&login, "GET", &format!("/rest/v1/people?id=eq.{}&select=id", login.user.id), None)?;
+        if me.as_array().is_none_or(|a| a.is_empty()) {
+            return fail(403, "only people can manage API keys");
+        }
+        let mut body = Vec::new();
+        {
+            use std::io::Read;
+            let _ = request.as_reader().take(16 * 1024).read_to_end(&mut body);
+        }
+        let input: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+        match action {
+            None => {
+                let name = input["name"].as_str().unwrap_or("").trim().to_string();
+                if name.is_empty() {
+                    return fail(400, "give the machine a name, like mac-mini");
+                }
+                let projects: Vec<String> = input["project_ids"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect();
+                if projects.is_empty() {
+                    return fail(400, "pick at least one Project for the machine");
+                }
+                // Only Projects you're in (the rules hide the others).
+                let seen = self.supabase.request_as(&login, "GET", &format!("/rest/v1/projects?id=in.({})&select=id", projects.join(",")), None)?;
+                if seen.as_array().map_or(0, |a| a.len()) != projects.len() {
+                    return fail(403, "you can only add a machine to Projects you're in");
+                }
+                let key = match self.supabase.register_machine(&name, false) {
+                    Ok(k) => k,
+                    Err(e) => return fail(409, &format!("{e:#}")),
+                };
+                for p in &projects {
+                    self.supabase.request_as(&login, "POST", "/rest/v1/project_machines", Some(json!({ "project_id": p, "machine_id": key.machine_id })))?;
+                }
+                eprintln!("omicron serve: {} registered the machine {name}", login.user.id);
+                Ok((200, "application/json", json!({ "machine_id": key.machine_id, "name": name, "key": key.to_string() }).to_string().into_bytes()))
+            }
+            Some(rest) => {
+                let (id, what) = rest.split_once('/').unwrap_or((&rest, ""));
+                let Ok(id) = id.parse::<uuid::Uuid>() else { return fail(404, "no such machine") };
+                // A machine you share a Project with.
+                let shared = self.supabase.request_as(&login, "GET", &format!("/rest/v1/project_machines?machine_id=eq.{id}&select=project_id"), None)?;
+                if shared.as_array().is_none_or(|a| a.is_empty()) {
+                    return fail(403, "you can only manage machines in a Project you're in");
+                }
+                let this = crate::config::Config::load().ok().and_then(|c| c.machine_key().ok()).map(|k| k.machine_id);
+                match what {
+                    "switch-off" if this == Some(id) => fail(400, "this is the machine serving this page; it can't switch itself off"),
+                    "switch-off" => self.supabase.set_machine_active(id, false).map(|_| (204, "application/json", Vec::new())),
+                    "switch-on" => self.supabase.set_machine_active(id, true).map(|_| (204, "application/json", Vec::new())),
+                    "remove" if this == Some(id) => fail(400, "this is the machine serving this page; it can't remove itself"),
+                    "remove" => self.supabase.remove_machine(id).map(|_| (204, "application/json", Vec::new())),
+                    _ => fail(404, "not found"),
+                }
+            }
         }
     }
 

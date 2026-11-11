@@ -7,6 +7,7 @@ import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { PeoplePage } from "@/pages/PeoplePage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { KeysPage } from "@/pages/KeysPage";
 import { applyAppearance, loadAppearance } from "@/lib/theme";
 import { reportError } from "@/lib/report";
 
@@ -78,7 +79,7 @@ export default function App() {
   return (
     <AppContext.Provider value={app}>
       <div className="flex min-h-dvh flex-col">
-        {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : path === "/settings" ? <SettingsPage /> : <ProjectsPage />}
+        {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : path === "/settings" ? <SettingsPage /> : path === "/keys" ? <KeysPage /> : <ProjectsPage />}
         {error && (
           <div
             role="alert"

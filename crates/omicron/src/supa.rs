@@ -284,6 +284,27 @@ impl Supabase {
         Ok(key)
     }
 
+    /// Who a login (an access token from the page) belongs to, as Supabase
+    /// says. Errors if it doesn't work.
+    pub fn session_for_token(&self, token: &str) -> Result<Session> {
+        let user = self.call("GET", "/auth/v1/user", &self.key, Some(token), None, None)?;
+        let id: Uuid = user["id"].as_str().context("that login has no user")?.parse()?;
+        Ok(Session { access_token: token.to_string(), refresh_token: String::new(), expires_in: 0, user: SessionUser { id } })
+    }
+
+    /// Switch a machine off (its key stops working for anything) or on.
+    pub fn set_machine_active(&self, id: Uuid, active: bool) -> Result<()> {
+        self.admin("PATCH", &format!("/rest/v1/machines?id=eq.{id}"), Some(json!({ "active": active })), None)?;
+        Ok(())
+    }
+
+    /// Remove a machine for good: its record, its sessions, and its login.
+    pub fn remove_machine(&self, id: Uuid) -> Result<()> {
+        self.admin("DELETE", &format!("/rest/v1/machines?id=eq.{id}"), None, None)?;
+        self.admin("DELETE", &format!("/auth/v1/admin/users/{id}"), None, None)?;
+        Ok(())
+    }
+
     /// Sign a machine in with its API key. Only needs the publishable key.
     pub fn sign_in_machine(&self, key: &MachineKey) -> Result<Session> {
         let reply = self

@@ -2,7 +2,7 @@
 // saved with you so it follows you between devices.
 
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { go, useApp } from "@/lib/app";
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from "@/lib/theme";
 import { NavBar } from "@/components/NavBar";
@@ -47,6 +47,16 @@ export function SettingsPage() {
             <span className="text-[15px] font-medium sm:text-sm">{me.displayName}</span>
             <span className="font-mono text-xs text-muted-foreground">{me.login}</span>
           </div>
+        </Group>
+        <Group title="Machines">
+          <button
+            type="button"
+            onClick={() => go("/keys")}
+            className="flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
+          >
+            <span className="flex-1">API keys</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+          </button>
         </Group>
         <Group title="Appearance" note="Saved with you, so it's the same on all your devices.">
           <div role="radiogroup" aria-label="Appearance" className="divide-y">
