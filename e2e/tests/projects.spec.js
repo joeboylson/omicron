@@ -677,3 +677,27 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
   await card("Charlie").click();
   await expect(page.getByRole("dialog")).toContainText("Charlie");
 });
+
+test("labels are renamed and removed in Project settings", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Buy milk");
+  omicron.cli("tasks", "label", name, "1", "shop", "--as-machine");
+  const card = page.getByRole("button", { name: /#1 Buy milk/ });
+  await expect(card).toContainText("shop");
+
+  await page.getByRole("button", { name: "Project settings" }).click();
+  const box = page.getByLabel("Label name: shop");
+  await box.fill("groceries");
+  await box.press("Enter");
+  await expect(page.getByLabel("Label name: groceries")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(card).toContainText("groceries");
+
+  await page.getByRole("button", { name: "Project settings" }).click();
+  await page.getByRole("button", { name: "Remove label groceries" }).click();
+  await expect(page.getByRole("list", { name: "Labels" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(card).not.toContainText("groceries");
+});

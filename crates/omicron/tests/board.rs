@@ -423,3 +423,18 @@ fn tasks_can_be_placed_within_a_status() {
     assert!(fails(&me, &["tasks", "move", &project, "3", "--after", "1"]).contains("#1 isn't in that status"));
     assert!(fails(&me, &["tasks", "move", &project, "3", "--top", "--bottom"]).contains("cannot be used with"));
 }
+
+#[test]
+fn labels_are_renamed_and_removed() {
+    let s = supabase_or_skip!();
+    let (me, project) = person_with_project(&s, "Pat");
+    ok(&me, &["tasks", "add", &project, "Buy milk", "--label", "shop", "--label", "food"]);
+    ok(&me, &["tasks", "add", &project, "Buy bread", "--label", "shop"]);
+    assert!(fails(&me, &["labels", "rename", &project, "shop", "FOOD"]).contains("already has a label called FOOD"));
+    assert_eq!(ok(&me, &["labels", "rename", &project, "shop", "shopping"]).trim(), "Renamed the label shop to shopping.");
+    assert!(ok(&me, &["tasks", "show", &project, "2"]).starts_with("#2  Buy bread  [shopping]"));
+    assert_eq!(ok(&me, &["labels", "remove", &project, "Shopping"]).trim(), "Removed the label Shopping (it was on 2 tasks).");
+    assert!(ok(&me, &["tasks", "show", &project, "1"]).starts_with("#1  Buy milk  [food]\n"));
+    assert_eq!(ok(&me, &["labels", "list", &project]), "food\n");
+    assert!(fails(&me, &["labels", "remove", &project, "shopping"]).contains("has no label called shopping"));
+}

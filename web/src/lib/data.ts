@@ -369,6 +369,15 @@ export async function setStatusColor(db: SupabaseClient, status: Status, color: 
   must(await db.from("statuses").update({ color }).eq("id", status.id));
 }
 
+export async function renameLabel(db: SupabaseClient, label: Label, name: string) {
+  must(await db.from("labels").update({ name }).eq("id", label.id));
+}
+
+/** Also takes it off every task that has it. */
+export async function deleteLabel(db: SupabaseClient, label: Label) {
+  must(await db.from("labels").delete().eq("id", label.id));
+}
+
 export async function setLabelColor(db: SupabaseClient, label: Label, color: string) {
   must(await db.from("labels").update({ color }).eq("id", label.id));
 }

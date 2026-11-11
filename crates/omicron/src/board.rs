@@ -460,6 +460,33 @@ impl Board {
         Ok(())
     }
 
+    pub fn rename_label(&self, project: &Project, name: &str, new_name: &str) -> Result<()> {
+        let id = self.existing_label(project, name)?;
+        if self.labels(project)?.iter().any(|(n, _)| n.eq_ignore_ascii_case(new_name.trim()) && !n.eq_ignore_ascii_case(name)) {
+            bail!("{} already has a label called {}", project.name, new_name.trim());
+        }
+        self.send("PATCH", &format!("/rest/v1/labels?id=eq.{id}"), json!({ "name": new_name.trim() }))?;
+        Ok(())
+    }
+
+    /// Remove a label; it comes off every task that has it. Returns how many.
+    pub fn remove_label(&self, project: &Project, name: &str) -> Result<usize> {
+        let id = self.existing_label(project, name)?;
+        let used = self.get(&format!("/rest/v1/task_labels?label_id=eq.{id}&select=task_id"))?;
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/labels?id=eq.{id}"), None)?;
+        Ok(used.as_array().map_or(0, |a| a.len()))
+    }
+
+    fn existing_label(&self, project: &Project, name: &str) -> Result<String> {
+        let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&select=id,name", project.id))?;
+        rows.as_array()
+            .into_iter()
+            .flatten()
+            .find(|r| r["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(name.trim())))
+            .and_then(|r| r["id"].as_str().map(String::from))
+            .with_context(|| format!("{} has no label called {name}", project.name))
+    }
+
     fn label_id(&self, project: &Project, name: &str) -> Result<String> {
         let found = self.get(&format!("/rest/v1/labels?project_id=eq.{}&name=eq.{}&select=id", project.id, enc(name)))?;
         if let Some(id) = found.get(0).and_then(|r| r["id"].as_str()) {

@@ -38,6 +38,10 @@ pub enum Labels {
     /// Give a label a color (it's made if it doesn't exist): red, orange,
     /// yellow, green, teal, blue, indigo, purple, pink, brown or gray
     Color { project: String, label: String, color: String },
+    /// Rename a label (on every task that has it)
+    Rename { project: String, label: String, new_name: String },
+    /// Remove a label; it comes off every task that has it
+    Remove { project: String, label: String },
 }
 
 #[derive(Subcommand)]
@@ -92,6 +96,16 @@ pub fn labels(cmd: Labels, as_machine: bool) -> Result<()> {
             for (name, color) in board.labels(&p)? {
                 println!("{name}{}", color.map(|c| format!(" [{c}]")).unwrap_or_default());
             }
+        }
+        Labels::Rename { project, label, new_name } => {
+            let p = board.project(&project)?;
+            board.rename_label(&p, &label, &new_name)?;
+            println!("Renamed the label {label} to {}.", new_name.trim());
+        }
+        Labels::Remove { project, label } => {
+            let p = board.project(&project)?;
+            let n = board.remove_label(&p, &label)?;
+            println!("Removed the label {label} (it was on {n} {}).", if n == 1 { "task" } else { "tasks" });
         }
         Labels::Color { project, label, color } => {
             let p = board.project(&project)?;
