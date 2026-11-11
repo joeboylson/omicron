@@ -27,6 +27,11 @@ pub struct Config {
     /// This machine's API key, from `omicron machines register`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine_key: Option<String>,
+    /// Extra options for every Claude Code session Omicron starts in its
+    /// host on this machine, like ["--permission-mode", "auto"] (nobody is
+    /// there to answer questions when a loop or Dispatch opens one).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claude_args: Vec<String>,
 }
 
 pub fn home() -> Result<PathBuf> {

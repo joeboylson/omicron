@@ -544,6 +544,7 @@ pub fn claude_command(name: &str, claude_id: &str, resume: bool, first: Option<&
     let mut command = vec!["claude".to_string()];
     command.extend([if resume { "--resume" } else { "--session-id" }.to_string(), claude_id.to_string()]);
     command.extend(["--name".into(), name.to_string(), "--settings".into(), settings.to_string_lossy().into_owned()]);
+    command.extend(omicron::config::Config::load()?.claude_args);
     if let Some(text) = first {
         command.push(text.to_string());
     }
