@@ -8,6 +8,7 @@ use uuid::Uuid;
 mod accounts_cmd;
 mod board_cmd;
 mod chat_cmd;
+mod dispatch_cmd;
 mod handoff_cmd;
 mod sessions_cmd;
 
@@ -466,15 +467,27 @@ fn daemon() -> Result<()> {
         supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
         Ok(session)
     };
+    // Things this machine does when it hears about them, each in its own
+    // thread so listening carries on. Each is safe to run twice.
+    let react = |row: &serde_json::Value| {
+        if row["table_name"] == "dispatches" && row["kind"] == "INSERT" {
+            let (supabase, key, name, record) = (supabase.clone(), key.clone(), name.clone(), row["record"].clone());
+            std::thread::spawn(move || {
+                if let Err(e) = dispatch_cmd::carry_out(&supabase, &key, &name, &record) {
+                    eprintln!("omicron daemon: dispatch: {e:#}");
+                }
+            });
+        }
+    };
     realtime::listen(&supabase, &listen, login, &stop, |event| {
         match event {
             Event::Listening => {
                 let session = supabase.sign_in_machine(&key)?;
-                catch_up(&supabase, &session, &mut state)?;
+                catch_up(&supabase, &session, &mut state, &react)?;
                 eprintln!("omicron daemon: {name} is listening for changes");
             }
             Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
-            Event::Change(c) if c.table == "changes" => handle_change(&c.record, &mut state)?,
+            Event::Change(c) if c.table == "changes" => handle_change(&c.record, &mut state, &react)?,
             Event::Change(_) | Event::Connected(_) => {}
         }
         Ok(Next::Continue)
@@ -484,7 +497,12 @@ fn daemon() -> Result<()> {
 /// Read the change list from where this machine left off, plus every line
 /// from the last second (in case one finished saving late). The first time,
 /// start from now instead of replaying all of history.
-fn catch_up(supabase: &omicron::supa::Supabase, session: &omicron::supa::Session, state: &mut omicron::config::State) -> Result<()> {
+fn catch_up(
+    supabase: &omicron::supa::Supabase,
+    session: &omicron::supa::Session,
+    state: &mut omicron::config::State,
+    react: &dyn Fn(&serde_json::Value),
+) -> Result<()> {
     let window = supabase.request_as(session, "POST", "/rest/v1/rpc/recent_changes", Some(json!({})))?;
     let window = window.as_array().cloned().unwrap_or_default();
     let Some(mut last) = state.last_change else {
@@ -503,7 +521,7 @@ fn catch_up(supabase: &omicron::supa::Supabase, session: &omicron::supa::Session
         let rows = supabase.request_as(session, "GET", &format!("/rest/v1/changes?seq=gt.{last}&order=seq.asc&limit={PAGE}"), None)?;
         let rows = rows.as_array().cloned().unwrap_or_default();
         for row in &rows {
-            handle_change(row, state)?;
+            handle_change(row, state, react)?;
         }
         match state.last_change {
             Some(now) if rows.len() == PAGE && now > last => last = now,
@@ -511,13 +529,14 @@ fn catch_up(supabase: &omicron::supa::Supabase, session: &omicron::supa::Session
         }
     }
     for row in &window {
-        handle_change(row, state)?;
+        handle_change(row, state, react)?;
     }
     Ok(())
 }
 
-/// Print one line of the change list, unless it was already handled.
-fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State) -> Result<()> {
+/// Print one line of the change list and act on it, unless it was already
+/// handled.
+fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State, react: &dyn Fn(&serde_json::Value)) -> Result<()> {
     use std::io::Write;
     let Some(seq) = row["seq"].as_i64() else { return Ok(()) };
     if !state.is_new(seq) {
@@ -537,7 +556,9 @@ fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State) ->
     writeln!(out, "{line}")?;
     out.flush()?;
     state.mark(seq);
-    state.save()
+    state.save()?;
+    react(row);
+    Ok(())
 }
 
 /// Ask which machine, by number.

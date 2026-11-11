@@ -157,6 +157,32 @@ fn task_from(v: &Value) -> Result<Task> {
     })
 }
 
+/// A request to hand a task to its session (see `dispatch`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dispatch {
+    pub id: String,
+    pub task_id: String,
+    pub session_id: String,
+    pub machine_id: String,
+    /// pending, claimed, done or failed.
+    pub state: String,
+    pub result: Option<String>,
+    pub error: Option<String>,
+}
+
+pub fn dispatch_from(v: &Value) -> Result<Dispatch> {
+    let text = |k: &str| v[k].as_str().unwrap_or("").to_string();
+    Ok(Dispatch {
+        id: v["id"].as_str().context("request without id")?.to_string(),
+        task_id: text("task_id"),
+        session_id: text("session_id"),
+        machine_id: text("machine_id"),
+        state: text("state"),
+        result: v["result"].as_str().map(String::from),
+        error: v["error"].as_str().map(String::from),
+    })
+}
+
 /// A comment on a task. `session` names the Claude session that wrote it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Comment {
@@ -217,13 +243,14 @@ pub struct SessionRecord {
     pub project_id: String,
     pub name: String,
     pub project: String,
+    pub machine_id: String,
     pub machine: String,
     pub state: String,
     pub claude_session_id: Option<String>,
     pub folder: String,
 }
 
-const SESSION_FIELDS: &str = "id,project_id,name,state,claude_session_id,folder,projects(name),machines(name)";
+const SESSION_FIELDS: &str = "id,project_id,machine_id,name,state,claude_session_id,folder,projects(name),machines(name)";
 
 fn session_from(v: &Value) -> Result<SessionRecord> {
     Ok(SessionRecord {
@@ -231,6 +258,7 @@ fn session_from(v: &Value) -> Result<SessionRecord> {
         project_id: v["project_id"].as_str().unwrap_or("").to_string(),
         name: v["name"].as_str().unwrap_or("").to_string(),
         project: v["projects"]["name"].as_str().unwrap_or("").to_string(),
+        machine_id: v["machine_id"].as_str().unwrap_or("").to_string(),
         machine: v["machines"]["name"].as_str().unwrap_or("").to_string(),
         state: v["state"].as_str().unwrap_or("").to_string(),
         claude_session_id: v["claude_session_id"].as_str().map(String::from),
@@ -657,6 +685,44 @@ impl Board {
     pub fn session_by_id(&self, id: &str) -> Result<SessionRecord> {
         let rows = self.get(&format!("/rest/v1/sessions?select={SESSION_FIELDS}&id=eq.{id}"))?;
         session_from(rows.get(0).context("this session's record is gone")?)
+    }
+
+    /// A task by its id, with its Project's name.
+    pub fn task_by_id(&self, id: &str) -> Result<(String, Task)> {
+        let rows = self.get(&format!("/rest/v1/tasks?id=eq.{id}&select={TASK_FIELDS},projects(name)"))?;
+        let v = rows.get(0).context("the task is gone")?;
+        Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?))
+    }
+
+    /// Ask for a task to be dispatched to its session. The database fills in
+    /// the session and its machine, and refuses if the task has no session.
+    pub fn request_dispatch(&self, task: &Task) -> Result<Dispatch> {
+        let rows = self.send("POST", "/rest/v1/dispatches", json!({ "task_id": task.id }))?;
+        dispatch_from(rows.get(0).context("the request wasn't saved")?)
+    }
+
+    pub fn dispatch(&self, id: &str) -> Result<Dispatch> {
+        let rows = self.get(&format!("/rest/v1/dispatches?id=eq.{id}"))?;
+        dispatch_from(rows.get(0).context("the request is gone")?)
+    }
+
+    /// Take a request (only its machine can, once, while it's new). None if
+    /// it can't be taken.
+    pub fn claim_dispatch(&self, id: &str) -> Result<Option<Dispatch>> {
+        let rows = self.send("POST", "/rest/v1/rpc/claim_dispatch", json!({ "dispatch": id }))?;
+        rows.get(0).map(dispatch_from).transpose()
+    }
+
+    /// Say how a taken request went.
+    pub fn finish_dispatch(&self, id: &str, ok: bool, message: &str) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/finish_dispatch", json!({ "dispatch": id, "ok": ok, "message": message }))?;
+        Ok(())
+    }
+
+    /// Give up on a request nobody took. Returns false if it was taken after all.
+    pub fn give_up_dispatch(&self, id: &str, why: &str) -> Result<bool> {
+        let rows = self.send("POST", "/rest/v1/rpc/give_up_dispatch", json!({ "dispatch": id, "why": why }))?;
+        Ok(rows.as_array().is_some_and(|r| !r.is_empty()))
     }
 
     /// Turn a Project's chat on or off.

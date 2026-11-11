@@ -41,6 +41,15 @@ const out = path.join(process.env.HOME, "omicron-e2e-results", "seed-shots");
     await page.getByRole("link", { name: /^Omicron/ }).click();
     await page.getByRole("region", { name: "Claude sessions" }).waitFor();
     await shot("4-omicron");
+    // Dispatch: one that worked, one the machine never picked up.
+    await page.getByRole("button", { name: /Parse the change list/ }).click();
+    await page.getByTestId("dispatch").waitFor();
+    await shot("4b-dispatched");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: /Document the hooks/ }).click();
+    await page.getByTestId("dispatch").waitFor();
+    await shot("4c-dispatch-failed");
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Chat", exact: true }).click();
     await page.getByRole("list", { name: "Messages" }).waitFor();
     await shot("5-chat");

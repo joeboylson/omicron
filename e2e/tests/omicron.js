@@ -96,11 +96,50 @@ async function startOmicron() {
         env: { ...env, OMICRON_CLAUDE_PID: String(window) },
         encoding: "utf8",
       }),
+    /**
+     * Start this machine's daemon, with a stand-in for `claude` on its PATH
+     * (it runs the start hook as Claude Code does, then waits). Resolves
+     * once it's listening; call `stop()` on what it returns.
+     */
+    daemon: () => startDaemon(home, env),
+    /** A folder on this machine for a session to work in. */
+    folder: () => fs.mkdtempSync(path.join(home, "work-")),
     stop: () => {
       child.kill();
       fs.rmSync(home, { recursive: true, force: true });
     },
   };
+}
+
+function startDaemon(home, env) {
+  const bin = path.join(home, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "claude"),
+    [
+      "#!/bin/sh",
+      'id=; source=startup',
+      'while [ $# -gt 0 ]; do case "$1" in --session-id) id="$2"; shift;; --resume) id="$2"; source=resume; shift;; esac; shift; done',
+      `printf '{"session_id":"%s","cwd":"%s","source":"%s"}' "$id" "$PWD" "$source" | "${need("OMICRON_BIN")}" hook session-start`,
+      "exec cat",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const child = spawn(need("OMICRON_BIN"), ["daemon"], { env: { ...env, PATH: `${bin}:${env.PATH}` } });
+  let stderr = "";
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`the daemon didn't start: ${stderr}`)), 15_000);
+    child.stderr.on("data", (d) => {
+      stderr += d;
+      if (stderr.includes("is listening for changes")) {
+        clearTimeout(timer);
+        resolve({ log: () => stderr, stop: () => child.kill() });
+      }
+    });
+    child.stdout.resume();
+    child.on("exit", (code) => reject(new Error(`the daemon stopped (${code}): ${stderr}`)));
+  });
 }
 
 /** A running process to stand in for a Claude Code window. Kill it when done. */

@@ -103,6 +103,10 @@ pub enum Tasks {
     Send { project: String, number: i64, session: String },
     /// In a Claude session: the tasks given to it ("go get your tasks")
     Mine,
+    /// Hand a task to its Claude session now, on the session's machine:
+    /// typed into it if it's running in Omicron's host, otherwise reopened
+    /// there with the task. Fails if the machine is asleep.
+    Dispatch { project: String, number: i64 },
     /// Comment on a task. From inside a Claude session, the comment says
     /// which session wrote it.
     Comment {
@@ -315,6 +319,7 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             changed(&p, t)
         }
         Tasks::Mine => crate::sessions_cmd::tasks_mine(),
+        Tasks::Dispatch { project, number } => crate::dispatch_cmd::dispatch(&project, number, as_machine),
         Tasks::Send { project, number, session } => {
             let p = board.project(&project)?;
             let t = board.send_task(&p, number, &session)?;

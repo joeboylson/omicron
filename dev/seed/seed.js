@@ -39,6 +39,21 @@ async function api(token, method, p, data) {
   return text ? JSON.parse(text) : null;
 }
 
+/** Sign in as a machine with its key, as its daemon does. */
+async function asMachine(m) {
+  const key = JSON.parse(fs.readFileSync(path.join(m.home, "config.json"), "utf8")).machine_key;
+  const [, id, secret] = key.match(/^omk_([0-9a-f]+)_(.+)$/);
+  const uuid = id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+  const res = await fetch(`${SUPA}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { apikey: KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: `${uuid}@machines.omicron.invalid`, password: secret }),
+  });
+  const login = await res.json();
+  if (!res.ok) throw new Error(`sign in ${m.name}: ${JSON.stringify(login)}`);
+  return (method, p, d) => api(login.access_token, method, p, d);
+}
+
 /** A person, signed in through the Web Machine with their Tailscale login. */
 async function person(omicron, login, name) {
   const res = await fetch(`${omicron.url}/api/session`, {
@@ -302,13 +317,22 @@ async function project(owner, name, statusList, labelList) {
       await joe.call("PATCH", `/rest/v1/tasks?id=eq.${t.id}`, { assignee_session_id: row.id });
     };
     await sendTo(stripTask, "web-page");
-    webPage.stop();
+    webPage.cli("tasks", "mine");
     webPage.cli("tasks", "comment", "Omicron", String(stripTask.number), "Done: open sessions first, closed ones faded, tap one for its handoff notes. Screenshots are in the PR.", "--review");
     await sendTo(parserTask, "parser");
-    parser.stop();
+    parser.cli("tasks", "mine");
     parser.cli("tasks", "comment", "Omicron", String(parserTask.number), "Inserts and updates work and are tested. Deletes next.");
     const docsTask = await code.task(joe, "To do", "Document the hooks", { labels: ["docs"] });
     await sendTo(docsTask, "docs");
+
+    // Dispatch: the parser task typed into its session on studio; the docs
+    // one never picked up (build-box's daemon wasn't running).
+    const [typed] = await joe.call("POST", "/rest/v1/dispatches", { task_id: parserTask.id });
+    const studioCall = await asMachine(studio);
+    await studioCall("POST", "/rest/v1/rpc/claim_dispatch", { dispatch: typed.id });
+    await studioCall("POST", "/rest/v1/rpc/finish_dispatch", { dispatch: typed.id, ok: true, message: "Typed the task into parser on studio." });
+    const [missed] = await joe.call("POST", "/rest/v1/dispatches", { task_id: docsTask.id });
+    await joe.call("POST", "/rest/v1/rpc/give_up_dispatch", { dispatch: missed.id, why: "build-box didn't pick it up in time. Is its daemon running?" });
     await joe.call("POST", "/rest/v1/comments", { task_id: stripTask.id, body: "Looks good. Can closed ones fade a bit more?" });
 
     // Handoff notes.

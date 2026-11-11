@@ -296,6 +296,55 @@ test("a task sent to a Claude session from the page is picked up by it", async (
   }
 });
 
+test("Dispatch hands a task to its session on its machine, and says how it went", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+
+  const win = fakeWindow();
+  let daemon;
+  try {
+    const folder = omicron.folder();
+    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: folder, source: "startup" });
+    omicron.addSession(win.pid, "parser", name);
+    await page.getByRole("button", { name: "#1 Write the parser" }).click();
+    await pick(page, "Given to", "parser");
+
+    // The machine's daemon isn't running: it's asleep, and Dispatch is off.
+    const button = page.getByRole("button", { name: "Dispatch" });
+    const outcome = page.getByTestId("dispatch");
+    await expect(page.getByTestId("dispatch-asleep")).toHaveText(`${machineName} is asleep, so Dispatch is off until its daemon runs.`);
+    await expect(button).toBeDisabled();
+
+    // It wakes up: the page hears at once.
+    daemon = await omicron.daemon();
+    await expect(button).toBeEnabled();
+    await expect(page.getByTestId("dispatch-asleep")).toHaveCount(0);
+
+    // Open in a window Omicron doesn't host: it can't be typed into.
+    await button.click();
+    await expect(outcome).toContainText("open in a window Omicron doesn't host");
+
+    // The window closes. Dispatch reopens the session in the host, with the task.
+    win.kill();
+    await button.click();
+    await expect(outcome).toContainText(`Reopened parser on ${machineName} with the task.`);
+    expect(omicron.cli("sessions", "hosted").trim()).toBe("parser");
+    await expect.poll(() => omicron.cli("sessions", "list", "--project", name, "--as-machine")).toContain("\topen\t");
+
+    // Running in the host now, so the next one is typed in.
+    await button.click();
+    await expect(outcome).toHaveText(`Typed the task into parser on ${machineName}.now`);
+  } finally {
+    win.kill();
+    try {
+      omicron.cli("sessions", "send", "parser", "\u0004");
+    } catch {}
+    daemon?.stop();
+  }
+});
+
 test("a Project's chat: turned on, a session named in it answers, live", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("Code");

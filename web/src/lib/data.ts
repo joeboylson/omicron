@@ -26,6 +26,15 @@ export type Task = {
   labelIds: string[];
   checklist: ChecklistItem[];
   comments: Comment[];
+  /** Requests to hand it to its session, newest first. */
+  dispatches: Dispatch[];
+};
+export type Dispatch = {
+  id: string;
+  state: "pending" | "claimed" | "done" | "failed";
+  result: string | null;
+  error: string | null;
+  created_at: string;
 };
 export type HandoffNote = {
   id: string;
@@ -35,7 +44,14 @@ export type HandoffNote = {
   written_at: string;
   body: string;
 };
-export type ClaudeSession = { id: string; name: string; state: "open" | "closed" | "gone"; folder: string; machine: string };
+export type ClaudeSession = {
+  id: string;
+  name: string;
+  state: "open" | "closed" | "gone";
+  folder: string;
+  machine_id: string;
+  machine: string;
+};
 export type ChatMessage = { id: string; author: string; session: string | null; body: string; created_at: string };
 export type ProjectData = {
   id: string;
@@ -68,12 +84,12 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db
       .from("tasks")
       .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,sessions(name))",
+        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,sessions(name)),dispatches(id,state,result,error,created_at)",
       )
       .eq("project_id", id)
       .order("position")
       .order("number"),
-    db.from("sessions").select("id,name,state,folder,machines(name)").eq("project_id", id).order("name"),
+    db.from("sessions").select("id,name,state,folder,machine_id,machines(name)").eq("project_id", id).order("name"),
     db
       .from("handoffs")
       .select("id,number,session_id,state,written_at,body")
@@ -116,12 +132,14 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
           created_at: c.created_at,
         }))
         .sort((a: Comment, b: Comment) => a.created_at.localeCompare(b.created_at)),
+      dispatches: [...(t.dispatches ?? [])].sort((a: Dispatch, b: Dispatch) => b.created_at.localeCompare(a.created_at)),
     })),
     sessions: (must(sessions) as any[]).map((r) => ({
       id: r.id,
       name: r.name,
       state: r.state,
       folder: r.folder,
+      machine_id: r.machine_id,
       machine: r.machines?.name ?? "",
     })),
     handoffs: must(handoffs) as HandoffNote[],
@@ -265,4 +283,18 @@ export async function listMachineAccounts(db: SupabaseClient): Promise<MachineSu
     await db.from("machines").select("id,name,active,claude_accounts").not("claude_accounts", "is", null).order("name"),
   ) as any[];
   return rows.map((r) => ({ id: r.id, name: r.name, active: r.active, accounts: r.claude_accounts }));
+}
+
+/** How long a machine has to take a Dispatch before it fails (the database agrees). */
+export const DISPATCH_CLAIM_SECONDS = 20;
+
+/** Ask for a task to be handed to its session. Returns the request's id. */
+export async function requestDispatch(db: SupabaseClient, task: Task): Promise<string> {
+  const row = must(await db.from("dispatches").insert({ task_id: task.id }).select("id").single()) as { id: string };
+  return row.id;
+}
+
+/** Fail a request nobody took. Does nothing if it was taken after all. */
+export async function giveUpDispatch(db: SupabaseClient, id: string, why: string) {
+  must(await db.rpc("give_up_dispatch", { dispatch: id, why }));
 }

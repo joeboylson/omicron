@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
-import { Check, Plus, Terminal, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, Loader2, Plus, Send, Terminal, Trash2, X } from "lucide-react";
 import { useApp } from "@/lib/app";
+import { useAwakeMachines } from "@/lib/awake";
 import {
   addChecklistItem,
   addComment,
   addLabel,
   deleteChecklistItem,
   deleteTask,
+  DISPATCH_CLAIM_SECONDS,
+  giveUpDispatch,
+  requestDispatch,
   setLabel,
   tickChecklistItem,
   updateTask,
@@ -222,16 +226,7 @@ function TaskForm({
             </SelectContent>
           </Select>
         </Row>
-        {task.assignee_session_id && (
-          <Row className="text-sm text-muted-foreground" >
-            <Terminal className="h-4 w-4" aria-hidden />
-            <span data-testid="pickup">
-              {task.picked_up_at
-                ? "Picked up by the session."
-                : "Waiting until the session is told to get its tasks, or it's dispatched."}
-            </span>
-          </Row>
-        )}
+        {task.assignee_session_id && <DispatchRow project={project} task={task} onChanged={onChanged} />}
       </Group>
 
       <Group title="Labels">
@@ -438,4 +433,97 @@ function when(iso: string): string {
   if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
   if (minutes < 60 * 24 * 7) return `${Math.round(minutes / 1440)}d`;
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/**
+ * Whether the session has the task, and the Dispatch button: hands it to the
+ * session now, on its machine (typed in, or the session reopened there). The
+ * outcome of the latest Dispatch shows under it, for everyone, live.
+ */
+function DispatchRow({ project, task, onChanged }: { project: ProjectData; task: Task; onChanged: () => void }) {
+  const { db, act } = useApp();
+  const awake = useAwakeMachines(db);
+  const [asking, setAsking] = useState(false);
+  const session = project.sessions.find((s) => s.id === task.assignee_session_id);
+  const latest = task.dispatches[0];
+  const working = asking || latest?.state === "pending" || latest?.state === "claimed";
+  const asleep = !!session && awake !== null && !awake.has(session.machine_id);
+
+  async function dispatch() {
+    if (!session) return;
+    setAsking(true);
+    const asked = await act(async () => {
+      const id = await requestDispatch(db, task);
+      onChanged();
+      // If the machine hasn't taken it in time, it fails. Kept even if the
+      // dialog closes, so the request never stays waiting.
+      setTimeout(() => {
+        giveUpDispatch(db, id, `${session.machine} didn't pick it up in time. Is its daemon running?`)
+          .catch(() => {})
+          .finally(onChanged);
+      }, DISPATCH_CLAIM_SECONDS * 1000);
+    });
+    setAsking(false);
+    if (!asked) onChanged();
+  }
+
+  return (
+    <>
+      <Row className="text-sm text-muted-foreground">
+        <Terminal className="h-4 w-4 shrink-0" aria-hidden />
+        <span data-testid="pickup" className="flex-1">
+          {task.picked_up_at
+            ? "Picked up by the session."
+            : "Waiting until the session is told to get its tasks, or it's dispatched."}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          disabled={!session || working || asleep}
+          onClick={dispatch}
+          title={asleep ? `${session?.machine} is asleep` : `Hand it to ${session?.name} now, on ${session?.machine}`}
+        >
+          {working ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+          {working ? "Dispatching" : "Dispatch"}
+        </Button>
+      </Row>
+      {latest && (
+        <Row className="text-sm">
+          <div role="status" aria-live="polite" data-testid="dispatch" className="flex flex-1 items-start gap-2">
+            {latest.state === "pending" ? (
+              <span className="text-muted-foreground">Waiting for {session?.machine} to pick it up…</span>
+            ) : latest.state === "claimed" ? (
+              <span className="text-muted-foreground">
+                {session?.machine} is opening {session?.name}…
+              </span>
+            ) : latest.state === "done" ? (
+              <>
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-green)]" aria-hidden />
+                <span className="flex-1">{latest.result}</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-red)]" aria-hidden />
+                <span className="flex-1">{latest.error}</span>
+              </>
+            )}
+            <time
+              dateTime={latest.created_at}
+              title={new Date(latest.created_at).toLocaleString()}
+              className="shrink-0 font-mono text-muted-foreground"
+            >
+              {when(latest.created_at)}
+            </time>
+          </div>
+        </Row>
+      )}
+      {asleep && !working && (
+        <Row className="text-sm text-muted-foreground">
+          <span data-testid="dispatch-asleep">{session?.machine} is asleep, so Dispatch is off until its daemon runs.</span>
+        </Row>
+      )}
+    </>
+  );
 }
