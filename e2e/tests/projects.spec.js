@@ -721,3 +721,36 @@ test("a new Project starts in a modal, and Cancel or Escape leaves nothing behin
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 });
+
+test("appearance: Light, Dark or the system, saved with you and on every device", async ({ page, request, browser }) => {
+  const me = await newPerson(page, request);
+  await page.goto(omicron.url);
+  await page.getByTestId("me").click();
+  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+  const choice = (n) => page.getByRole("radio", { name: n });
+  await expect(choice("Match the system")).toHaveAttribute("aria-checked", "true");
+  const theme = (p) => p.evaluate(() => document.documentElement.dataset.theme ?? "system");
+
+  await choice("Dark").click();
+  await expect(choice("Dark")).toHaveAttribute("aria-checked", "true");
+  expect(await theme(page)).toBe("dark");
+  // The page's colors follow.
+  expect(await page.evaluate(() => getComputedStyle(document.body).colorScheme)).toBe("dark");
+
+  // Kept on reload, from the very first paint.
+  await page.reload();
+  expect(await theme(page)).toBe("dark");
+
+  // Another device (a fresh browser) gets it once signed in.
+  const other = await (await browser.newContext()).newPage();
+  await visitAs(other, omicron, me.login, me.name);
+  await other.goto(omicron.url);
+  await expect(other.getByTestId("me")).toBeVisible();
+  await expect.poll(() => theme(other)).toBe("dark");
+
+  await choice("Light").click();
+  expect(await theme(page)).toBe("light");
+  await choice("Match the system").click();
+  expect(await theme(page)).toBe("system");
+  await other.close();
+});

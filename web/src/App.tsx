@@ -6,6 +6,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { PeoplePage } from "@/pages/PeoplePage";
+import { SettingsPage } from "@/pages/SettingsPage";
+import { applyAppearance, loadAppearance } from "@/lib/theme";
 import { reportError } from "@/lib/report";
 
 export default function App() {
@@ -17,7 +19,11 @@ export default function App() {
   const path = usePath();
 
   useEffect(() => {
-    signIn().then(setSession, (e) => {
+    signIn().then((s) => {
+      setSession(s);
+      // The saved appearance wins over what this browser remembered.
+      loadAppearance(s.db, s.me.personId).then(applyAppearance, () => {});
+    }, (e) => {
       reportError("sign-in", e);
       setSignInError(e.message ?? String(e));
     });
@@ -72,7 +78,7 @@ export default function App() {
   return (
     <AppContext.Provider value={app}>
       <div className="flex min-h-dvh flex-col">
-        {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : <ProjectsPage />}
+        {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : path === "/settings" ? <SettingsPage /> : <ProjectsPage />}
         {error && (
           <div
             role="alert"

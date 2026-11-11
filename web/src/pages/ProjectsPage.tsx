@@ -52,15 +52,19 @@ export function ProjectsPage() {
         <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => go("/people")}>
           <Users className="h-4 w-4" aria-hidden /> People
         </Button>
-        <span
-          className="truncate px-2 text-sm text-muted-foreground"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="max-w-40 truncate text-muted-foreground"
           data-testid="me"
           data-person-id={me.personId}
           data-via={me.via}
           title={me.login}
+          aria-label={`${me.displayName}: Settings`}
+          onClick={() => go("/settings")}
         >
           {me.displayName}
-        </span>
+        </Button>
         </>
       }
     />

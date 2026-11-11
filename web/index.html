@@ -10,6 +10,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Omicron</title>
+    <script>
+      // The theme last used here, before anything is drawn (no flash of the
+      // wrong one). The saved setting is applied again after signing in.
+      try {
+        var t = localStorage.getItem("omicron.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

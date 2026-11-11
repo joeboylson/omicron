@@ -41,8 +41,14 @@
     --radius: 0.5rem;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
+  /* Dark: chosen in Settings (data-theme="dark"), or following the system
+     unless Light was chosen. The same values twice, since a media query
+     can't share a selector list. */
+  :root {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
       --background: 0 0% 3.9%;
       --foreground: 0 0% 98%;
       --card: 0 0% 3.9%;
@@ -73,6 +79,40 @@
       --border: 0 0% 14.9%;
       --input: 0 0% 14.9%;
       --ring: 210 100% 52%;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+        --background: 0 0% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 0 0% 3.9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 0 0% 3.9%;
+        --popover-foreground: 0 0% 98%;
+        --sys-red: #ff453a;
+        --sys-orange: #ff9f0a;
+        --sys-yellow: #ffd60a;
+        --sys-green: #30d158;
+        --sys-teal: #40c8e0;
+        --sys-blue: #0a84ff;
+        --sys-indigo: #5e5ce6;
+        --sys-purple: #bf5af2;
+        --sys-pink: #ff375f;
+        --sys-brown: #ac8e68;
+        --sys-gray: #98989d;
+        --primary: 210 100% 52%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 0 0% 14.9%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 0 0% 14.9%;
+        --muted-foreground: 0 0% 63.9%;
+        --accent: 0 0% 14.9%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 3 100% 61%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 0 0% 14.9%;
+        --input: 0 0% 14.9%;
+        --ring: 210 100% 52%;
     }
   }
 
