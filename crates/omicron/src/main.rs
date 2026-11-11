@@ -416,6 +416,18 @@ fn daemon() -> Result<()> {
         }
         windows.save()?;
     }
+    // Switching Claude accounts on their own: Anthropic's usage numbers can
+    // only be read by asking, so this checks every 2 minutes while it's on.
+    std::thread::spawn(|| loop {
+        if omicron::accounts::Auto::load().is_ok_and(|a| a.on()) {
+            match omicron::accounts::auto_tick() {
+                Ok(Some(m)) => eprintln!("omicron daemon: {m}"),
+                Ok(None) => {}
+                Err(e) => eprintln!("omicron daemon: checking accounts: {e:#}"),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(120));
+    });
     let mut state = State::load()?;
     let stop = std::sync::atomic::AtomicBool::new(false);
 

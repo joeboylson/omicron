@@ -185,8 +185,13 @@ Built in this order. Each part replaces an old tool only once it's ready.
       account in use is saved again before each switch, so renewed tokens
       aren't lost. Tested on Linux files (`tests/accounts.rs`); the Keychain
       path isn't tried on the Mac yet.
-- [ ] Usage: each account's 5-hour and weekly use (the endpoint Claude Code's
-      /usage reads), and switching on its own at a limit (in the daemon).
+- [x] `omicron accounts usage`: each account's 5-hour and weekly use (the
+      endpoint Claude Code's /usage reads; expired tokens are skipped, never
+      renewed, so Claude Code's own stay valid). `omicron accounts auto on |
+      off | show | check` and `resume`: switch from the primary to the
+      secondary at a limit and back when it resets; picking one by hand holds
+      it. `omicron daemon` checks every 2 minutes while it's on. Tested with a
+      stand-in usage server (`tests/accounts.rs`).
 - [ ] `omicron accounts run <name>`: one session that stays on one account
       (`claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN`).
 - [ ] Web page: each machine's account and usage (names and percentages
@@ -198,6 +203,10 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - [ ] Only teams, jobs and their status, and workers go to Supabase.
 - [ ] Pick a worker and jump into its live terminal.
 - [ ] Open a team's folder in VS Code.
+
+## Questions for Joe
+Decisions an unattended run found it needed; it carried on with other work.
+- (none yet)
 
 ## Ideas
 - **Loops that talk to Claude sessions.** Omicron runs repeating check-ins

@@ -293,3 +293,258 @@ pub fn remove(name: &str) -> Result<()> {
     let path = account_path(name)?;
     std::fs::remove_file(&path).with_context(|| format!("there's no saved account called {name}"))
 }
+
+// ---- usage ------------------------------------------------------------------
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// Where an account's usage comes from: the endpoint Claude Code's /usage
+/// reads. Not publicly documented, so it may change. `OMICRON_USAGE_URL`
+/// moves it, for tests.
+fn usage_url() -> String {
+    std::env::var("OMICRON_USAGE_URL").unwrap_or_else(|_| "https://api.anthropic.com/api/oauth/usage".into())
+}
+
+/// One limit: how much is used, and when it starts again.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Window {
+    pub percent: f64,
+    pub resets_at: Option<DateTime<Utc>>,
+}
+
+impl Window {
+    /// As it stands at `now`: a window past its reset time is empty again.
+    pub fn at(self, now: DateTime<Utc>) -> Window {
+        match self.resets_at {
+            Some(t) if t <= now => Window { percent: 0.0, resets_at: None },
+            _ => self,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Usage {
+    pub five_hour: Option<Window>,
+    pub weekly: Option<Window>,
+}
+
+fn window(v: &Value) -> Option<Window> {
+    Some(Window {
+        percent: v.get("utilization")?.as_f64()?,
+        resets_at: v.get("resets_at").and_then(Value::as_str).and_then(|s| DateTime::parse_from_rfc3339(s).ok()).map(|t| t.with_timezone(&Utc)),
+    })
+}
+
+pub fn parse_usage(v: &Value) -> Usage {
+    Usage { five_hour: v.get("five_hour").and_then(window), weekly: v.get("seven_day").and_then(window) }
+}
+
+fn usage_cache_path() -> Result<PathBuf> {
+    Ok(accounts_dir()?.join("usage.cache"))
+}
+
+/// The last numbers seen for each account.
+pub fn last_usage(name: &str) -> Option<Usage> {
+    let doc = read_object(&usage_cache_path().ok()?).ok()?;
+    doc.get(name).map(parse_usage)
+}
+
+/// A token that works for `name` now, if there is one. For the account in
+/// use that's Claude Code's own (it renews them); otherwise the saved one.
+/// Omicron never renews a token itself: that would replace Claude Code's.
+fn usable_token(name: &str) -> Result<Option<String>> {
+    let login = if in_use()?.as_deref() == Some(name) {
+        current()?
+    } else {
+        saved()?.into_iter().find(|s| s.name == name).map(|s| s.login)
+    };
+    let Some(login) = login else { return Ok(None) };
+    let expires_ms = login.tokens["expiresAt"].as_i64().unwrap_or(i64::MAX);
+    if expires_ms < Utc::now().timestamp_millis() + 60_000 {
+        return Ok(None);
+    }
+    Ok(login.tokens["accessToken"].as_str().map(String::from))
+}
+
+/// Fresh numbers for `name` when its token works, otherwise the last ones
+/// seen. The note says why fresh numbers weren't possible.
+pub fn check_usage(name: &str) -> (Option<Usage>, Option<String>) {
+    let fresh = (|| -> Result<bool> {
+        let Some(token) = usable_token(name)? else { return Ok(false) };
+        let answer: Value = ureq::get(&usage_url())
+            .set("Authorization", &format!("Bearer {token}"))
+            .set("anthropic-beta", "oauth-2025-04-20")
+            .timeout(std::time::Duration::from_secs(15))
+            .call()
+            .map_err(|e| anyhow::anyhow!("asking for usage failed: {e}"))?
+            .into_json()?;
+        let path = usage_cache_path()?;
+        let mut cache = read_object(&path)?;
+        let keep = |w: Option<&Value>| w.map(|w| serde_json::json!({ "utilization": w.get("utilization"), "resets_at": w.get("resets_at") }));
+        cache.insert(name.into(), serde_json::json!({ "five_hour": keep(answer.get("five_hour")), "seven_day": keep(answer.get("seven_day")) }));
+        write_object(&path, &cache, 0o600)?;
+        Ok(true)
+    })();
+    let note = match fresh {
+        Ok(true) => None,
+        Ok(false) => Some("no working token; showing the last numbers seen".into()),
+        Err(e) => Some(format!("{e:#}; showing the last numbers seen")),
+    };
+    (last_usage(name), note)
+}
+
+// ---- switching on its own ---------------------------------------------------
+
+/// The rules for switching on their own, in `~/.omicron/accounts/auto.json`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Auto {
+    pub primary: Option<String>,
+    pub secondary: Option<String>,
+    /// Switch away when the primary's 5-hour use reaches this %.
+    pub five_hour: Option<f64>,
+    /// Switch away when the primary's weekly use reaches this %.
+    pub weekly: Option<f64>,
+    /// An account picked by hand: nothing switches until `resume`.
+    #[serde(default)]
+    pub held: Option<String>,
+    /// On the secondary because the primary was at a limit.
+    #[serde(default)]
+    pub away: bool,
+}
+
+impl Auto {
+    pub fn on(&self) -> bool {
+        self.primary.is_some() && self.secondary.is_some() && (self.five_hour.is_some() || self.weekly.is_some())
+    }
+
+    fn path() -> Result<PathBuf> {
+        Ok(accounts_dir()?.join("auto.json"))
+    }
+
+    pub fn load() -> Result<Auto> {
+        let doc = read_object(&Self::path()?)?;
+        Ok(serde_json::from_value(Value::Object(doc)).unwrap_or_default())
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let Value::Object(doc) = serde_json::to_value(self)? else { unreachable!() };
+        write_object(&Self::path()?, &doc, 0o600)
+    }
+
+    /// Why an account can't be used now ("5-hour limit at 93%"), if it can't.
+    pub fn blocked(&self, usage: Option<&Usage>, now: DateTime<Utc>) -> Option<String> {
+        let usage = usage?;
+        [(self.five_hour, usage.five_hour, "5-hour"), (self.weekly, usage.weekly, "weekly")]
+            .into_iter()
+            .filter_map(|(at, w, label)| {
+                let w = w?.at(now);
+                (w.percent >= at?).then(|| format!("{label} limit at {}%", w.percent.round()))
+            })
+            .next()
+    }
+
+    /// Where to switch, and why, given the account in use and both
+    /// accounts' numbers.
+    pub fn decide(&self, current: Option<&str>, primary: Option<&Usage>, secondary: Option<&Usage>, now: DateTime<Utc>) -> Option<(String, String)> {
+        if !self.on() || self.held.is_some() {
+            return None;
+        }
+        let (p, s) = (self.primary.as_deref()?, self.secondary.as_deref()?);
+        if current == Some(p) {
+            let why = self.blocked(primary, now)?;
+            if self.blocked(secondary, now).is_none() {
+                return Some((s.into(), why));
+            }
+        } else if current == Some(s) && self.away && self.blocked(primary, now).is_none() {
+            return Some((p.into(), format!("{p} is free again")));
+        }
+        None
+    }
+}
+
+/// One check: look at both accounts and switch if the rules say so.
+/// Returns what happened, for the log, when anything did.
+pub fn auto_tick() -> Result<Option<String>> {
+    let mut auto = Auto::load()?;
+    if !auto.on() || auto.held.is_some() {
+        return Ok(None);
+    }
+    let (p, s) = (auto.primary.clone().unwrap(), auto.secondary.clone().unwrap());
+    let (pu, pnote) = check_usage(&p);
+    let (su, _) = check_usage(&s);
+    let current = in_use()?;
+    let Some((to, why)) = auto.decide(current.as_deref(), pu.as_ref(), su.as_ref(), Utc::now()) else {
+        return Ok(pnote.map(|n| format!("{p}: {n}")));
+    };
+    switch(&to)?;
+    auto.away = to == s;
+    auto.save()?;
+    let message = format!("Switched Claude Code to {to}: {why}.");
+    notify(&message);
+    Ok(Some(message))
+}
+
+/// A desktop notification, best effort.
+fn notify(message: &str) {
+    let _ = if cfg!(target_os = "macos") {
+        Command::new("osascript")
+            .args(["-e", &format!("display notification \"{}\" with title \"Omicron\"", message.replace('"', "'"))])
+            .output()
+    } else {
+        Command::new("notify-send").args(["Omicron", message]).output()
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    fn used(five: f64, five_resets_h: i64, weekly: f64) -> Usage {
+        let now = Utc::now();
+        Usage {
+            five_hour: Some(Window { percent: five, resets_at: Some(now + Duration::hours(five_resets_h)) }),
+            weekly: Some(Window { percent: weekly, resets_at: Some(now + Duration::days(3)) }),
+        }
+    }
+
+    fn rules() -> Auto {
+        Auto { primary: Some("personal".into()), secondary: Some("work".into()), five_hour: Some(90.0), weekly: Some(99.0), ..Auto::default() }
+    }
+
+    #[test]
+    fn leaves_the_primary_at_a_limit_if_the_secondary_is_free() {
+        let now = Utc::now();
+        let a = rules();
+        assert_eq!(
+            a.decide(Some("personal"), Some(&used(93.0, 2, 40.0)), Some(&used(10.0, 2, 10.0)), now),
+            Some(("work".into(), "5-hour limit at 93%".into()))
+        );
+        assert_eq!(a.decide(Some("personal"), Some(&used(50.0, 2, 40.0)), Some(&used(10.0, 2, 10.0)), now), None);
+        // Both at a limit: stay.
+        assert_eq!(a.decide(Some("personal"), Some(&used(93.0, 2, 40.0)), Some(&used(95.0, 2, 10.0)), now), None);
+    }
+
+    #[test]
+    fn comes_back_once_the_primarys_limit_resets_but_only_if_it_left_on_its_own() {
+        let now = Utc::now();
+        let mut a = rules();
+        a.away = true;
+        // The 5-hour window has reset (its time has passed).
+        assert_eq!(
+            a.decide(Some("work"), Some(&used(93.0, -1, 40.0)), Some(&used(10.0, 2, 10.0)), now),
+            Some(("personal".into(), "personal is free again".into()))
+        );
+        assert_eq!(a.decide(Some("work"), Some(&used(93.0, 1, 40.0)), None, now), None);
+        a.away = false;
+        assert_eq!(a.decide(Some("work"), Some(&used(10.0, 1, 40.0)), None, now), None);
+    }
+
+    #[test]
+    fn a_held_account_stays() {
+        let mut a = rules();
+        a.held = Some("personal".into());
+        assert_eq!(a.decide(Some("personal"), Some(&used(99.0, 2, 99.0)), Some(&used(1.0, 2, 1.0)), Utc::now()), None);
+    }
+}
