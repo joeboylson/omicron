@@ -214,6 +214,75 @@ fn size() -> (usize, usize) {
     }
 }
 
+/// One key press, from what the terminal sent.
+#[derive(Debug, PartialEq, Clone)]
+pub enum Key {
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Enter,
+    Escape,
+    Backspace,
+    CtrlC,
+    CtrlP,
+    CtrlN,
+    Text(String),
+    /// Anything else (an escape sequence or control key it doesn't use).
+    Other,
+}
+
+/// Split what one read brought into the keys pressed: fast typing, a
+/// held-down key or a paste can bring several at once.
+pub fn keys(bytes: &[u8]) -> Vec<Key> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut text = Vec::new();
+    let flush = |text: &mut Vec<u8>, out: &mut Vec<Key>| {
+        if !text.is_empty() {
+            out.push(Key::Text(String::from_utf8_lossy(text).into_owned()));
+            text.clear();
+        }
+    };
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b >= 0x20 && b != 0x7f {
+            text.push(b);
+            i += 1;
+            continue;
+        }
+        flush(&mut text, &mut out);
+        if b == 0x1b {
+            let (key, len) = match (bytes.get(i + 1), bytes.get(i + 2)) {
+                (Some(b'[' | b'O'), Some(b'A')) => (Key::Up, 3),
+                (Some(b'[' | b'O'), Some(b'B')) => (Key::Down, 3),
+                (Some(b'['), Some(b'5')) if bytes.get(i + 3) == Some(&b'~') => (Key::PageUp, 4),
+                (Some(b'['), Some(b'6')) if bytes.get(i + 3) == Some(&b'~') => (Key::PageDown, 4),
+                (Some(b'[' | b'O'), _) => {
+                    // Some other sequence: up to and including its last letter.
+                    let end = (i + 2..bytes.len()).find(|&j| bytes[j].is_ascii_alphabetic() || bytes[j] == b'~').unwrap_or(bytes.len() - 1);
+                    (Key::Other, end + 1 - i)
+                }
+                _ => (Key::Escape, 1),
+            };
+            out.push(key);
+            i += len;
+            continue;
+        }
+        out.push(match b {
+            b'\r' | b'\n' => Key::Enter,
+            0x7f | 0x08 => Key::Backspace,
+            0x03 => Key::CtrlC,
+            0x10 => Key::CtrlP,
+            0x0e => Key::CtrlN,
+            _ => Key::Other,
+        });
+        i += 1;
+    }
+    flush(&mut text, &mut out);
+    out
+}
+
 /// Show some text full-screen: arrows, space and b (or PgDn/PgUp), g and G
 /// move; Esc or q goes back.
 pub fn page(title: &str, text: &str) -> Result<()> {
@@ -241,17 +310,31 @@ pub fn page(title: &str, text: &str) -> Result<()> {
             screen.push_str(&format!("\x1b[{rows};1H\x1b[2mLines {}–{end} of {} · ↑↓ space b move · Esc back\x1b[0m", top.min(end) + usize::from(end > 0), lines.len()));
             out.write_all(screen.as_bytes())?;
             out.flush()?;
-            let mut key = [0u8; 8];
-            let n = input.read(&mut key)?;
-            match &key[..n] {
-                [0x1b] | [0x03] | [b'q'] => return Ok(()),
-                [0x1b, b'[', b'A'] | [b'k'] => top = top.saturating_sub(1),
-                [0x1b, b'[', b'B'] | [b'j'] | [b'\r'] => top = (top + 1).min(last),
-                [b' '] | [0x1b, b'[', b'6', b'~'] => top = (top + body).min(last),
-                [b'b'] | [0x1b, b'[', b'5', b'~'] => top = top.saturating_sub(body),
-                [b'g'] => top = 0,
-                [b'G'] => top = last,
-                _ => {}
+            let mut buf = [0u8; 4096];
+            let n = input.read(&mut buf)?;
+            for key in keys(&buf[..n]) {
+                // Letters in a run are separate keys here (q, j, k, g...).
+                let presses: Vec<Key> = match key {
+                    Key::Text(t) => t.chars().map(|c| Key::Text(c.to_string())).collect(),
+                    k => vec![k],
+                };
+                for k in presses {
+                    match k {
+                        Key::Escape | Key::CtrlC => return Ok(()),
+                        Key::Text(t) if t == "q" => return Ok(()),
+                        Key::Up => top = top.saturating_sub(1),
+                        Key::Text(t) if t == "k" => top = top.saturating_sub(1),
+                        Key::Down | Key::Enter => top = (top + 1).min(last),
+                        Key::Text(t) if t == "j" => top = (top + 1).min(last),
+                        Key::PageDown => top = (top + body).min(last),
+                        Key::Text(t) if t == " " => top = (top + body).min(last),
+                        Key::PageUp => top = top.saturating_sub(body),
+                        Key::Text(t) if t == "b" => top = top.saturating_sub(body),
+                        Key::Text(t) if t == "g" => top = 0,
+                        Key::Text(t) if t == "G" => top = last,
+                        _ => {}
+                    }
+                }
             }
         }
     })
@@ -266,29 +349,33 @@ fn run(title: &str, list: &[Row], out: &mut std::io::Stdout) -> Result<Option<us
         at = at.min(rows.len().saturating_sub(1));
         let shown: Vec<&Row> = rows.iter().map(|&i| &list[i]).collect();
         draw(out, title, &shown, at, &query)?;
-        let mut key = [0u8; 8];
-        let n = input.read(&mut key)?;
-        match &key[..n] {
-            [0x1b] | [0x03] => return Ok(None),
-            [0x1b, b'[', b'A'] | [0x10] => at = at.saturating_sub(1),
-            [0x1b, b'[', b'B'] | [0x0e] => at = (at + 1).min(rows.len().saturating_sub(1)),
-            [b'\r'] | [b'\n'] => {
-                if let Some(&i) = rows.get(at) {
-                    return Ok(Some(i));
-                }
-            }
-            [0x7f] | [0x08] => {
-                query.pop();
-                at = 0;
-            }
-            bytes => {
-                if let Ok(text) = std::str::from_utf8(bytes) {
-                    if text.chars().all(|c| !c.is_control()) {
-                        query.push_str(text);
-                        at = 0;
+        let mut buf = [0u8; 4096];
+        let n = input.read(&mut buf)?;
+        // Every key that came, in order (the list is worked out again
+        // after each, so Enter picks from what was typed before it).
+        let mut rows = rows;
+        for key in keys(&buf[..n]) {
+            match key {
+                Key::Escape | Key::CtrlC => return Ok(None),
+                Key::Up | Key::CtrlP => at = at.saturating_sub(1),
+                Key::Down | Key::CtrlN => at = (at + 1).min(rows.len().saturating_sub(1)),
+                Key::Enter => {
+                    if let Some(&i) = rows.get(at) {
+                        return Ok(Some(i));
                     }
                 }
+                Key::Backspace => {
+                    query.pop();
+                    at = 0;
+                }
+                Key::Text(t) => {
+                    query.push_str(&t);
+                    at = 0;
+                }
+                _ => {}
             }
+            rows = matching(list, &query);
+            at = at.min(rows.len().saturating_sub(1));
         }
     }
 }
@@ -359,6 +446,17 @@ mod tests {
         assert_eq!(names("site"), ["web"]);
         assert_eq!(names("code r"), ["parser", "crashed"]);
         assert!(names("nothing").is_empty());
+    }
+
+    #[test]
+    fn keys_that_arrive_together_are_each_seen() {
+        use Key::*;
+        assert_eq!(keys(b"\x7f\x7f\x7fnew"), [Backspace, Backspace, Backspace, Text("new".into())]);
+        assert_eq!(keys(b"\x1b[A\x1b[Bx\r"), [Up, Down, Text("x".into()), Enter]);
+        assert_eq!(keys(b"\x1b"), [Escape]);
+        assert_eq!(keys(b"\x1b[5~\x1b[6~\x1b[1;5C"), [PageUp, PageDown, Other]);
+        assert_eq!(keys("héllo 🥛".as_bytes()), [Text("héllo 🥛".into())]);
+        assert_eq!(keys(b"\x03\x10\x0e"), [CtrlC, CtrlP, CtrlN]);
     }
 
     #[test]
