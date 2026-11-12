@@ -111,7 +111,7 @@ export function PeoplePage() {
                               <button
                                 type="button"
                                 aria-label={`Take ${p.display_name} out of ${name(id)}`}
-                                className="rounded-full p-0.5 text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="-my-1.5 -mr-1.5 grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 onClick={() => change(() => removeMember(db, id, p.id))}
                               >
                                 <X className="h-3 w-3" />
@@ -122,7 +122,7 @@ export function PeoplePage() {
                             <Select value="" onValueChange={(id) => change(() => addMember(db, id, p.id))}>
                               <SelectTrigger
                                 aria-label={`Add ${p.display_name} to a Project`}
-                                className="h-7 w-auto gap-1 border-dashed px-2 text-xs text-muted-foreground"
+                                className="h-8 w-auto gap-1 border-dashed px-2 text-xs text-muted-foreground"
                               >
                                 <Plus className="h-3 w-3" aria-hidden />
                                 <SelectValue placeholder="Add to…" />

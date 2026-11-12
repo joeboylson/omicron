@@ -44,6 +44,11 @@ async function escape(page) {
     await page.getByRole("link", { name: /^Wedding photos/ }).waitFor();
     await page.getByRole("list", { name: "Machines" }).waitFor();
     await shot("1-projects", true);
+    await page.goto(`${url}/people`);
+    await page.getByRole("heading", { level: 1, name: "People" }).waitFor();
+    await shot("1b-people", true);
+    await page.goto(url);
+    await page.getByRole("link", { name: /^Wedding photos/ }).waitFor();
     await page.getByRole("link", { name: /^House and garden/ }).click();
     await page.getByRole("button", { name: /Fix the back gate/ }).waitFor();
     await shot("2-house");

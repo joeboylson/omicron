@@ -144,6 +144,18 @@ export function ProjectPage({ id }: { id: string }) {
     });
   };
 
+  // On a phone, a finger that moves after press-and-hold would otherwise be
+  // taken by the browser as scrolling, which cancels the drag. While a drag
+  // is on, moves are the drag's. (The listener can only stop scrolling if
+  // it's there, not passive, before the finger goes down.)
+  const dragOn = useRef(false);
+  useEffect(() => {
+    const hold = (e: TouchEvent) => {
+      if (dragOn.current && e.cancelable) e.preventDefault();
+    };
+    window.addEventListener("touchmove", hold, { passive: false });
+    return () => window.removeEventListener("touchmove", hold);
+  }, []);
   if (project === undefined) return <BoardSkeleton />;
   if (project === null) {
     return (
@@ -170,10 +182,14 @@ export function ProjectPage({ id }: { id: string }) {
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
 
-  const onDragStart = (e: DragStartEvent) => setDragging(project.tasks.find((t) => t.id === e.active.id) ?? null);
+  const onDragStart = (e: DragStartEvent) => {
+    dragOn.current = true;
+    setDragging(project.tasks.find((t) => t.id === e.active.id) ?? null);
+  };
   // Dropped: work out the column (a status, and a topic in topic rows) and
   // the place in it, show it at once, then save.
   const onDragEnd = (e: DragEndEvent) => {
+    dragOn.current = false;
     setDragging(null);
     const moved = project.tasks.find((t) => t.id === e.active.id);
     if (!moved || !e.over) return;
@@ -308,7 +324,10 @@ export function ProjectPage({ id }: { id: string }) {
         collisionDetection={closestCorners}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setDragging(null)}
+        onDragCancel={() => {
+          dragOn.current = false;
+          setDragging(null);
+        }}
         accessibility={{
           screenReaderInstructions: {
             draggable: "To move this task, press Space. Use the arrow keys to move it, Space again to drop it, or Escape to cancel. Enter opens it.",
