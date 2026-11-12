@@ -44,8 +44,9 @@ teams of Claude sessions (rewritten from legion).
 
 ## The hosted Supabase
 
-Omicron's database is moving to a hosted Supabase project, `omicron`
-(ref `fofxgxabbatahrjpoxug`, us-west-2), linked to this GitHub repository.
+Omicron's database is a hosted Supabase project, `omicron` (ref
+`fofxgxabbatahrjpoxug`, us-west-2, free tier), linked to this GitHub
+repository. Nothing of Omicron's runs in Colima any more.
 - Database changes: add a file to `supabase/migrations/` (next number, like
   `0025_what_it_does.sql`), commit and push to `main`. Supabase's GitHub
   integration applies new migrations to the hosted database on every push to
@@ -54,41 +55,28 @@ Omicron's database is moving to a hosted Supabase project, `omicron`
 - `supabase/config.toml` only names the project; its settings live in the
   Supabase dashboard.
 - Keys: `supabase projects api-keys --project-ref fofxgxabbatahrjpoxug`.
-  Omicron uses the anon and service_role keys. Keys never go in git.
-- Copying the existing data across needs the database password (Project
-  Settings, Database), kept in `~/.omicron/hosted-db-password`, never in git.
-- The local Supabase in Colima stays, for tests only, so tests never touch
-  the real data.
+  Omicron uses the anon and service_role keys (atlas has them in
+  `~/.omicron/config.json`). Keys never go in git.
+- There's no direct database login here (no password on this Mac): anything
+  past the rules goes through the service_role key and Supabase's API.
+- No backups are kept (Joe's call, 12 Nov 2026).
 
 ## Running tests
 
-One Supabase, Omicron's real one, runs in Colima (Colima has 3 GB and is
-shared with the home lab, so keep it lean). Only the parts Omicron uses run:
-`omicron-supabase-db`, `-auth`, `-rest`, `-storage`, `-envoy` and
-`realtime-dev.omicron-realtime` (start them with `docker start`; studio, edge
-functions, imgproxy, meta and the pooler stay off). Its compose folder is
-inside the Colima VM at `/home/ubuntu/supabase-real` (`colima ssh`). API
-127.0.0.1:8100, tailnet :8452. It can't be reset. Ask the home-lab session
-before stopping Colima or any container that isn't Omicron's own.
-
 ```sh
-bash scripts/test.sh                    # every Rust test, on this Mac
+bash scripts/test.sh                    # every Rust test
 bash scripts/test.sh --test sessions    # one test file (any cargo test arguments)
 ```
 
-Tests run against the real Supabase in their own throwaway people, machines
-and Projects (logins like name-1234abcd@example.com), never the Omicron
-Project. `scripts/test.sh` cleans up everything a run made, even when tests
-fail (`--clean-only <time>` after an interrupted run). It also hides this
-Mac's own Tailscale login from the tests. Two test files act on the real setup
-on purpose: `realtime_restart.rs` restarts Omicron's own Realtime container
-(the real page's live updates pause a few seconds, then reconnect), and
-`backup.rs` makes a backup into a temporary folder and restores it into the
-scratch database `omicron_restore`, never over the real one.
-
-Apply a new migration to it with `scripts/migrate.sh` and the database
-connection string, or through `docker exec -i omicron-supabase-db psql -U
-postgres` (see `dev/supabase/migrate.sh` for how they're recorded).
+Tests run against the hosted Supabase (the real one; the free tier allows
+only two projects, so there's no separate test one), in their own throwaway
+people, machines and Projects (logins like name-1234abcd@example.com), never
+the Omicron Project. `scripts/test.sh` cleans up after every run, even when
+tests fail (`--clean-only <time>` after an interrupted run), and only
+removes what is plainly a test's (see `scripts/lib/clean.py`). It also hides
+this Mac's own Tailscale login from the tests. Every request goes over the
+internet, so runs take minutes: run the test file a change touches, and the
+whole suite before committing a change to shared code.
 
 The browser tests (`e2e/`, Playwright 1.62, using the Chromium already in
 `~/Library/Caches/ms-playwright`) run the same way: `bash scripts/e2e.sh`
@@ -124,14 +112,12 @@ Repeated steps, in `scripts/` (run on the Mac):
 - `scripts/finish-task.sh <n> "<report>" [images...]`: finish an Omicron
   task like a session does: tick its checklist, post the report with the
   last commit's hash (and screenshots) marked for review, move it to Review.
-- `scripts/test.sh [cargo test args]`: the Rust tests on this Mac against
-  the one Supabase, cleaning up after (see "Running tests").
+- `scripts/test.sh [cargo test args]`: the Rust tests against the hosted
+  Supabase, cleaning up after (see "Running tests").
 - `scripts/e2e.sh [playwright args]`: the browser tests, the same way.
   Both share `scripts/lib/test-run.sh` (settings and clean-up).
-- `scripts/backup.sh`: copy the real Supabase (database and uploaded files)
-  to `~/.omicron/backups`, keeping 21 days; `--install` runs it nightly.
-- `scripts/restore.sh <date|latest> --scratch|--real`: put a copy back, into
-  a scratch database to check it, or over the real one.
+- `scripts/migrate.sh <connection string>`: set up Omicron's tables in a
+  Supabase someone hosts themselves (the hosted one gets them from GitHub).
 
 ## How to work here
 

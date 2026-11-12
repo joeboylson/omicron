@@ -1,5 +1,5 @@
 //! Teams in Supabase: teams, jobs and workers, and who may change what.
-//! Runs only when the test Supabase is set up (see `dev/supabase/test.sh`).
+//! Runs only when the test Supabase is set up (see `scripts/test.sh`).
 
 use omicron::identity::TailscalePerson;
 use omicron::supa::{Session, Supabase};

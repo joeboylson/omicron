@@ -77,14 +77,9 @@ fn nothing(r: &Result<Value, String>) -> bool {
     }
 }
 
-fn psql(sql: &str) -> String {
-    let cmd = std::env::var("OMICRON_TEST_PSQL").expect("OMICRON_TEST_PSQL (scripts/test.sh sets it)");
-    let mut parts = cmd.split_whitespace();
-    let mut c = std::process::Command::new(parts.next().unwrap());
-    c.args(parts).args(["-tA", "-c", sql]);
-    let o = c.output().unwrap();
-    assert!(o.status.success(), "psql: {}", String::from_utf8_lossy(&o.stderr));
-    String::from_utf8_lossy(&o.stdout).trim().to_string()
+/// Rows read with the secret key (past every rule), as the database has them.
+fn rows(s: &Supabase, path: &str) -> Vec<Value> {
+    s.admin_request("GET", path, None).unwrap().as_array().cloned().unwrap_or_default()
 }
 
 /// Every table a Project's things live in (each has project_id).
@@ -120,13 +115,15 @@ fn column(table: &str) -> &'static str {
     }
 }
 
-/// A fingerprint of everything the Project has, table by table.
-fn fingerprint(pid: &str) -> Vec<(String, String)> {
+/// A fingerprint of everything the Project has, table by table: how many
+/// rows, and all of them, sorted, as text.
+fn fingerprint(s: &Supabase, pid: &str) -> Vec<(String, String)> {
     PROJECT_TABLES
         .iter()
         .map(|t| {
-            let sql = format!("select count(*) || ':' || coalesce(md5(string_agg(x::text, '|' order by x::text)), '') from public.{t} x where {} = '{pid}'", column(t));
-            (t.to_string(), psql(&sql))
+            let mut all: Vec<String> = rows(s, &format!("/rest/v1/{t}?{}=eq.{pid}&select=*", column(t))).iter().map(|r| r.to_string()).collect();
+            all.sort();
+            (t.to_string(), format!("{}:{}", all.len(), all.join("|")))
         })
         .collect()
 }
@@ -179,7 +176,7 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
     let pat_id = pat.user.id;
 
     // Every table really has something in it, or the test proves nothing.
-    let before = fingerprint(&pid);
+    let before = fingerprint(&s, &pid);
     for (table, print) in &before {
         assert!(!print.starts_with("0:"), "{table} has no rows for the Project: the setup missed it");
     }
@@ -221,8 +218,7 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
                 bad(format!("deleted from {table}: {r:?}"));
             }
             // Adding: a copy of one of its rows, as a new one.
-            let row = psql(&format!("select row_to_json(x) from public.{table} x where {col} = '{pid}' limit 1"));
-            let Ok(mut copy) = serde_json::from_str::<Value>(&row) else {
+            let Some(mut copy) = rows(&s, &format!("/rest/v1/{table}?{col}=eq.{pid}&select=*&limit=1")).into_iter().next() else {
                 bad(format!("{table} has no rows left to copy"));
                 continue;
             };
@@ -310,8 +306,8 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
 
     assert!(problems.is_empty(), "outsiders got through:\n{}", problems.join("\n"));
     // Nothing of the Project changed, and its people and machine are as they were.
-    assert_eq!(fingerprint(&pid), before, "the Project's rows changed");
-    assert_eq!(psql(&format!("select display_name from public.people where id = '{pat_id}'")), "Pat");
-    assert_eq!(psql(&format!("select active from public.machines where id = '{mac_id}'")), "t");
-    assert_eq!(psql(&format!("select count(*) from storage.objects where bucket_id = 'comment-images' and name = '{file}'")), "1");
+    assert!(fingerprint(&s, &pid) == before, "the Project's rows changed");
+    assert_eq!(rows(&s, &format!("/rest/v1/people?id=eq.{pat_id}&select=display_name"))[0]["display_name"], "Pat");
+    assert_eq!(rows(&s, &format!("/rest/v1/machines?id=eq.{mac_id}&select=active"))[0]["active"], true);
+    assert!(s.download_as(&pat, "comment-images", &file).is_ok(), "the Project's image is still there");
 }

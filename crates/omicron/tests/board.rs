@@ -2,7 +2,7 @@
 //! real command as a person (a machine with the secret key and a Tailscale
 //! owner) and as a machine, the way they'd be used in a terminal.
 //!
-//! Runs only when the test Supabase is set up (see `dev/supabase/test.sh`).
+//! Runs only when the test Supabase is set up (see `scripts/test.sh`).
 
 use omicron::supa::Supabase;
 use serde_json::{json, Value};

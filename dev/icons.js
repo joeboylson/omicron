@@ -1,6 +1,6 @@
-// Make the web page's PNG icons from web/public/icon.svg. Run inside the
-// omicron-dev test machine after dev/e2e.sh has installed Playwright:
-//   NODE_PATH=~/omicron-e2e-deps/node_modules node ~/omicron/dev/icons.js
+// Make the web page's PNG icons from web/public/icon.svg. Run on the Mac
+// after scripts/e2e.sh has installed Playwright once:
+//   NODE_PATH=~/.cache/omicron-e2e/node_modules node dev/icons.js
 const { chromium } = require("@playwright/test");
 const fs = require("node:fs");
 const path = require("node:path");

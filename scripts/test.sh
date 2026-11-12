@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run the Rust tests on this Mac against Omicron's one Supabase (the real
-# one, in Colima), then clean up everything the run made. Tests make their
-# own throwaway people, machines and Projects (people log in as
+# Run the Rust tests against Omicron's hosted Supabase, then clean up
+# everything the run made (scripts/lib/clean.py). Tests make their own
+# throwaway people, machines and Projects (people log in as
 # <name>-<random>@example.com), so the Omicron Project is never touched.
 #   bash scripts/test.sh                    every Rust test
 #   bash scripts/test.sh --test sessions    one test file (cargo test arguments)
@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 . scripts/lib/test-run.sh
 
 if [ "${1:-}" = "--clean-only" ]; then
-  clean "${2:?say since when, like '2026-11-11 16:00'}"
+  clean "${2:?say since when, like 2026-11-12T18:00:00Z}"
   exit 0
 fi
 

@@ -3,7 +3,7 @@
 //!
 //! The ones that need Supabase run only when OMICRON_SUPABASE_URL,
 //! OMICRON_SUPABASE_KEY and OMICRON_SUPABASE_SECRET_KEY are set (see
-//! `dev/supabase/test.sh`).
+//! `scripts/test.sh`).
 
 use omicron::identity::TailscalePerson;
 use omicron::supa::Supabase;

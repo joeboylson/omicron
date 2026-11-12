@@ -2,7 +2,7 @@
 //! sleeping process stands in for a Claude Code window, and the hooks get
 //! the same JSON Claude Code sends them.
 //!
-//! Runs only when the test Supabase is set up (see `dev/supabase/test.sh`).
+//! Runs only when the test Supabase is set up (see `scripts/test.sh`).
 
 use omicron::supa::Supabase;
 use serde_json::{json, Value};

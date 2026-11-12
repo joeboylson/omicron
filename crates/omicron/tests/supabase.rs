@@ -1,7 +1,7 @@
 //! Sign-in and access rules, against a real Supabase.
 //!
 //! Runs only when OMICRON_SUPABASE_URL, OMICRON_SUPABASE_KEY and
-//! OMICRON_SUPABASE_SECRET_KEY are set (see `dev/supabase/test.sh`).
+//! OMICRON_SUPABASE_SECRET_KEY are set (see `scripts/test.sh`).
 //! Otherwise each test does nothing.
 
 use omicron::identity::TailscalePerson;

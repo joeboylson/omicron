@@ -1,7 +1,7 @@
 //! End-to-end tests for `omicron daemon`: run the real program as a
 //! registered machine, change things in Supabase, and read what it prints.
 //!
-//! Runs only when the test Supabase is set up (see `dev/supabase/test.sh`).
+//! Runs only when the test Supabase is set up (see `scripts/test.sh`).
 
 use omicron::identity::TailscalePerson;
 use omicron::supa::{Session, Supabase};
@@ -294,69 +294,15 @@ fn the_daemon_stops_on_a_bad_key() {
     assert!(said.iter().any(|l| l.contains("doesn't work")), "{said:?}");
 }
 
-/// A `psql` session straight into the test database, if the test VM has one.
-fn psql() -> Option<Child> {
-    let cmd = std::env::var("OMICRON_TEST_PSQL").ok()?;
-    let mut parts = cmd.split_whitespace();
-    let mut c = Command::new(parts.next()?);
-    c.args(parts).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
-    Some(c.spawn().unwrap())
-}
-
-#[test]
-fn a_change_that_finishes_saving_late_is_still_printed() {
-    use std::io::Write;
-    let s = supabase_or_skip!();
-    let Some(mut held) = psql() else {
-        eprintln!("skipped: no direct database access");
-        return;
-    };
-    let key = s.register_machine(&unique("watcher"), true).unwrap();
-    let home = std::env::temp_dir().join(format!("omicron-test-{}", Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&home).unwrap();
-    std::fs::write(home.join("config.json"), json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string()).unwrap();
-    let daemon = start_daemon(&home, &[]);
-    daemon.wait_until_listening();
-
-    // Start a save and hold it open: its line gets a number now but stays
-    // hidden until it finishes.
-    let late = unique("late");
-    let stdin = held.stdin.as_mut().unwrap();
-    writeln!(stdin, "begin; insert into public.projects (name) values ('{late}'); select pg_sleep(0.3);").unwrap();
-    stdin.flush().unwrap();
-    std::thread::sleep(Duration::from_millis(1500));
-
-    // A later save finishes first and is printed first.
-    let me = person(&s, "owner");
-    let early = unique("early");
-    start_project(&s, &me, &early);
-    let first = daemon.wait_for("the later save", |c| c["table"] == "projects" && c["record"]["name"] == early.as_str());
-
-    // Now the held save finishes. Its number is lower, but it must still arrive.
-    writeln!(stdin, "commit;").unwrap();
-    stdin.flush().unwrap();
-    let second = daemon.wait_for("the save that finished late", |c| c["table"] == "projects" && c["record"]["name"] == late.as_str());
-    assert!(second["seq"].as_i64() < first["seq"].as_i64(), "the held save should have the lower number");
-    drop(held.stdin.take());
-    let _ = held.wait();
-}
-
 #[test]
 fn lines_older_than_30_days_are_cleared_out() {
-    use std::io::Write;
     let s = supabase_or_skip!();
-    let Some(mut db) = psql() else {
-        eprintln!("skipped: no direct database access");
-        return;
-    };
     let marker = unique("ancient");
-    {
-        let stdin = db.stdin.as_mut().unwrap();
-        writeln!(stdin, "insert into public.changes (table_name, kind, at, record) values ('projects', 'INSERT', now() - interval '31 days', jsonb_build_object('name', '{marker}'));").unwrap();
-        writeln!(stdin, "insert into public.changes (table_name, kind, at, record) values ('projects', 'INSERT', now() - interval '29 days', jsonb_build_object('name', '{marker}-recent'));").unwrap();
+    // Two old lines, written past the rules with the secret key.
+    for (days, name) in [(31, marker.clone()), (29, format!("{marker}-recent"))] {
+        let at = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+        s.admin_request("POST", "/rest/v1/changes", Some(json!({ "table_name": "projects", "kind": "INSERT", "at": at, "record": { "name": name } }))).unwrap();
     }
-    drop(db.stdin.take());
-    assert!(db.wait().unwrap().success());
 
     // Cleanup runs every 100th line, so make a little over 100.
     let me = person(&s, "busy");
@@ -370,22 +316,15 @@ fn lines_older_than_30_days_are_cleared_out() {
 
 #[test]
 fn machines_unseen_for_30_days_are_switched_off_until_switched_back_on() {
-    use std::io::Write;
     let s = supabase_or_skip!();
-    let Some(mut db) = psql() else {
-        eprintln!("skipped: no direct database access");
-        return;
-    };
     let name = unique("dusty");
     let (home, id) = registered_machine(&s, &name);
     let fresh = unique("fresh");
     let (_fresh_home, fresh_id) = registered_machine(&s, &fresh);
-    {
-        let stdin = db.stdin.as_mut().unwrap();
-        writeln!(stdin, "update public.machines set last_seen = now() - interval '31 days', created_at = now() - interval '40 days' where id = '{id}';").unwrap();
-    }
-    drop(db.stdin.take());
-    assert!(db.wait().unwrap().success());
+    // Last seen 31 days ago, written past the rules with the secret key.
+    let long_ago = (chrono::Utc::now() - chrono::Duration::days(31)).to_rfc3339();
+    let made = (chrono::Utc::now() - chrono::Duration::days(40)).to_rfc3339();
+    s.admin_request("PATCH", &format!("/rest/v1/machines?id=eq.{id}"), Some(json!({ "last_seen": long_ago, "created_at": made }))).unwrap();
 
     // The switch-off happens with the change-list cleanup, every 100th line.
     let me = person(&s, "busy");

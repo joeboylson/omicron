@@ -112,5 +112,7 @@ omicron machines pick                    # ssh to another awake machine
 
 ## Developing
 
-See `CLAUDE.md` ("Running tests"). Tests run in a Linux VM or container
-with a throwaway Supabase, never against your real one.
+See `CLAUDE.md` ("Running tests"). `scripts/test.sh` and `scripts/e2e.sh`
+run the tests against the Supabase in `~/.omicron/config.json`, in their own
+throwaway people, machines and Projects, and clean them up afterwards; your
+own Projects are never touched.

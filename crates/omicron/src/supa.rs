@@ -28,7 +28,7 @@ pub struct Supabase {
 }
 
 /// A login handed out by Supabase Auth.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct Session {
     pub access_token: String,
     pub refresh_token: String,
@@ -36,7 +36,7 @@ pub struct Session {
     pub user: SessionUser,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct SessionUser {
     pub id: Uuid,
 }
