@@ -42,6 +42,24 @@ teams of Claude sessions (rewritten from legion).
   machine-pick and claude-sessions isn't on this Mac any more (only the
   `seraph` program in `~/.local/bin`); `ref/BRAINSTORM.md` has the notes on them.
 
+## The hosted Supabase
+
+Omicron's database is moving to a hosted Supabase project, `omicron`
+(ref `fofxgxabbatahrjpoxug`, us-west-2), linked to this GitHub repository.
+- Database changes: add a file to `supabase/migrations/` (next number, like
+  `0025_what_it_does.sql`), commit and push to `main`. Supabase's GitHub
+  integration applies new migrations to the hosted database on every push to
+  `main`; don't change the hosted database by hand. Write each migration so
+  it works on a fresh Supabase too.
+- `supabase/config.toml` only names the project; its settings live in the
+  Supabase dashboard.
+- Keys: `supabase projects api-keys --project-ref fofxgxabbatahrjpoxug`.
+  Omicron uses the anon and service_role keys. Keys never go in git.
+- Copying the existing data across needs the database password (Project
+  Settings, Database), kept in `~/.omicron/hosted-db-password`, never in git.
+- The local Supabase in Colima stays, for tests only, so tests never touch
+  the real data.
+
 ## Running tests
 
 One Supabase, Omicron's real one, runs in Colima (Colima has 3 GB and is

@@ -1,0 +1,5 @@
+# Omicron's Supabase project (hosted: ref fofxgxabbatahrjpoxug). Supabase's
+# GitHub integration reads this folder: every push to main applies new files
+# in migrations/ to the hosted database. Only the project's name is set
+# here; its settings are kept in the Supabase dashboard.
+project_id = "omicron"
