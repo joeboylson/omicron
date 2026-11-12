@@ -108,21 +108,43 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
   return (p as { id: string }).id;
 }
 
+/** How many rows the database hands back per request at most (Supabase's
+ *  PGRST_DB_MAX_ROWS, 1,000 by default). */
+const PAGE = 1000;
+
+/** Every row of a query, page by page: a list that fills a page is read on
+ *  until it's all there. `page(from, to)` is the query for those rows. */
+async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>) {
+  const rows: T[] = [];
+  for (;;) {
+    const r = await page(rows.length, rows.length + PAGE - 1);
+    if (r.error) return { data: null as T[] | null, error: r.error };
+    rows.push(...(r.data ?? []));
+    if ((r.data ?? []).length < PAGE) return { data: rows, error: null };
+  }
+}
+
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
   const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops] = await Promise.all([
     db.from("projects").select("id,name,chat_enabled").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
     db.from("project_members").select("people(id,display_name)").eq("project_id", id),
-    db
-      .from("tasks")
-      .select(
-        "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
-      )
-      .eq("project_id", id)
-      .order("position")
-      .order("number"),
-    db.from("sessions").select("id,name,state,folder,machine_id,gone_why,machines(name)").eq("project_id", id).order("name"),
+    all((from, to) =>
+      db
+        .from("tasks")
+        .select(
+          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
+        )
+        .eq("project_id", id)
+        .order("position")
+        .order("number")
+        .order("id")
+        .range(from, to),
+    ),
+    all((from, to) =>
+      db.from("sessions").select("id,name,state,folder,machine_id,gone_why,machines(name)").eq("project_id", id).order("name").order("id").range(from, to),
+    ),
     db
       .from("handoffs")
       .select("id,number,session_id,state,written_at,body")

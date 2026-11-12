@@ -7,6 +7,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+/// How many rows the database hands back per request at most (Supabase's
+/// PGRST_DB_MAX_ROWS, 1,000 by default).
+const PAGE: usize = 1000;
+
 /// Someone signed in: a person, or a machine (which is how Claude sessions act).
 #[derive(Clone)]
 pub struct Board {
@@ -357,8 +361,27 @@ fn session_from(v: &Value) -> Result<SessionRecord> {
 }
 
 impl Board {
+    /// Read rows. The database hands back at most a page of rows per
+    /// request (1,000 in Supabase's settings), so a list that fills a page
+    /// is read on, page by page, until it's all there. (A request with its
+    /// own `limit=` is taken as asked.)
     fn get(&self, path: &str) -> Result<Value> {
-        self.supabase.request_as(&self.session, "GET", path, None)
+        let first = self.supabase.request_as(&self.session, "GET", path, None)?;
+        let Some(rows) = first.as_array() else { return Ok(first) };
+        if path.contains("limit=") || rows.len() < PAGE || !path.starts_with("/rest/v1/") {
+            return Ok(first);
+        }
+        let mut all = rows.clone();
+        let join = if path.contains('?') { '&' } else { '?' };
+        loop {
+            let more = self.supabase.request_as(&self.session, "GET", &format!("{path}{join}offset={}&limit={PAGE}", all.len()), None)?;
+            let more = more.as_array().cloned().unwrap_or_default();
+            let full = more.len() == PAGE;
+            all.extend(more);
+            if !full {
+                return Ok(Value::Array(all));
+            }
+        }
     }
 
     fn send(&self, method: &str, path: &str, body: Value) -> Result<Value> {
