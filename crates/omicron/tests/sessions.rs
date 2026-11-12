@@ -981,7 +981,7 @@ fn a_new_session_can_bring_in_an_old_conversation_and_keeps_it_on_reopen() {
 
     // It crashes (ends without saying). It can still be given tasks, and
     // Dispatch reopens the same conversation.
-    ok(&mac, None, &["sessions", "send", "build", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "build", "\u{4}", "--no-enter"]);
     wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
     std::fs::remove_file(mac.home.join("claude-args")).unwrap();
     let mut d = daemon(&mac, &path);
@@ -991,7 +991,7 @@ fn a_new_session_can_bring_in_an_old_conversation_and_keeps_it_on_reopen() {
     wait_for("reopened", || mac.home.join("claude-args").exists());
     let args = std::fs::read_to_string(mac.home.join("claude-args")).unwrap();
     assert!(args.starts_with(&format!("--resume\n{old}\n")), "{args}");
-    ok(&mac, None, &["sessions", "send", "build", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "build", "\u{4}", "--no-enter"]);
     d.kill().unwrap();
 }
 
@@ -1024,7 +1024,7 @@ fn rename_in_claude_renames_the_session_and_its_host_keeps_answering() {
     assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser-work");
     ok(&mac, None, &["sessions", "send", "parser-work", "hello\r"]);
     wait_for("typed in under the new name", || typed_lines(&mac).iter().any(|l| l == "hello"));
-    ok(&mac, None, &["sessions", "send", "parser-work", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser-work", "\u{4}", "--no-enter"]);
     d.kill().unwrap();
 }
 
@@ -1126,8 +1126,7 @@ fn a_team_runs_a_job_from_start_to_finish() {
     assert!(shown.contains(&format!("{team}: planner asks about job #1")) && shown.contains("Email login, or Google too?"), "{shown}");
     ok(&pat, None, &["tasks", "comment", &project, &n, "Email only for now."]);
     wait_for("the answer reached the planner", || read(&mac, "planner.typed").contains("Email only for now."));
-    let (_, jobs) = run(&["teams", "jobs", &team], None, None);
-    assert!(jobs.starts_with("#1\tworking"), "{jobs}");
+    wait_for("the job working again", || run(&["teams", "jobs", &team], None, None).1.starts_with("#1\tworking"));
 
     // A heads-up goes to everyone running, and into the folder.
     let (okay, out) = run(&["teams", "heads-up", "npm test takes 3 minutes; don't kill it."], Some("planner"), t);
