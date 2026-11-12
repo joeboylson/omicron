@@ -1009,7 +1009,7 @@ impl Board {
                 json!({ "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times }),
             )
             .map_err(|e| {
-                if e.to_string().contains("loops_one_running") {
+                if crate::supa::said(&e, "loops_one_running") {
                     anyhow!("that session already has a loop running. Stop it first (`omicron loops stop`).")
                 } else {
                     e
@@ -1133,7 +1133,7 @@ impl Board {
     pub fn link_job(&self, task: &Task, team: &TeamRow, number: i64) -> Result<Job> {
         let job = self.job(team, number)?;
         self.send("POST", "/rest/v1/task_jobs", json!({ "task_id": task.id, "job_id": job.id })).map_err(|e| {
-            if e.to_string().contains("duplicate key") {
+            if crate::supa::said(&e, "duplicate key") {
                 anyhow!("#{} is already linked to {} job #{number}", task.number, team.name)
             } else {
                 e

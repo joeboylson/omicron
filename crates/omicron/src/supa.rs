@@ -415,6 +415,13 @@ pub fn plain_error(status: u16, body: &str) -> String {
 
 impl std::error::Error for SupabaseError {}
 
+/// Whether the database's own words for this error mention `text` (a
+/// rule's name, say). The message shown to people is reworded, so match on
+/// this instead.
+pub fn said(e: &anyhow::Error, text: &str) -> bool {
+    e.downcast_ref::<SupabaseError>().is_some_and(|s| s.message.contains(text))
+}
+
 fn is_status(e: &anyhow::Error, code: u16) -> bool {
     e.downcast_ref::<SupabaseError>().is_some_and(|s| s.code == code)
 }
