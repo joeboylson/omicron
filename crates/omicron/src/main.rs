@@ -48,6 +48,10 @@ enum Command {
     },
     /// Who this machine is signed in to Tailscale as
     Whoami,
+    /// Tell Claude Code to trust a folder (this one if left out), so a
+    /// session Omicron starts there doesn't stop to ask. Omicron does this
+    /// itself for folders it starts Claude in.
+    Trust { folder: Option<std::path::PathBuf> },
     /// Serve the web page on this machine (makes it a Web Machine)
     Serve {
         /// The port on 127.0.0.1 to listen on (0 picks a free one)
@@ -191,6 +195,15 @@ fn main() {
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Setup { url, key, secret_key, public_url } => setup(url, key, secret_key, public_url),
+        Command::Trust { folder } => {
+            let folder = match folder {
+                Some(f) => f,
+                None => std::env::current_dir()?,
+            };
+            omicron::trust::trust(&folder)?;
+            println!("Claude Code trusts {}.", std::path::absolute(&folder)?.display());
+            Ok(())
+        }
         Command::Whoami => {
             let person = identity::local_person()?;
             println!("{} ({})", person.display_name, person.login);

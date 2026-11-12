@@ -94,6 +94,33 @@ fn unique(name: &str) -> String {
 }
 
 #[test]
+fn trust_marks_one_folder_for_claude_code_and_refuses_home() {
+    let home = new_home();
+    let claude = home.join("claude-config");
+    std::fs::create_dir_all(&claude).unwrap();
+    std::fs::write(claude.join(".claude.json"), r#"{"numStartups": 3, "projects": {}}"#).unwrap();
+    let folder = home.join("app");
+    std::fs::create_dir_all(&folder).unwrap();
+    let run = |args: &[&str]| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_omicron"));
+        c.env("OMICRON_HOME", &home).env("CLAUDE_CONFIG_DIR", &claude).args(args).output().unwrap()
+    };
+    let o = run(&["trust", folder.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let c: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(claude.join(".claude.json")).unwrap()).unwrap();
+    assert_eq!(c["numStartups"], 3);
+    assert_eq!(c["projects"][folder.canonicalize().unwrap().to_str().unwrap()]["hasTrustDialogAccepted"], true);
+    // Again: nothing changes.
+    let before = std::fs::read_to_string(claude.join(".claude.json")).unwrap();
+    assert!(run(&["trust", folder.to_str().unwrap()]).status.success());
+    assert_eq!(std::fs::read_to_string(claude.join(".claude.json")).unwrap(), before);
+    // Never the home folder, never a folder that isn't there.
+    let o = run(&["trust", &std::env::var("HOME").unwrap()]);
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("everything under it"));
+    assert!(!run(&["trust", "/no/such/folder"]).status.success());
+}
+
+#[test]
 fn help_lists_the_commands() {
     let out = ok(omicron(&new_home(), &["--help"]));
     for cmd in ["setup", "whoami", "machines", "people"] {

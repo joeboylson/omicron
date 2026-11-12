@@ -69,40 +69,6 @@ pub fn worktree(team: &TeamRow, number: i64) -> Result<PathBuf> {
     Ok(team_home(team)?.join(format!("job-{number}")))
 }
 
-/// Whether Claude Code trusts `folder`: it, or a folder above it, was
-/// answered "Yes, I trust this folder". Only reads Claude Code's own file.
-pub fn claude_trusts(folder: &Path) -> bool {
-    let file = match std::env::var_os("CLAUDE_CONFIG_DIR") {
-        Some(dir) => PathBuf::from(dir).join(".claude.json"),
-        None => match std::env::var_os("HOME") {
-            Some(home) => PathBuf::from(home).join(".claude.json"),
-            None => return false,
-        },
-    };
-    let Ok(text) = std::fs::read_to_string(file) else { return false };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return false };
-    trusted_in(&v, folder)
-}
-
-fn trusted_in(config: &serde_json::Value, folder: &Path) -> bool {
-    let real = folder.canonicalize().unwrap_or_else(|_| folder.to_path_buf());
-    [folder.to_path_buf(), real].iter().any(|f| {
-        f.ancestors().any(|a| config["projects"][a.to_string_lossy().as_ref()]["hasTrustDialogAccepted"] == serde_json::json!(true))
-    })
-}
-
-/// A team member can't start where Claude Code would first ask whether to
-/// trust the folder: nobody is there to answer, and the default is to quit.
-pub fn needs_trust(folder: &Path) -> Result<()> {
-    if !claude_trusts(folder) {
-        bail!(
-            "Claude Code doesn't trust {} yet, and a team member would stop at that question. Run `claude` there once, choose \"Yes, I trust this folder\", then quit it",
-            folder.display()
-        );
-    }
-    Ok(())
-}
-
 /// A part of a big job, worked alongside the others in its own checkout
 /// (off the job's branch) and merged back into the job's branch when done.
 #[derive(Debug, Clone)]
@@ -294,7 +260,6 @@ fn launch_lead(board: &Board, team: &TeamRow, note: Option<&str>) -> Result<bool
     };
     let first = first + &picked_up(note);
     let cmd = claude_command(&name, &lead_instructions(team, &workflow, &role_texts(team)?), &first)?;
-    needs_trust(Path::new(&team.folder))?;
     omicron::host::start(&name, Path::new(&team.folder), &cmd, &env(team, "lead"))?;
     board.set_worker(team, "lead", "lead", "busy", None)?;
     Ok(true)
@@ -333,7 +298,6 @@ pub fn start_advisor(board: &Board, team: &TeamRow, note: Option<&str>) -> Resul
         team.name, team.name, workflow.first
     );
     let first = format!("The team {} is running. You'll be told when jobs move; look then.{}", team.name, picked_up(note));
-    needs_trust(Path::new(&team.folder))?;
     omicron::host::start(&name, Path::new(&team.folder), &claude_command(&name, &instructions, &first)?, &env(team, "advisor"))?;
     board.set_worker(team, "advisor", "advisor", "idle", None)?;
     Ok(true)
@@ -431,15 +395,6 @@ fn launch(board: &Board, team: &TeamRow, name: &str, role: &str, job: &Job, part
     let mut vars = env(team, name);
     if let Some(p) = part {
         vars.push((PART_ENV.into(), p.number.to_string()));
-    }
-    if let Err(e) = needs_trust(&folder) {
-        // Job checkouts all go under the team's own folder in Omicron's home:
-        // trusting that once covers every job.
-        let home = team_home(team)?;
-        if folder.starts_with(&home) {
-            bail!("{e:#}. Job checkouts go under {}: trusting that folder once covers every job", home.display());
-        }
-        return Err(e);
     }
     omicron::host::start(&host, &folder, &claude_command(&host, &instructions, &first)?, &vars)?;
     board.set_worker(team, name, role, "busy", Some(&job.id))?;
@@ -927,20 +882,6 @@ mod tests {
         assert_eq!(left, [2]);
         assert_eq!(parts(&team, &job).unwrap().len(), 2);
         std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn a_folder_is_trusted_if_it_or_a_folder_above_it_is() {
-        let config = serde_json::json!({ "projects": {
-            "/code": { "hasTrustDialogAccepted": true },
-            "/code/web/private": { "hasTrustDialogAccepted": false },
-            "/other": { "allowedTools": [] },
-        }});
-        assert!(trusted_in(&config, Path::new("/code")));
-        assert!(trusted_in(&config, Path::new("/code/web/job-1")));
-        assert!(trusted_in(&config, Path::new("/code/web/private")), "a folder above it is enough");
-        assert!(!trusted_in(&config, Path::new("/other/web")));
-        assert!(!trusted_in(&serde_json::json!({}), Path::new("/code")));
     }
 
     #[test]

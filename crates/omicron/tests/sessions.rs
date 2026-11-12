@@ -1075,11 +1075,6 @@ fn a_team_runs_a_job_from_start_to_finish() {
     git(&folder, &["add", "."]);
     git(&folder, &["commit", "-qm", "start"]);
 
-    // Claude Code trusts this test machine's folders (its own settings file).
-    std::fs::create_dir_all(mac.home.join("claude-code")).unwrap();
-    let trusted = json!({ "projects": { mac.home.canonicalize().unwrap().to_string_lossy(): { "hasTrustDialogAccepted": true } } });
-    std::fs::write(mac.home.join("claude-code/.claude.json"), trusted.to_string()).unwrap();
-
     let team = format!("web{}", &Uuid::new_v4().simple().to_string()[..4]);
     let run = |args: &[&str], worker: Option<&str>, team_id: Option<&str>| {
         let mut c = command(&mac, None, args);
@@ -1095,8 +1090,11 @@ fn a_team_runs_a_job_from_start_to_finish() {
     let (okay, out) = run(&["teams", "start", "--project", &project], None, None);
     assert!(okay, "{out}");
 
-    // The daemon starts the lead, with its instructions.
+    // The daemon starts the lead, with its instructions, having told Claude
+    // Code to trust the folder (nobody is there to answer that question).
     wait_for("the lead started", || !read(&mac, "lead.args").is_empty());
+    let trust: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("claude-code/.claude.json")).unwrap()).unwrap();
+    assert_eq!(trust["projects"][folder.canonicalize().unwrap().to_string_lossy().as_ref()]["hasTrustDialogAccepted"], json!(true));
     assert!(read(&mac, "lead.args").contains(&format!("You are the lead of the team {team}")));
     let tid = s.admin_request("GET", &format!("/rest/v1/teams?name=eq.{team}&select=id"), None).unwrap()[0]["id"].as_str().unwrap().to_string();
     let t = Some(tid.as_str());

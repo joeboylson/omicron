@@ -8,5 +8,6 @@ pub mod names;
 pub mod realtime;
 pub mod supa;
 pub mod text;
+pub mod trust;
 pub mod web;
 pub mod windows;

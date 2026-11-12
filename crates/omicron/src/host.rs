@@ -83,6 +83,11 @@ pub fn start(name: &str, folder: &std::path::Path, command: &[String], env: &[(S
     if is_running(name) {
         bail!("a session called {name} is already running here");
     }
+    // Claude would first ask whether to trust the folder, with nobody here
+    // to answer: mark it trusted (see `trust`).
+    if std::path::Path::new(&command[0]).file_name().is_some_and(|f| f == "claude") {
+        crate::trust::trust(folder)?;
+    }
     let dir = run_dir()?;
     std::fs::create_dir_all(&dir)?;
     {
