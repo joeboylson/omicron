@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Row, bare } from "@/components/Grouped";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +58,7 @@ export function Sessions({ project, onChanged }: { project: ProjectData; onChang
         ))}
       </ul>
       <Dialog open={open !== null} onOpenChange={(o) => !o && setOpenId(null)}>
-        <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={(e) => e.preventDefault()}>
+        <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           {open && (
             <SessionNotes project={project} session={open} notes={handoffs.filter((h) => h.session_id === open.id)} onChanged={onChanged} />
           )}

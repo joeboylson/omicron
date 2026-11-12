@@ -9,6 +9,23 @@ const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
 
+/** The last control focused outside any dialog: where focus goes back to. */
+let lastOutside: { el: HTMLElement; label: string | null } | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener("focusin", (e) => {
+    const el = e.target as HTMLElement | null;
+    if (el && el !== document.body && !el.closest('[role="dialog"]')) lastOutside = { el, label: el.getAttribute("aria-label") };
+  });
+}
+
+/** For onOpenAutoFocus: focus the sheet itself rather than its first field
+ *  (on a phone a focused field opens the keyboard), so keyboard and
+ *  screen-reader users still start inside it. */
+const focusSheet = (e: Event) => {
+  e.preventDefault();
+  (e.currentTarget as HTMLElement | null)?.focus();
+};
+
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -27,7 +44,24 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onCloseAutoFocus, onOpenAutoFocus, ...props }, ref) => {
+  // What had focus before it opened gets focus back when it closes: the
+  // last control focused outside any dialog (focus inside one doesn't count).
+  // If the page redrew that control while this was open, the one with the
+  // same name takes focus instead of focus being lost.
+  const giveBack = (e: Event) => {
+    onCloseAutoFocus?.(e);
+    const before = lastOutside;
+    if (e.defaultPrevented || !before) return;
+    e.preventDefault();
+    const target = before.el.isConnected
+      ? before.el
+      : before.label
+        ? document.querySelector<HTMLElement>(`[aria-label="${CSS.escape(before.label)}"]`)
+        : null;
+    target?.focus();
+  };
+  return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -39,6 +73,8 @@ const DialogContent = React.forwardRef<
         "sm:inset-x-auto sm:bottom-auto sm:left-[50%] sm:top-[50%] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:pb-6 sm:duration-200 sm:data-[state=closed]:fade-out-0 sm:data-[state=open]:fade-in-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
         className,
       )}
+      onOpenAutoFocus={onOpenAutoFocus}
+      onCloseAutoFocus={giveBack}
       {...props}
     >
       <div aria-hidden className="mx-auto -mt-3 h-1.5 w-10 rounded-full bg-muted-foreground/30 sm:hidden" />
@@ -49,7 +85,8 @@ const DialogContent = React.forwardRef<
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -79,6 +116,7 @@ const DialogDescription = React.forwardRef<
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {
+  focusSheet,
   Dialog,
   DialogPortal,
   DialogOverlay,

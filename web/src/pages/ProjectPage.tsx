@@ -371,7 +371,20 @@ export function ProjectPage({ id }: { id: string }) {
           )}
         </DragOverlay>
       </DndContext>
-      <TaskDialog project={project} task={task} onClose={() => setOpenTask(null)} onChanged={reload}
+      <TaskDialog
+        project={project}
+        task={task}
+        onClose={() => {
+          // Back to the task's card (the board may have redrawn it while the
+          // sheet was open, so the browser can't find it by itself).
+          const number = openTask;
+          setOpenTask(null);
+          setTimeout(() => {
+            const card = number === null ? null : document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`);
+            card?.focus();
+          }, 0);
+        }}
+        onChanged={reload}
         onDelete={removeTask}
         onPatch={(taskId, change) =>
           setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p))

@@ -3,7 +3,7 @@ import { Terminal } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { loadChat, sendChat, type ChatMessage, type ProjectData } from "@/lib/data";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ export function Chat({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="flex max-h-[92dvh] flex-col gap-4 bg-muted sm:max-h-[80dvh] sm:bg-background"
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={focusSheet}
       >
         <DialogHeader className="text-left">
           <DialogTitle>Chat</DialogTitle>

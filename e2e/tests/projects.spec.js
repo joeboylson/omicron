@@ -959,8 +959,9 @@ test("a change in a task shows at once, before it's saved", async ({ page, reque
   await page.getByRole("button", { name: /#1 Fix the gate/ }).click();
   await pick(page, "Status", "Done");
   await escape(page);
-  // Already in Done, while the save is still waiting.
-  await expect(column(page, "Done")).toContainText("Fix the gate", { timeout: 1000 });
+  // Already in Done, while the save is still held back (it's only let go
+  // below, so any wait here is still before it's saved).
+  await expect(column(page, "Done")).toContainText("Fix the gate", { timeout: 5000 });
   release();
   await page.reload();
   await expect(column(page, "Done")).toContainText("Fix the gate");

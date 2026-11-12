@@ -25,7 +25,7 @@
     --sys-brown: #a2845e;
     --sys-gray: #8e8e93;
     /* The tint for buttons and links: system blue. */
-    --primary: 211 100% 42%;
+    --primary: 211 100% 40%;
     /* Blue text (links, text buttons): dark enough to read on the page, and
        the opposite for the dark toast. */
     --link: 211 100% 40%;
@@ -37,7 +37,8 @@
     --muted-foreground: 0 0% 40%;
     --accent: 0 0% 96.1%;
     --accent-foreground: 0 0% 9%;
-    --destructive: 3 100% 59%;
+    /* Apple's red, darkened enough for text to read on white (4.5:1). */
+    --destructive: 3 90% 45%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 89.8%;
     --input: 0 0% 89.8%;

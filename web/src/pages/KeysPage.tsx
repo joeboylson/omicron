@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
 import { Group } from "@/components/Grouped";
 import { ListSkeleton } from "@/components/Skeleton";
 import { cn } from "@/lib/utils";
@@ -201,7 +201,7 @@ function NewKey({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-4 sm:max-w-md" onOpenAutoFocus={(e) => key && e.preventDefault()}>
+      <DialogContent className="gap-4 sm:max-w-md" onOpenAutoFocus={(e) => key && focusSheet(e)}>
         {key ? (
           <>
             <DialogHeader className="text-left">

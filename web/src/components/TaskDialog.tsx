@@ -19,7 +19,7 @@ import {
   type ProjectData,
   type Task,
 } from "@/lib/data";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,8 +67,11 @@ export function TaskDialog({
     <Dialog open={task !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:max-w-xl sm:bg-background"
-        // Don't jump into the title: on a phone that opens the keyboard.
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        // Focus the sheet itself, not the title: on a phone a focused title
+        // opens the keyboard. Keyboard and screen-reader users start inside.
+        onOpenAutoFocus={focusSheet}
+        // The board puts focus back on the task's card itself.
+        onCloseAutoFocus={(e) => e.preventDefault()}
       >
         {task && <TaskForm key={task.id} project={project} task={task} onChanged={onChanged} onDelete={onDelete} onPatch={onPatch} />}
       </DialogContent>

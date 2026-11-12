@@ -24,7 +24,7 @@ import {
   type Label,
   type Topic,
 } from "@/lib/data";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +66,7 @@ export function ProjectSettings({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background"
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={focusSheet}
       >
         <DialogHeader className="text-left">
           <DialogTitle>Project settings</DialogTitle>
