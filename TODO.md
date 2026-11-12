@@ -10,10 +10,9 @@ Built in this order. Each part replaces an old tool only once it's ready.
       else, and their identity comes from Tailscale.
 - [x] Local identity in code: `crates/omicron/src/identity.rs` and
       `omicron whoami`. 9 tests pass in the VM.
-- [ ] Known gap: any program on the hosting machine can send a fake
-      `Tailscale-User-Login` header straight to localhost. Fine while only I
-      use my machines. Close it later, for example by double-checking the
-      login with Tailscale.
+- [x] Known gap: any program on the hosting machine could send a fake
+      `Tailscale-User-Login` header straight to localhost. Closed by the gate
+      secret (#23): the real page only believes a login that comes with it.
 - [ ] **Test later:** Tailscale address visits. Open the page from another
       device signed in as a person (not a tagged server, and not the hosting
       machine) and confirm `Tailscale-User-Login` arrives. Then repeat on the
@@ -110,13 +109,13 @@ Built in this order. Each part replaces an old tool only once it's ready.
 - [x] Installable on the phone: icons (`web/public/icon.svg`, PNGs made by
       `dev/icons.js`). A browser test asks Chrome whether it would offer to
       install the page.
-- [ ] Drag tasks between statuses and reorder them (now: pick the status in
+- [x] Drag tasks between statuses and reorder them (now: pick the status in
       the task view; new tasks go to the bottom).
 - [x] Colors (Apple's system colors, light and dark): statuses and labels
       each have one (`omicron statuses color`, `omicron labels color`, or
       Project settings); blue for buttons and links, red for delete and
       overdue dates, orange for Needs review, green for open sessions.
-- [ ] Labels: rename and remove.
+- [x] Labels: rename and remove (#13).
 
 ## 4. Claude sessions
 - [x] Decided (10 Nov 2026): Omicron doesn't start or host sessions. It keeps
@@ -136,8 +135,8 @@ Built in this order. Each part replaces an old tool only once it's ready.
       `tasks comment --review`. Hooks come from `~/.omicron/claude/settings.json`
       via `claude --settings`, since changing Claude Code's own settings was
       blocked by its permission checks.
-- [ ] Picker to jump into a session (needs a way in: tmux, or the Claude app).
-- [ ] Keep the name in sync with `/rename`.
+- [x] Picker to jump into a session (`omicron sessions pick`, #8).
+- [x] Keep the name in sync with `/rename` (#9).
 - [x] Dispatch: a task is given to a person or a Claude session
       (`omicron tasks send <P> <n> <session>`, or "Given to" on the web
       page). The session pulls it: its Stop hook hands new tasks over at the
@@ -204,11 +203,11 @@ Built in this order. Each part replaces an old tool only once it's ready.
       times only; logins never leave the machine).
 
 ## 7. Teams (rewrite of legion)
-- [ ] `omicron teams`: leads, workers, roles, workflows, jobs, parts,
-      advisor, requests, heads-ups, runners.
-- [ ] Only teams, jobs and their status, and workers go to Supabase.
-- [ ] Pick a worker and jump into its live terminal.
-- [ ] Open a team's folder in VS Code.
+- [x] `omicron teams`: leads, workers, roles, workflows, jobs, parts,
+      advisor, requests, heads-ups (#16, #17, #34). Other runners: later.
+- [x] Only teams, jobs and their status, and workers go to Supabase.
+- [x] Pick a worker and jump into its live terminal (`omicron teams pick`, #18).
+- [x] Look through a team's folder in a built-in viewer (`omicron teams view`, #19).
 
 ## Current work: tracked in Omicron itself (from 11 Nov 2026)
 The work list now lives in the **Omicron** Project in the real database
