@@ -1036,7 +1036,7 @@ fn team_claude(c: &Computer) -> String {
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::write(
         bin.join("claude"),
-        "#!/bin/sh\nd=\"$OMICRON_HOME/claude\"; mkdir -p \"$d\"\nprintf '%s\\n' \"$@\" > \"$d/$OMICRON_WORKER.args\"\nwhile read -r line; do echo \"$line\" >> \"$d/$OMICRON_WORKER.typed\"; [ \"$line\" = \"/exit\" ] && exit 0; done\n",
+        "#!/bin/sh\nd=\"$OMICRON_HOME/claude\"; mkdir -p \"$d\"\nprintf '%s\\n' \"$@\" > \"$d/$OMICRON_WORKER.args\"\npwd -P > \"$d/$OMICRON_WORKER.pwd\"\nwhile read -r line; do echo \"$line\" >> \"$d/$OMICRON_WORKER.typed\"; [ \"$line\" = \"/exit\" ] && exit 0; done\n",
     )
     .unwrap();
     Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
@@ -1163,4 +1163,170 @@ fn a_team_runs_a_job_from_start_to_finish() {
     run(&["teams", "stop", &team], None, None);
     wait_for("the lead stopped", || read(&mac, "lead.typed").contains("/exit"));
     d.kill().unwrap();
+}
+
+/// Parts, being blocked, the advisor, handing over a long conversation,
+/// stopping a worker, and the team and its daemon coming back: the rest of
+/// what a team does, with a stand-in for Claude.
+#[test]
+fn a_team_splits_a_job_into_parts_and_comes_back_after_restarts() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    let short = PathBuf::from(format!("/tmp/op-{}", &Uuid::new_v4().simple().to_string()[..8]));
+    std::fs::rename(&mac.home, &short).unwrap();
+    let mac = Computer { home: short, tailscale: None };
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let path = team_claude(&mac);
+
+    let folder = mac.home.join("app");
+    std::fs::create_dir_all(&folder).unwrap();
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let o = Command::new("git").arg("-C").arg(dir).args(["-c", "user.email=t@x", "-c", "user.name=T"]).args(args).output().unwrap();
+        (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
+    };
+    git(&folder, &["init", "-q", "-b", "main"]);
+    git(&folder, &["config", "user.email", "t@x"]);
+    git(&folder, &["config", "user.name", "T"]);
+    std::fs::write(folder.join("app.txt"), "app\n").unwrap();
+    git(&folder, &["add", "."]);
+    git(&folder, &["commit", "-qm", "start"]);
+
+    let team = format!("pt{}", &Uuid::new_v4().simple().to_string()[..4]);
+    let run = |args: &[&str], worker: Option<&str>, team_id: Option<&str>, part: Option<&str>| {
+        let mut c = command(&mac, None, args);
+        c.env("PATH", &path).env("OMICRON_NO_GUIDE", "1").current_dir(&folder);
+        if let (Some(w), Some(t)) = (worker, team_id) {
+            c.env("OMICRON_TEAM", t).env("OMICRON_WORKER", w).env("OMICRON_TEAM_FOLDER", &folder);
+        }
+        if let Some(p) = part {
+            c.env("OMICRON_PART", p);
+        }
+        let o = c.output().unwrap();
+        (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
+    };
+    assert!(run(&["teams", "init", "--name", &team], None, None, None).0);
+    // With the advisor on.
+    let setup = folder.join(".omicron-team/team.json");
+    let text = std::fs::read_to_string(&setup).unwrap().replace("\"advisor\": false", "\"advisor\": true");
+    std::fs::write(&setup, text).unwrap();
+    git(&folder, &["add", "."]);
+    git(&folder, &["commit", "-qm", "team"]);
+    let mut d = daemon(&mac, &path);
+    assert!(run(&["teams", "start", "--project", &project], None, None, None).0);
+    wait_for("the lead and the advisor started", || !read(&mac, "lead.args").is_empty() && !read(&mac, "advisor.args").is_empty());
+    assert!(read(&mac, "advisor.args").contains(&format!("You are the advisor of the team {team}")));
+    let rows = s.admin_request("GET", &format!("/rest/v1/teams?name=eq.{team}&select=id"), None).unwrap();
+    let tid = rows[0]["id"].as_str().unwrap().to_string();
+    let t = Some(tid.as_str());
+
+    // A job, split into two parts that two builders work at once, each in
+    // its own checkout off the job's branch.
+    assert!(run(&["teams", "add-job", &team, "Login and sign-up"], None, None, None).0);
+    let (okay, out) = run(&["teams", "start-worker", "builder", "--job", "1", "--part", "the login form"], Some("lead"), t, None);
+    assert!(okay && out.contains("Started builder on a part of job #1: the login form"), "{out}");
+    let (okay, out) = run(&["teams", "start-worker", "builder", "--job", "1", "--part", "the sign-up form"], Some("lead"), t, None);
+    assert!(okay && out.contains("Started builder-2 on a part of job #1"), "{out}");
+    wait_for("both builders started", || !read(&mac, "builder.pwd").is_empty() && !read(&mac, "builder-2.pwd").is_empty());
+    let one = PathBuf::from(read(&mac, "builder.pwd").trim());
+    let two = PathBuf::from(read(&mac, "builder-2.pwd").trim());
+    assert!(one.ends_with("job-1-part-1") && two.ends_with("job-1-part-2"), "{one:?} {two:?}");
+    assert!(read(&mac, "builder.args").contains("Your part (part 1): the login form"));
+    assert!(read(&mac, "builder-2.args").contains("Only do your part"));
+
+    // Being blocked: the job says so and the lead hears.
+    let (okay, out) = run(&["teams", "blocked", "Which login library?"], Some("builder"), t, Some("1"));
+    assert!(okay, "{out}");
+    assert!(run(&["teams", "jobs", &team], None, None, None).1.starts_with("#1\tblocked"));
+    wait_for("the lead heard it's blocked", || read(&mac, "lead.typed").contains("builder is blocked on job #1: Which login library?"));
+
+    // Both parts change the same file: the first merges, the second clashes
+    // and goes back to its builder.
+    std::fs::write(one.join("app.txt"), "app\nlogin\n").unwrap();
+    git(&one, &["commit", "-qam", "login"]);
+    // Uncommitted work is refused first.
+    std::fs::write(two.join("app.txt"), "app\nsignup\n").unwrap();
+    let (okay, out) = run(&["teams", "handoff", "done", "--note", "Sign-up done."], Some("builder-2"), t, Some("2"));
+    assert!(!okay && out.contains("commit your part's work first"), "{out}");
+    git(&two, &["commit", "-qam", "signup"]);
+
+    let (okay, out) = run(&["teams", "handoff", "done", "--note", "Login done."], Some("builder"), t, Some("1"));
+    assert!(okay && out.contains("Your part is merged into job #1's branch"), "{out}");
+    wait_for("the lead heard part 1 is in", || read(&mac, "lead.typed").contains("finished part 1 of job #1 (the login form)"));
+    assert!(read(&mac, "lead.typed").contains("Parts still going: 2."));
+    // The advisor hears things moved (at most every ten minutes).
+    wait_for("the advisor was nudged", || read(&mac, "advisor.typed").contains("Since you last looked"));
+
+    // Finishing waits for every part.
+    let (okay, out) = run(&["teams", "finish", "1"], Some("lead"), t, None);
+    assert!(!okay && out.contains("has parts still going (2)"), "{out}");
+
+    let (okay, out) = run(&["teams", "handoff", "done", "--note", "Sign-up done."], Some("builder-2"), t, Some("2"));
+    assert!(!okay && out.contains("your part clashes with the job's branch"), "{out}");
+    // The builder fixes the clash in its part, and hands off again.
+    let (_, merged) = git(&two, &["merge", "job/1-login-and-sign-up"]);
+    assert!(merged.contains("CONFLICT"), "{merged}");
+    std::fs::write(two.join("app.txt"), "app\nlogin\nsignup\n").unwrap();
+    git(&two, &["commit", "-qam", "both forms"]);
+    let (okay, out) = run(&["teams", "handoff", "done", "--note", "Sign-up done, clash fixed."], Some("builder-2"), t, Some("2"));
+    assert!(okay, "{out}");
+    wait_for("the lead heard every part is in", || read(&mac, "lead.typed").contains("All its parts are in"));
+
+    // The advisor suggests; only the advisor can.
+    let (okay, _) = run(&["teams", "suggest", "Split sign-up email into its own job."], Some("advisor"), t, None);
+    assert!(okay);
+    wait_for("the lead got the suggestion", || read(&mac, "lead.typed").contains("The advisor suggests: Split sign-up email"));
+    let (okay, out) = run(&["teams", "suggest", "x"], Some("builder"), t, None);
+    assert!(!okay && out.contains("only the advisor"), "{out}");
+
+    // A long conversation is handed over: the builder starts again, fresh,
+    // as itself, on its part, with the note.
+    let first_args = read(&mac, "builder.args");
+    let (okay, out) = run(&["teams", "handover", "--note", "Login form done; tests next."], Some("builder"), t, Some("1"));
+    assert!(okay && out.contains("Handover saved"), "{out}");
+    wait_for("a fresh builder started", || {
+        let a = read(&mac, "builder.args");
+        a != first_args && a.contains("Login form done; tests next.")
+    });
+    assert!(read(&mac, "builder.args").contains("Your part (part 1): the login form"));
+
+    // The lead stops a worker; only the lead can.
+    let (okay, out) = run(&["teams", "stop-worker", "builder-2"], Some("builder"), t, None);
+    assert!(!okay && out.contains("only the lead"), "{out}");
+    assert!(run(&["teams", "stop-worker", "builder-2"], Some("lead"), t, None).0);
+    wait_for("builder-2 stopped", || !run(&["sessions", "hosted"], None, None, None).1.contains(&format!("{team}.builder-2")));
+
+    // Finished: both parts on main, and their checkouts and branches gone.
+    let (okay, out) = run(&["teams", "finish", "1"], Some("lead"), t, None);
+    assert!(okay, "{out}");
+    assert_eq!(std::fs::read_to_string(folder.join("app.txt")).unwrap(), "app\nlogin\nsignup\n");
+    assert!(!one.exists() && !two.exists());
+    assert!(!git(&folder, &["branch"]).1.contains("part-"));
+
+    // The daemon restarting brings the lead back.
+    d.kill().unwrap();
+    let _ = d.wait();
+    run(&["sessions", "send", &format!("{team}.lead"), "/exit"], None, None, None);
+    wait_for("the lead ended", || !run(&["sessions", "hosted"], None, None, None).1.contains(&format!("{team}.lead")));
+    std::fs::remove_file(mac.home.join("claude/lead.args")).unwrap();
+    let mut d = daemon(&mac, &path);
+    wait_for("the lead came back", || !read(&mac, "lead.args").is_empty());
+
+    // Stopped, then started again: the same team; everyone stops.
+    assert!(run(&["teams", "stop", &team], None, None, None).0);
+    wait_for("the team's sessions stopped", || {
+        let hosted = run(&["sessions", "hosted"], None, None, None).1;
+        !hosted.contains(&format!("{team}.lead")) && !hosted.contains(&format!("{team}.advisor"))
+    });
+    std::fs::remove_file(mac.home.join("claude/lead.args")).unwrap();
+    assert!(run(&["teams", "start", "--project", &project], None, None, None).0);
+    wait_for("the lead started again", || !read(&mac, "lead.args").is_empty());
+    run(&["teams", "stop", &team], None, None, None);
+    for w in ["lead", "advisor", "builder"] {
+        run(&["sessions", "send", &format!("{team}.{w}"), "/exit"], None, None, None);
+    }
+    d.kill().unwrap();
+    let _ = d.wait();
 }
