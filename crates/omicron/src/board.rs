@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 /// Someone signed in: a person, or a machine (which is how Claude sessions act).
+#[derive(Clone)]
 pub struct Board {
     pub supabase: Supabase,
     pub session: Session,

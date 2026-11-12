@@ -9,6 +9,7 @@ mod accounts_cmd;
 mod board_cmd;
 mod chat_cmd;
 mod dispatch_cmd;
+mod guide;
 mod handoff_cmd;
 mod loops_cmd;
 mod picker;
@@ -186,7 +187,15 @@ fn main() {
     unsafe {
         nix::libc::signal(nix::libc::SIGPIPE, nix::libc::SIG_DFL);
     }
-    if let Err(e) = run(Cli::parse()) {
+    // Missing parts of the command are asked for, when someone's here to answer.
+    let args = match guide::complete::<Cli>(std::env::args().collect()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("omicron: {e:#}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(e) = run(Cli::parse_from(args)) {
         eprintln!("omicron: {e:#}");
         std::process::exit(1);
     }
