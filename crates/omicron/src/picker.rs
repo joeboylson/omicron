@@ -6,6 +6,7 @@
 use crate::board_cmd::sign_in;
 use anyhow::{bail, Context, Result};
 use omicron::board::SessionRecord;
+use omicron::text::line;
 use std::io::{Read, Write};
 
 /// A line in a picker: the name Enter acts on, then what's shown beside it.
@@ -90,7 +91,7 @@ pub fn pick() -> Result<()> {
     }
     if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
         for e in &list {
-            println!("{}\t{}\t{}\t{}", e.session.name, e.session.project, e.status(), e.session.folder);
+            println!("{}\t{}\t{}\t{}", e.session.name, line(&e.session.project), e.status(), line(&e.session.folder));
         }
         return Ok(());
     }
@@ -165,7 +166,7 @@ pub fn pick_team(team: Option<String>) -> Result<()> {
     }
     if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
         for r in &rows {
-            println!("{}\t{}\t{}\t{}", r.name, r.group, r.status, r.detail);
+            println!("{}\t{}\t{}\t{}", r.name, line(&r.group), r.status, line(&r.detail));
         }
         return Ok(());
     }
@@ -303,7 +304,7 @@ fn draw(out: &mut std::io::Stdout, title: &str, rows: &[&Row], at: usize, query:
     let width = rows.iter().map(|r| r.name.chars().count()).max().unwrap_or(0);
     let status = rows.iter().map(|r| r.status.chars().count()).max().unwrap_or(0);
     for (i, r) in rows.iter().enumerate() {
-        let line = format!("{:<width$}  {:<status$}  {}  \x1b[2m{}\x1b[0m", r.name, r.status, r.group, r.detail);
+        let line = format!("{:<width$}  {:<status$}  {}  \x1b[2m{}\x1b[0m", line(&r.name), r.status, line(&r.group), line(&r.detail));
         if i == at {
             screen.push_str(&format!("\x1b[7m› {line}\x1b[0m\r\n"));
         } else {

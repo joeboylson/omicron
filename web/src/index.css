@@ -131,6 +131,9 @@
     @apply bg-background text-foreground antialiased;
     -webkit-tap-highlight-color: transparent;
     font-feature-settings: "ss01";
+    /* Anyone's text can hold a very long word or link: it wraps instead of
+       pushing out of its card, sheet or bubble. */
+    overflow-wrap: anywhere;
   }
   /* Numbers line up in columns. */
   .font-mono {

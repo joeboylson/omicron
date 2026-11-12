@@ -191,8 +191,11 @@ impl Supabase {
 
     /// A request made as a signed-in person or machine. The database's own
     /// rules decide what they can see and change.
+    /// Text in what comes back is made safe to show (see `text`).
     pub fn request_as(&self, session: &Session, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
-        self.call(method, path, &self.key, Some(&session.access_token), body, Some("return=representation"))
+        let mut v = self.call(method, path, &self.key, Some(&session.access_token), body, Some("return=representation"))?;
+        crate::text::clean(&mut v);
+        Ok(v)
     }
 
     /// Sign in a person that a Web Machine has checked with Tailscale. The
@@ -227,7 +230,9 @@ impl Supabase {
             Some(json!({ "id": id, "email": person_email(id), "email_confirm": true, "user_metadata": { "kind": "person" } })),
             None,
         )?;
-        self.admin("POST", "/rest/v1/people", Some(json!({ "id": id, "display_name": who.display_name })), None)?;
+        // Tailscale may give no name: the login stands in (a person's name can't be blank).
+        let name = if who.display_name.trim().is_empty() { who.login.as_str() } else { who.display_name.as_str() };
+        self.admin("POST", "/rest/v1/people", Some(json!({ "id": id, "display_name": name })), None)?;
         match self.link_tailscale_identity(id, who) {
             Ok(()) => Ok(id),
             // Two first visits at once: the other one won. Drop ours and use theirs.

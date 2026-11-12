@@ -268,7 +268,7 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
             for t in all {
                 let jobs = board.jobs(&t)?;
                 let open = jobs.iter().filter(|j| !matches!(j.state.as_str(), "done" | "cancelled")).count();
-                println!("{}\t{}\t{}\t{} open jobs\t{}", t.name, t.state, t.workflow, open, t.folder);
+                println!("{}\t{}\t{}\t{} open jobs\t{}", t.name, t.state, t.workflow, open, omicron::text::line(&t.folder));
             }
         }
         Teams::View { team } => crate::teams_view::view(team)?,
@@ -304,7 +304,7 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
             }
             for j in jobs {
                 let with = j.step.map(|s| format!(" ({s})")).unwrap_or_default();
-                println!("#{}\t{}{with}\t{}", j.number, j.state, j.title);
+                println!("#{}\t{}{with}\t{}", j.number, j.state, omicron::text::line(&j.title));
             }
         }
     }

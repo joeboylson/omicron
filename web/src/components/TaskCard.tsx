@@ -23,7 +23,7 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
       aria-label={`#${task.number} ${task.title}`}
     >
       <div className="flex items-start gap-2">
-        <span className={cn("flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
+        <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
         <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
       </div>
       {(task.needs_review || labels.length > 0) && (

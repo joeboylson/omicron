@@ -7,5 +7,6 @@ pub mod login;
 pub mod names;
 pub mod realtime;
 pub mod supa;
+pub mod text;
 pub mod web;
 pub mod windows;

@@ -31,7 +31,7 @@ pub fn tell(team: &str, worker: &str, text: &str) -> Result<bool> {
         return Ok(false);
     }
     // One line: a new line would send it early.
-    let line = text.replace(['\n', '\r'], " ");
+    let line = omicron::text::line(&text.replace('\r', " "));
     omicron::host::send(&name, &line)?;
     std::thread::sleep(Duration::from_millis(300));
     omicron::host::send(&name, "\r")?;
@@ -575,7 +575,7 @@ pub fn ask(question: &str) -> Result<String> {
 /// heads-ups.md and typed to everyone running.
 pub fn heads_up(text: &str) -> Result<String> {
     let (board, team, me) = caller()?;
-    let line = text.replace(['\n', '\r'], " ");
+    let line = omicron::text::line(&text.replace('\r', " "));
     if line.chars().count() > 200 {
         bail!("a heads-up is one line of at most 200 characters");
     }

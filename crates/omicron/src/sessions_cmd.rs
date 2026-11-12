@@ -136,7 +136,7 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             }
             for s in rows {
                 let why = s.gone_why.map(|w| format!("\t({w})")).unwrap_or_default();
-                println!("{}\t{}\t{}\t{}\t{}{why}", s.name, s.project, s.machine, s.state, s.folder);
+                println!("{}\t{}\t{}\t{}\t{}{why}", s.name, omicron::text::line(&s.project), s.machine, s.state, omicron::text::line(&s.folder));
             }
         }
         Sessions::Remove { name, project } => {

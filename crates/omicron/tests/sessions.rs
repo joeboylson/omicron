@@ -1075,6 +1075,11 @@ fn a_team_runs_a_job_from_start_to_finish() {
     git(&folder, &["add", "."]);
     git(&folder, &["commit", "-qm", "start"]);
 
+    // Claude Code trusts this test machine's folders (its own settings file).
+    std::fs::create_dir_all(mac.home.join("claude-code")).unwrap();
+    let trusted = json!({ "projects": { mac.home.canonicalize().unwrap().to_string_lossy(): { "hasTrustDialogAccepted": true } } });
+    std::fs::write(mac.home.join("claude-code/.claude.json"), trusted.to_string()).unwrap();
+
     let team = format!("web{}", &Uuid::new_v4().simple().to_string()[..4]);
     let run = |args: &[&str], worker: Option<&str>, team_id: Option<&str>| {
         let mut c = command(&mac, None, args);

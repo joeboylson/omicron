@@ -293,7 +293,7 @@ pub fn statuses(cmd: Statuses, as_machine: bool) -> Result<()> {
 
 /// One task on one line: `#3  Buy milk  [food, shop]  due 2026-11-30  to Sam  checklist 1/2  needs review`
 pub fn one_line(t: &Task) -> String {
-    let mut parts = vec![format!("#{}", t.number), t.title.clone()];
+    let mut parts = vec![format!("#{}", t.number), omicron::text::line(&t.title)];
     if !t.labels.is_empty() {
         parts.push(format!("[{}]", t.labels.join(", ")));
     }
@@ -325,10 +325,10 @@ fn print_task(p: &Project, statuses: &[Status], t: &Task) {
         println!("  Topic: {topic}");
     }
     if !t.notes.is_empty() {
-        println!("  Notes: {}", t.notes);
+        println!("  Notes: {}", t.notes.trim_end().replace('\n', "\n         "));
     }
     for (i, c) in t.checklist.iter().enumerate() {
-        println!("  {}. [{}] {}", i + 1, if c.done { "x" } else { " " }, c.text);
+        println!("  {}. [{}] {}", i + 1, if c.done { "x" } else { " " }, omicron::text::line(&c.text));
     }
 }
 
@@ -352,7 +352,7 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
                 let names: Vec<&str> = c.images.iter().map(|i| omicron::board::image_name(i)).collect();
                 format!(" [images: {}]", names.join(", "))
             };
-            println!("  {who}, {}: {}{images}", c.at.get(..16).unwrap_or(&c.at).replace('T', " "), c.body);
+            println!("  {who}, {}: {}{images}", c.at.get(..16).unwrap_or(&c.at).replace('T', " "), c.body.trim_end().replace('\n', "\n    "));
         }
         Ok(())
     };
