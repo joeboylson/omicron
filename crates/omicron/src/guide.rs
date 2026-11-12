@@ -35,7 +35,17 @@ pub fn complete<C: CommandFactory + clap::Parser>(mut args: Vec<String>) -> Resu
                 if started {
                     // The whole command, to type straight in next time.
                     let shown: Vec<String> = args.iter().skip(1).map(|a| shell_word(a)).collect();
-                    let _ = cliclack::outro(format!("omicron {}", shown.join(" ")));
+                    let line = format!("omicron {}", shown.join(" "));
+                    // Something that can't be undone: say so and ask first.
+                    let place = locate(&C::command(), &args);
+                    if let Some(what) = undoable(&place.path) {
+                        let sure = cancelled(cliclack::confirm(format!("{what} This can't be undone. Go ahead?\n  {line}")).initial_value(false).interact())?;
+                        if !sure {
+                            let _ = cliclack::outro_cancel("Nothing changed.");
+                            bail!("cancelled");
+                        }
+                    }
+                    let _ = cliclack::outro(line);
                 }
                 return Ok(args);
             }
@@ -58,7 +68,7 @@ pub fn complete<C: CommandFactory + clap::Parser>(mut args: Vec<String>) -> Resu
             let mut context = given(&place, &args);
             if let Some((name, help, flag)) = missing_flag(&place, &args) {
                 // A required --flag: asked for like a value, added at the end.
-                let value = ask_value(&name, &help, &context, || {
+                let value = ask_value(&place.path, &name, &help, &context, || {
                     if board.is_none() {
                         board = Some(sign_in(as_machine)?);
                     }
@@ -70,7 +80,7 @@ pub fn complete<C: CommandFactory + clap::Parser>(mut args: Vec<String>) -> Resu
             }
             let Some((name, help, at)) = next_missing(&place, &args) else { return Ok(args) };
             context.retain(|_| true);
-            let value = ask_value(&name, &help, &context, || {
+            let value = ask_value(&place.path, &name, &help, &context, || {
                 if board.is_none() {
                     board = Some(sign_in(as_machine)?);
                 }
@@ -93,6 +103,23 @@ pub fn complete<C: CommandFactory + clap::Parser>(mut args: Vec<String>) -> Resu
         }
     }
     bail!("couldn't put the command together")
+}
+
+/// What a command does that can't be undone, if it does.
+fn undoable(path: &[String]) -> Option<&'static str> {
+    let p: Vec<&str> = path.iter().map(String::as_str).collect();
+    Some(match p.as_slice() {
+        ["labels", "remove"] => "The label comes off every task that has it.",
+        ["topics", "remove"] => "Its tasks are kept, without a topic.",
+        ["sessions", "remove"] => "The session is forgotten.",
+        ["machines", "remove"] => "The machine loses this Project, and its sessions here stop.",
+        ["people", "remove"] => "They lose this Project.",
+        ["accounts", "remove"] => "The saved login is deleted from this machine.",
+        ["teams", "stop"] => "The team's lead and workers stop (its jobs are kept).",
+        ["teams", "stop-worker"] => "The worker's conversation ends.",
+        ["loops", "stop"] => "The loop stops for good.",
+        _ => return None,
+    })
 }
 
 /// A word as it would be typed in a shell (quoted when it needs to be).
@@ -245,9 +272,67 @@ fn project_of(board: &Board, context: &[(String, String)]) -> Result<Project> {
 }
 
 /// Ask for one value, by what kind of thing it is.
-fn ask_value(name: &str, help: &str, context: &[(String, String)], board: impl FnOnce() -> Result<Board>) -> Result<String> {
+fn ask_value(path: &[String], name: &str, help: &str, context: &[(String, String)], board: impl FnOnce() -> Result<Board>) -> Result<String> {
     let none_left = |what: &str| anyhow::anyhow!("there are no {what} to pick from");
+    let path: Vec<&str> = path.iter().map(String::as_str).collect();
+    // Names that mean different things in different commands.
+    let name = match (path.as_slice(), name) {
+        (["topics", "rename" | "remove"], "name") => "topic",
+        (["sessions", "remove" | "give-tasks"], "name") => "session",
+        (["sessions", "attach" | "send"], "name") => "hosted",
+        (["accounts", "use" | "remove" | "run"], "name") => "account",
+        (["tasks", "tick"], "item") => "item",
+        (_, n) => n,
+    };
     match name {
+        "color" => pick(
+            "Which color?",
+            omicron::board::COLORS.iter().map(|c| (c.to_string(), c.to_string(), String::new())).collect(),
+        ),
+        "every" => {
+            let items = [("10m", "every 10 minutes"), ("30m", "every 30 minutes"), ("1h", "every hour"), ("4h", "every 4 hours"), ("", "something else…")];
+            match pick("How often?", items.iter().map(|(v, l)| (v.to_string(), l.to_string(), String::new())).collect())? {
+                v if v.is_empty() => text("How often? (like 15m, 2h, 1d)", "15m"),
+                v => Ok(v),
+            }
+        }
+        "hosted" => {
+            let items: Vec<_> = omicron::host::hosted()?.into_iter().map(|n| (n.clone(), n, String::new())).collect();
+            if items.is_empty() {
+                return Err(none_left("sessions running in Omicron's host here"));
+            }
+            pick("Which session?", items)
+        }
+        "account" => {
+            let in_use = omicron::accounts::in_use()?;
+            let items: Vec<_> = omicron::accounts::saved()?
+                .into_iter()
+                .map(|a| {
+                    let hint = if in_use.as_deref() == Some(a.name.as_str()) { format!("{} · in use", a.login.email()) } else { a.login.email().to_string() };
+                    (a.name.clone(), a.name, hint)
+                })
+                .collect();
+            if items.is_empty() {
+                return Err(none_left("saved Claude accounts (log in, then `omicron accounts add <name>`)"));
+            }
+            pick("Which account?", items)
+        }
+        "item" => {
+            let b = board()?;
+            let p = project_of(&b, context)?;
+            let number: i64 = context.iter().find(|(n, _)| n == "number").and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
+            let task = b.tasks(&p)?.into_iter().find(|t| t.number == number).ok_or_else(|| anyhow::anyhow!("no task #{number}"))?;
+            let items: Vec<_> = task
+                .checklist
+                .iter()
+                .enumerate()
+                .map(|(i, c)| ((i + 1).to_string(), format!("{} {}", if c.done { "☑" } else { "☐" }, omicron::text::line(&c.text)), String::new()))
+                .collect();
+            if items.is_empty() {
+                return Err(none_left("checklist items on this task"));
+            }
+            pick("Which item?", items)
+        }
         "project" => {
             let b = board()?;
             let items: Vec<_> = b.projects()?.into_iter().map(|p| (p.name.clone(), p.name, String::new())).collect();
@@ -300,11 +385,18 @@ fn ask_value(name: &str, help: &str, context: &[(String, String)], board: impl F
             let b = board()?;
             let p = project_of(&b, context)?;
             let labels = b.labels(&p)?;
+            // Only a task can get a new label; the others act on one that's there.
+            let can_add = path == ["tasks", "label"];
             if labels.is_empty() {
+                if !can_add {
+                    return Err(none_left("labels in this Project"));
+                }
                 return text("Which label?", "a new label's name");
             }
             let mut items: Vec<_> = labels.into_iter().map(|(n, c)| (n.clone(), n, c.unwrap_or_default())).collect();
-            items.push((String::new(), "A new label…".into(), String::new()));
+            if can_add {
+                items.push((String::new(), "A new label…".into(), String::new()));
+            }
             match pick("Which label?", items)? {
                 v if v.is_empty() => text("The new label's name", "urgent"),
                 v => Ok(v),
@@ -314,8 +406,12 @@ fn ask_value(name: &str, help: &str, context: &[(String, String)], board: impl F
             let b = board()?;
             let p = project_of(&b, context)?;
             let mut items: Vec<_> = b.topics(&p)?.into_iter().map(|n| (n.clone(), n, String::new())).collect();
-            items.push((String::new(), "A new topic…".into(), String::new()));
-            items.push(("none".into(), "No topic".into(), String::new()));
+            if path == ["tasks", "topic"] {
+                items.push((String::new(), "A new topic…".into(), String::new()));
+                items.push(("none".into(), "No topic".into(), String::new()));
+            } else if items.is_empty() {
+                return Err(none_left("topics in this Project"));
+            }
             match pick("Which topic?", items)? {
                 v if v.is_empty() => text("The new topic's name", "Kitchen"),
                 v => Ok(v),
@@ -424,5 +520,28 @@ mod tests {
         let a = args("omicron tasks start --project Home");
         assert!(missing_flag(&locate(&top, &a), &a).is_none());
         assert!(missing_flag(&locate(&top, &args("omicron tasks add")), &args("omicron tasks add")).is_none());
+    }
+}
+
+#[cfg(test)]
+mod survey {
+    #[test]
+    #[ignore]
+    fn list_positionals() {
+        use clap::CommandFactory;
+        fn walk(c: &clap::Command, path: String) {
+            for a in c.get_positionals() {
+                if a.is_required_set() {
+                    println!("{path} <{}>", a.get_id());
+                }
+            }
+            for a in c.get_arguments().filter(|a| a.is_required_set() && !a.is_positional()) {
+                println!("{path} --{}", a.get_id());
+            }
+            for s in c.get_subcommands() {
+                walk(s, format!("{path} {}", s.get_name()));
+            }
+        }
+        walk(&crate::Cli::command(), "omicron".into());
     }
 }

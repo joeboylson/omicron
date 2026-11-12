@@ -167,6 +167,23 @@ fn missing_parts_are_asked_for_in_a_terminal() {
     let (fine, screen) = t.finish();
     assert!(!fine, "{screen}");
 
+    // Removing something: picked from the real list, then confirmed first.
+    ok(&me, &["tasks", "label", &project, "1", "urgent"]);
+    let mut t = Term::start(&me, &["labels", "remove", &project]);
+    t.wait_for("Which label? urgent");
+    t.wait_for("can't be undone. Go ahead?");
+    t.keys(ENTER); // No, the safe default
+    let (fine, screen) = t.finish();
+    assert!(!fine && screen.contains("Nothing changed."), "{screen}");
+    assert!(ok(&me, &["labels", "list", &project]).contains("urgent"));
+    let mut t = Term::start(&me, &["labels", "remove", &project]);
+    t.wait_for("Go ahead?");
+    t.keys("y");
+    t.keys(ENTER);
+    let (fine, screen) = t.finish();
+    assert!(fine, "{screen}");
+    assert!(!ok(&me, &["labels", "list", &project]).contains("urgent"));
+
     // Without a terminal, nothing is asked: the usual error.
     let o = omicron(&me, &["tasks", "add"]);
     assert!(!o.status.success());
