@@ -16,6 +16,18 @@ test.beforeAll(async () => {
 test.afterAll(() => omicron?.stop());
 
 /** A new person, with a browser page signed in as them. */
+/** Escape, once whatever is opening has finished opening (a dialog pressed
+ *  mid-animation doesn't close). */
+async function escape(page) {
+  await settled(page);
+  await page.keyboard.press("Escape");
+}
+
+/** Nothing on the page is still opening or closing. */
+async function settled(page) {
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
+}
+
 async function newPerson(page, request, name = "Robin Example") {
   const login = `${unique("p")}@example.com`;
   const session = await sessionFor(request, omicron, login, name);
@@ -86,7 +98,7 @@ test("a task can be filled in and finished", async ({ page, request }) => {
   await expect(dialog.getByRole("list", { name: "Checklist" }).getByRole("listitem")).toHaveCount(2);
 
   // The card shows it all.
-  await page.keyboard.press("Escape");
+  await escape(page);
   const card = column(page, "To do").getByRole("button", { name: "#1 Fix the back gate" });
   await expect(card).toContainText("outside");
   await expect(card).toContainText("1/2");
@@ -96,7 +108,7 @@ test("a task can be filled in and finished", async ({ page, request }) => {
   await card.click();
   await dialog.getByRole("button", { name: "Mark done" }).click();
   await expect(dialog.getByRole("button", { name: "Mark done" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(column(page, "Done").getByRole("button", { name: "#1 Fix the back gate" })).toBeVisible();
   await expect(column(page, "To do").getByRole("button", { name: /^#\d+ / })).toHaveCount(0);
 
@@ -163,7 +175,7 @@ test("a Claude session marks a task for review, and a person takes it off", asyn
   await expect(page.getByTestId("needs-review")).toBeVisible();
   await page.getByRole("button", { name: "Reviewed" }).click();
   await expect(page.getByTestId("needs-review")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(card).not.toContainText("Needs review");
 });
 
@@ -178,7 +190,7 @@ test("statuses and members are set in Project settings", async ({ page, request 
   const settings = async (work) => {
     await page.getByRole("button", { name: "Project settings" }).click();
     await work(page.getByRole("dialog"));
-    await page.keyboard.press("Escape");
+    await escape(page);
   };
   const addStatus = async (dialog, name) => {
     await dialog.getByLabel("New status").fill(name);
@@ -206,7 +218,7 @@ test("statuses and members are set in Project settings", async ({ page, request 
   // Add a member, who can then be given tasks.
   await pick(page, "Add a member", friend);
   await expect(dialog.getByRole("region", { name: "Members" })).toContainText(friend);
-  await page.keyboard.press("Escape");
+  await escape(page);
   await addTaskIn(page, "To do", "Plant bulbs");
   await page.getByRole("button", { name: "#1 Plant bulbs" }).click();
   await pick(page, "Given to", friend);
@@ -240,7 +252,7 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
     const notes = page.getByRole("list", { name: "Handoff notes" });
     await expect(notes).toContainText("#1waiting");
     await expect(notes).toContainText("Parser half done. Next: error messages.");
-    await page.keyboard.press("Escape");
+    await escape(page);
 
     // It's closed: the page shows that without reloading.
     omicron.hook(win.pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
@@ -288,7 +300,7 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     await page.getByRole("button", { name: "Send" }).click();
     await expect(comments.getByRole("listitem")).toHaveCount(2);
     await expect(comments.getByRole("listitem").last()).toContainText("Thanks, looks good.");
-    await page.keyboard.press("Escape");
+    await escape(page);
     await expect(card).toContainText("2");
     await expect(card).toContainText("parser");
     await expect(card).not.toContainText("waiting");
@@ -365,7 +377,7 @@ test("a Project's chat: turned on, a session named in it answers, live", async (
     await expect(chatSwitch).toHaveAttribute("aria-checked", "false");
     await chatSwitch.click();
     await expect(chatSwitch).toHaveAttribute("aria-checked", "true");
-    await page.keyboard.press("Escape");
+    await escape(page);
     await page.getByRole("button", { name: "Chat" }).click();
     const sheet = page.getByRole("dialog");
     await sheet.getByLabel("New message").fill("@parser how far did you get?");
@@ -382,10 +394,10 @@ test("a Project's chat: turned on, a session named in it answers, live", async (
     await expect(messages.getByRole("listitem").last()).toContainText("Half way: parser done, errors next.");
 
     // Turned off from settings: the chat and its button go away.
-    await page.keyboard.press("Escape");
+    await escape(page);
     await page.getByRole("button", { name: "Project settings" }).click();
     await page.getByRole("switch", { name: "Chat for this Project" }).click();
-    await page.keyboard.press("Escape");
+    await escape(page);
     await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
   } finally {
     win.kill();
@@ -398,7 +410,7 @@ test("opening the chat doesn't stop the Project page's live updates", async ({ p
   await rest(request, me.session, "PATCH", `/rest/v1/projects?id=eq.${projectId}`, { chat_enabled: true });
   await page.getByRole("button", { name: "Chat", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("No messages yet.");
-  await page.keyboard.press("Escape");
+  await escape(page);
 
   const [todo] = await rest(request, me.session, "GET", `/rest/v1/statuses?project_id=eq.${projectId}&name=eq.To%20do&select=id`);
   await rest(request, me.session, "POST", "/rest/v1/tasks", { project_id: projectId, status_id: todo.id, title: "Added while the page is open" });
@@ -423,7 +435,7 @@ test("topics group the board into rows, as well as by status", async ({ page, re
     await page.getByLabel("New topic").press("Enter");
     await expect(page.getByRole("list", { name: "Topics" }).getByLabel(`Topic name: ${topic}`)).toHaveValue(topic);
   }
-  await page.keyboard.press("Escape");
+  await escape(page);
 
   // A row per topic, in order, then the tasks without one.
   const lanes = page.locator("main > div > section");
@@ -441,7 +453,7 @@ test("topics group the board into rows, as well as by status", async ({ page, re
   // Moved to another topic from the task.
   await page.getByRole("button", { name: /Water the plants/ }).click();
   await pick(page, "Topic", "Claire's to-do");
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(page.getByRole("region", { name: "Claire's to-do", exact: true })).toContainText("Water the plants");
   // Nothing left without a topic: that row goes.
   await expect(page.getByRole("region", { name: "No topic", exact: true })).toHaveCount(0);
@@ -503,7 +515,7 @@ test("comments hold images: picked, dropped, or posted by a session, and open fu
   await comments.getByRole("button", { name: "Open gate.png" }).click();
   const viewer = page.getByRole("dialog", { name: "gate.png" });
   await expect(viewer.getByRole("img", { name: "gate.png" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(viewer).toHaveCount(0);
   // Focus goes back to the image that was opened.
   await expect(comments.getByRole("button", { name: "Open gate.png" })).toBeFocused();
@@ -551,7 +563,7 @@ test("a session taken out with its machine says why, and its tasks go to someone
   await page.getByRole("button", { name: "#1 Write the parser" }).click();
   await expect(page.getByTestId("pickup")).toHaveText("parser stopped: its machine was taken out of the Project. Give the task to someone else.");
   await expect(page.getByRole("button", { name: "Dispatch" })).toBeDisabled();
-  await page.keyboard.press("Escape");
+  await escape(page);
 
   // From the session's sheet, both open tasks go to a person at once.
   await sessions.getByRole("button", { name: /parser/ }).click();
@@ -560,7 +572,7 @@ test("a session taken out with its machine says why, and its tasks go to someone
   await page.getByLabel("Give parser's open tasks to").click();
   await page.getByRole("option", { name: "Robin Example" }).click();
   await expect(page.getByRole("list", { name: "Open tasks" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(page.getByRole("button", { name: "#1 Write the parser" })).toContainText("RE");
   await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText("RE");
 });
@@ -590,7 +602,7 @@ test("a session's loop shows on the page, live, and can be stopped there", async
     // Stopped from the page: gone from the sheet and the strip, and the command agrees.
     await page.getByRole("button", { name: "Stop loop" }).click();
     await expect(loop).toHaveCount(0);
-    await page.keyboard.press("Escape");
+    await escape(page);
     await expect(sessions.getByLabel("looping")).toHaveCount(0);
     expect(omicron.cliIn(win.pid, "loops", "list", "--project", name, "--as-machine")).toContain("No loops are running.");
   } finally {
@@ -646,14 +658,20 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
   await page.getByRole("button", { name: "Cancel" }).click();
   const titles = (status) => column(page, status).getByRole("button", { name: /^#\d+ / }).allTextContents();
   const card = (t) => page.getByRole("button", { name: new RegExp(`^#\\d+ ${t}$`) });
+  // What a drag says aloud, as a screen reader hears it: each step waits for it.
+  const said = page.locator('[id^="DndLiveRegion"]');
   async function drag(from, to, dy = -10) {
     const a = await from.boundingBox();
-    const b = await to.boundingBox();
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await page.mouse.down();
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
+    await expect(said).toContainText(/Picked up|was moved over/);
+    const b = await to.boundingBox();
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + dy, { steps: 15 });
+    // Let the board see where it's over before letting go.
+    await page.waitForTimeout(150);
     await page.mouse.up();
+    await expect(said).toContainText("dropped");
   }
 
   // Within a status: Charlie to the top.
@@ -666,8 +684,15 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
   // With the keyboard: Space picks Bravo up, the up arrow moves it, Space drops it.
   await card("Bravo").focus();
   await page.keyboard.press("Space");
+  // Picked up, and over its own place...
+  await expect(said).toHaveText(/item (\S+) was moved over droppable area \1\./);
+  // ...then the up arrow moves it over Charlie's.
   await page.keyboard.press("ArrowUp");
+  await expect(said).toHaveText(/item (\S+) was moved over droppable area (?!\1\.)/);
+  const moved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
   await page.keyboard.press("Space");
+  await expect(said).toContainText("dropped");
+  await moved;
   await expect.poll(async () => (await titles("To do")).map((t) => t.replace(/#\d+$/, "").trim())).toEqual(["Bravo", "Charlie"]);
 
   // Saved: the same after reloading.
@@ -693,13 +718,13 @@ test("labels are renamed and removed in Project settings", async ({ page, reques
   await box.fill("groceries");
   await box.press("Enter");
   await expect(page.getByLabel("Label name: groceries")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(card).toContainText("groceries");
 
   await page.getByRole("button", { name: "Project settings" }).click();
   await page.getByRole("button", { name: "Remove label groceries" }).click();
   await expect(page.getByRole("list", { name: "Labels" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(card).not.toContainText("groceries");
 });
 
@@ -712,7 +737,7 @@ test("a new Project starts in a modal, and Cancel or Escape leaves nothing behin
   // The name box has focus, and Start waits for a name.
   await expect(dialog.getByLabel("New Project name")).toBeFocused();
   await expect(dialog.getByRole("button", { name: "Start Project" })).toBeDisabled();
-  await page.keyboard.press("Escape");
+  await escape(page);
   await expect(dialog).toHaveCount(0);
 
   const name = unique("Kitchen");
@@ -731,7 +756,10 @@ test("appearance: Light, Dark or the system, saved with you and on every device"
   await expect(choice("Match the system")).toHaveAttribute("aria-checked", "true");
   const theme = (p) => p.evaluate(() => document.documentElement.dataset.theme ?? "system");
 
+  // Saved with the person before anything else happens.
+  const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/people") && r.request().method() === "PATCH");
   await choice("Dark").click();
+  await saved;
   await expect(choice("Dark")).toHaveAttribute("aria-checked", "true");
   expect(await theme(page)).toBe("dark");
   // The page's colors follow.
@@ -767,7 +795,8 @@ test("API keys: make one for a new machine, see it, switch it off, remove it", a
   const box = unique("box");
   await page.getByRole("button", { name: "New key" }).first().click();
   await page.getByLabel("Machine name").fill(box);
-  await page.getByLabel(name).check();
+  // Their only Project is picked already.
+  await expect(page.getByLabel(name)).toBeChecked();
   await page.getByRole("button", { name: "Make key" }).click();
   const shown = page.getByTestId("new-key");
   await expect(shown).toContainText("omicron machines use-key omk_");
@@ -862,7 +891,7 @@ test("search and filters narrow the board", async ({ page, request }) => {
   // Mine: given to me.
   await cards().first().click();
   await pick(page, "Given to", "Robin Example");
-  await page.keyboard.press("Escape");
+  await escape(page);
   await page.getByRole("button", { name: "Mine" }).click();
   await expect(cards()).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
@@ -882,17 +911,20 @@ test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) =>
   const menu = page.getByRole("dialog", { name: "Commands" });
   await expect(menu).toBeVisible();
   await page.getByRole("combobox", { name: "Command" }).fill(name);
+  // Projects load into the menu a moment after it opens.
+  await expect(menu.getByRole("option", { name: new RegExp(name) })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
   // c adds a task; / searches (once the board is there).
   await expect(column(page, "To do")).toBeVisible();
+  await settled(page);
   await page.keyboard.press("c");
   await expect(page.getByLabel("New task in To do")).toBeFocused();
   await page.keyboard.type("Plant tulips");
   await page.keyboard.press("Enter");
   await expect(column(page, "To do")).toContainText("Plant tulips");
-  await page.keyboard.press("Escape");
+  await escape(page);
   await page.locator("body").click({ position: { x: 5, y: 300 } });
   await page.keyboard.press("/");
   await expect(page.getByLabel("Search tasks")).toBeFocused();
@@ -900,13 +932,16 @@ test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) =>
   // Open a task from the menu by its number; switch the theme from it.
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Command" }).fill("#1");
+  await expect(page.getByRole("option", { name: /Plant tulips/ })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toContainText("Plant tulips");
-  await page.keyboard.press("Escape");
+  await escape(page);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Command" }).fill("dark");
+  await expect(page.getByRole("option", { name: /dark/i })).toBeVisible();
   await page.keyboard.press("Enter");
-  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
 });
 
 test("a change in a task shows at once, before it's saved", async ({ page, request }) => {
@@ -923,7 +958,7 @@ test("a change in a task shows at once, before it's saved", async ({ page, reque
   });
   await page.getByRole("button", { name: /#1 Fix the gate/ }).click();
   await pick(page, "Status", "Done");
-  await page.keyboard.press("Escape");
+  await escape(page);
   // Already in Done, while the save is still waiting.
   await expect(column(page, "Done")).toContainText("Fix the gate", { timeout: 1000 });
   release();

@@ -8,7 +8,7 @@ const crypto = require("node:crypto");
 
 function need(name) {
   const v = process.env[name];
-  if (!v) throw new Error(`${name} isn't set. Run the browser tests with dev/e2e.sh.`);
+  if (!v) throw new Error(`${name} isn't set. Run the browser tests with scripts/e2e.sh.`);
   return v;
 }
 

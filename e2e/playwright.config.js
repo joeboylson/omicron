@@ -12,6 +12,6 @@ module.exports = defineConfig({
     { name: "app", testIgnore: /a11y\.spec/ },
     { name: "a11y", testMatch: /a11y\.spec/, dependencies: ["app"] },
   ],
-  // Results stay on the VM's disk, not in the mounted folder.
+  // Results stay out of the repo.
   outputDir: `${process.env.HOME}/omicron-e2e-results`,
 });

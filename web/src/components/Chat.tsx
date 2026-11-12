@@ -49,7 +49,11 @@ function Messages({ project }: { project: ProjectData }) {
   }, [db, act, project.id]);
   useEffect(reload, [reload]);
   useChanges(db, project.id, reload);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [messages]);
+  // In braces: newer browsers return a promise from scrollIntoView, and an
+  // effect must return nothing or a clean-up function.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -68,9 +68,12 @@ Apply a new migration to it with `scripts/migrate.sh` and the database
 connection string, or through `docker exec -i omicron-supabase-db psql -U
 postgres` (see `dev/supabase/migrate.sh` for how they're recorded).
 
-The browser tests (`e2e/`, Playwright) and the made-up seed data used the old
-test Supabase and `omicron-dev` container, which are stopped for good; they
-need a new home before they run again.
+The browser tests (`e2e/`, Playwright 1.62, using the Chromium already in
+`~/Library/Caches/ms-playwright`) run the same way: `bash scripts/e2e.sh`
+(any Playwright arguments, like `-g "drag"` or `--project a11y`), one test
+file at a time, cleaning up after. Each file starts its own `omicron serve`.
+The made-up seed data (and `scripts/shots.sh`, which uses it) still need a
+new home: they used the old `omicron-dev` container, stopped for good.
 
 The real Omicron runs on this Mac (atlas): `bash dev/mac.sh` builds,
 installs `~/.local/bin/omicron`, and restarts the web page (127.0.0.1:9010,
@@ -94,12 +97,15 @@ the dev page.
 
 Repeated steps, in `scripts/` (run on the Mac):
 - `scripts/shots.sh [folder]`: screenshots of the dev web page (seeded
-  data), desktop and phone, copied to a folder here.
+  data), desktop and phone, copied to a folder here. Needs the retired
+  `omicron-dev` container; not usable until the seed data has a new home.
 - `scripts/finish-task.sh <n> "<report>" [images...]`: finish an Omicron
   task like a session does: tick its checklist, post the report with the
   last commit's hash (and screenshots) marked for review, move it to Review.
 - `scripts/test.sh [cargo test args]`: the Rust tests on this Mac against
   the one Supabase, cleaning up after (see "Running tests").
+- `scripts/e2e.sh [playwright args]`: the browser tests, the same way.
+  Both share `scripts/lib/test-run.sh` (settings and clean-up).
 - `scripts/backup.sh`: copy the real Supabase (database and uploaded files)
   to `~/.omicron/backups`, keeping 21 days; `--install` runs it nightly.
 - `scripts/restore.sh <date|latest> --scratch|--real`: put a copy back, into
