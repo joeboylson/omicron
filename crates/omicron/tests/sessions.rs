@@ -556,7 +556,7 @@ fn a_new_session_starts_claude_in_the_host_and_records_it() {
     // The same name again is refused while it runs; it ends cleanly.
     let again = new("parser");
     assert!(!again.status.success() && String::from_utf8_lossy(&again.stderr).contains("already running"));
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
 }
 
 /// A machine with a short settings folder (the host's socket path has a
@@ -655,7 +655,7 @@ fn dispatch_types_the_task_in_or_reopens_the_session_and_fails_when_asleep() {
 
     // The session ends. Dispatch reopens it in the host, resuming the same
     // conversation, with the task as its first message.
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
     std::fs::remove_file(mac.home.join("claude-args")).unwrap();
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
@@ -676,7 +676,7 @@ fn dispatch_types_the_task_in_or_reopens_the_session_and_fails_when_asleep() {
     // Asleep: fails at once, and nothing is asked for.
     d.kill().unwrap();
     d.wait().unwrap();
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     let started = std::time::Instant::now();
     let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(!o.status.success());
@@ -797,7 +797,7 @@ fn a_session_whose_conversation_was_deleted_is_gone_and_isnt_reopened() {
         .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     wait_for("claude started", || mac.home.join("claude-args").exists());
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
     ok(&pat, None, &["tasks", "add", &project, "Fix the parser"]);
     ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
@@ -805,7 +805,7 @@ fn a_session_whose_conversation_was_deleted_is_gone_and_isnt_reopened() {
     // Its transcript is there: Dispatch reopens it.
     let mut d = daemon(&mac, &path);
     assert!(ok(&pat, None, &["tasks", "dispatch", &project, "1"]).starts_with("Reopened parser"));
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
 
     // The transcript is deleted: Dispatch says so and the session is gone.
@@ -902,7 +902,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
 
     // The session isn't running (it ended, or the machine restarted): the
     // next run reopens it in the host, resuming it, with the prompt first.
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
     std::fs::remove_file(mac.home.join("claude-args")).unwrap();
     ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--until", "+8h", "--session", "parser", "--project", &project]);
@@ -917,7 +917,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     wait_for("the run recorded", || ok(&pat, None, &["loops", "list", "--project", &project]).contains("(1 so far)"));
     assert_eq!(ok(&pat, None, &["loops", "stop", "--session", "parser", "--project", &project]).trim(), "Stopped parser's loop (it ran 1 time).");
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}"]);
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     d.kill().unwrap();
 }
 

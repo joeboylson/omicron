@@ -66,6 +66,18 @@ fn a_hosted_session_keeps_running_and_can_be_joined_typed_into_and_resized() {
     let mut seen_b = String::new();
     read_until(&mut b, &mut seen_b, "hello there");
 
+    // Two senders at once: each message arrives whole, on its own line
+    // (one types at a time, and Enter comes on its own after the text).
+    let home2 = home.clone();
+    let other = std::thread::spawn(move || omicron(&home2, &["sessions", "send", "t1", &"B".repeat(300)]));
+    let (ok, out) = omicron(&home, &["sessions", "send", "t1", &"A".repeat(300)]);
+    assert!(ok, "{out}");
+    assert!(other.join().unwrap().0);
+    read_until(&mut a, &mut seen, &"A".repeat(300));
+    read_until(&mut a, &mut seen, &"B".repeat(300));
+    let lines: Vec<&str> = seen.split(['\r', '\n']).filter(|l| l.contains('A') || l.contains('B')).collect();
+    assert!(lines.iter().all(|l| !(l.contains('A') && l.contains('B'))), "the messages got mixed: {lines:?}");
+
     // A second session with the same name is refused while it runs.
     assert!(omicron(&home, &["sessions", "host", "t1", "--", "true"]).1.contains("already running"));
 

@@ -32,9 +32,7 @@ pub fn tell(team: &str, worker: &str, text: &str) -> Result<bool> {
     }
     // One line: a new line would send it early.
     let line = omicron::text::line(&text.replace('\r', " "));
-    omicron::host::send(&name, &line)?;
-    std::thread::sleep(Duration::from_millis(300));
-    omicron::host::send(&name, "\r")?;
+    omicron::host::say(&name, &line)?;
     Ok(true)
 }
 
@@ -167,7 +165,7 @@ fn commands_text(lead: bool) -> String {
         t.push_str(
             "As the lead: `omicron teams jobs <team>` lists jobs; `omicron teams start-worker <role> --job <n>` starts a worker on a job \
              (or tells you to message the one already on it); for a big step, split it: `omicron teams start-worker <role> --job <n> --part \"<what this part covers>\"` \
-             once per part, and the copies work at the same time, each in its own checkout, merged into the job's branch as each is handed off; `omicron sessions send <team>.<worker> \"<message>\\r\"` messages a worker; \
+             once per part, and the copies work at the same time, each in its own checkout, merged into the job's branch as each is handed off; `omicron sessions send <team>.<worker> \"<message>\"` messages a worker; \
              `omicron teams finish <n>` merges a finished job; `omicron teams stop-worker <name>` stops one. ",
         );
     }
@@ -349,7 +347,7 @@ pub fn start_worker(role: &str, number: i64, part: Option<&str>) -> Result<Strin
     if part.is_none() {
         if let Some((name, ..)) = workers.iter().find(|(_, r, s, j)| r == role && live(s) && j.as_deref() == Some(job.id.as_str())) {
             if omicron::host::is_running(&host_name(&team.name, name)) {
-                bail!("{name} is already on job #{number}: message it instead (omicron sessions send {}.{name} \"...\\r\")", team.name);
+                bail!("{name} is already on job #{number}: message it instead (omicron sessions send {}.{name} \"...\")", team.name);
             }
         }
     }
@@ -605,9 +603,7 @@ pub fn finish(number: i64) -> Result<String> {
 fn stop(team: &TeamRow, worker: &str) -> Result<()> {
     let host = host_name(&team.name, worker);
     if omicron::host::is_running(&host) {
-        omicron::host::send(&host, "/exit")?;
-        std::thread::sleep(Duration::from_millis(300));
-        omicron::host::send(&host, "\r")?;
+        omicron::host::say(&host, "/exit")?;
     }
     Ok(())
 }

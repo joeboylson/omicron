@@ -267,6 +267,35 @@ pub fn send(name: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
+/// Type a message into a hosted session and press Enter to send it.
+///
+/// Claude Code takes text that arrives all at once as pasted, and an Enter
+/// inside a paste becomes a new line instead of sending. So the text goes
+/// first and Enter a moment later, on its own. Only one message is typed
+/// into a session at a time (a lock per session), so two senders can't mix
+/// their keys together.
+pub fn say(name: &str, text: &str) -> Result<()> {
+    use std::os::fd::AsRawFd;
+    let text = text.trim_end_matches(['\r', '\n']);
+    // Running at all? (Says so plainly if not.)
+    drop(connect(name)?);
+    let lock_path = run_dir()?.join(format!("{name}.typing"));
+    let lock = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&lock_path)?;
+    // Wait for any other sender to finish (released when `lock` is dropped).
+    if unsafe { nix::libc::flock(lock.as_raw_fd(), nix::libc::LOCK_EX) } != 0 {
+        bail!("couldn't wait for {name}'s keyboard");
+    }
+    if !text.is_empty() {
+        send(name, text)?;
+        std::thread::sleep(std::time::Duration::from_millis(300 + (text.len() as u64 / 50).min(1200)));
+    }
+    send(name, "\r")?;
+    // Let it take the message before the next sender types.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    drop(lock);
+    Ok(())
+}
+
 /// Jump into a hosted session in this terminal until Ctrl-\ (or the
 /// session ends). Returns true if the session ended.
 pub fn attach(name: &str) -> Result<bool> {

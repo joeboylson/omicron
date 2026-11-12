@@ -73,8 +73,15 @@ pub enum Sessions {
     },
     /// Jump into a hosted session here. Ctrl-\ detaches.
     Attach { name: String },
-    /// Type text into a hosted session (add \r to press Enter)
-    Send { name: String, text: String },
+    /// Type a message into a hosted session and send it (Enter is pressed
+    /// for you, a moment after the text, so it isn't taken as pasted)
+    Send {
+        name: String,
+        text: String,
+        /// Only type it, don't press Enter (\r and \n in the text are keys)
+        #[arg(long)]
+        no_enter: bool,
+    },
     /// The hosted sessions running on this machine
     Hosted,
     /// The host process itself (started by `host`)
@@ -176,9 +183,14 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
                 eprintln!("{name} ended.");
             }
         }
-        Sessions::Send { name, text } => {
+        Sessions::Send { name, text, no_enter } => {
             let text = text.replace("\\r", "\r").replace("\\n", "\n");
-            omicron::host::send(&name, &text)?;
+            if no_enter {
+                omicron::host::send(&name, &text)?;
+            } else {
+                // Typed, then Enter on its own, so it sends.
+                omicron::host::say(&name, &text)?;
+            }
         }
         Sessions::Hosted => {
             let names = omicron::host::hosted()?;

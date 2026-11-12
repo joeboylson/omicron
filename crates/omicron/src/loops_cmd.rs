@@ -336,10 +336,7 @@ impl Runner {
         }
         // Mark it busy first, so the next tick can't type it in twice.
         omicron::windows::set_busy(&l.session_id, true)?;
-        omicron::host::send(&name, &l.prompt)?;
-        // Enter separately, so it isn't taken as pasted text.
-        std::thread::sleep(Duration::from_millis(300));
-        omicron::host::send(&name, "\r")?;
+        omicron::host::say(&name, &l.prompt)?;
         self.recorded(board.loop_ran(&l.id, &l.next_run_at)?, &l.id);
         Ok(())
     }

@@ -166,9 +166,7 @@ fn hand_over(board: &Board, machine: &str, d: &Dispatch) -> Result<String> {
     // Running in the host: type it in, then press Enter separately, so it
     // isn't taken as pasted text with a new line in it.
     if omicron::host::is_running(name) {
-        omicron::host::send(name, &text)?;
-        std::thread::sleep(Duration::from_millis(300));
-        omicron::host::send(name, "\r")?;
+        omicron::host::say(name, &text)?;
         return Ok(format!("Typed the task into {name} on {machine}."));
     }
 

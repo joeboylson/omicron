@@ -354,7 +354,7 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
   } finally {
     win.kill();
     try {
-      omicron.cli("sessions", "send", "parser", "\u0004");
+      omicron.cli("sessions", "send", "parser", "\u0004", "--no-enter");
     } catch {}
     daemon?.stop();
   }
