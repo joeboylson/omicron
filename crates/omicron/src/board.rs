@@ -891,7 +891,12 @@ impl Board {
         let mut paths = Vec::new();
         for file in images {
             let kind = image_type(file)?;
-            let size = std::fs::metadata(file).with_context(|| format!("can't read {}", file.display()))?.len();
+            let size = match std::fs::metadata(file) {
+                Ok(m) => m.len(),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => bail!("can't read {}: there's no such file", file.display()),
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => bail!("can't read {}: you don't have permission", file.display()),
+                Err(_) => bail!("can't read {}", file.display()),
+            };
             if size > IMAGE_LIMIT {
                 bail!("{} is {} MB; images can be at most 10 MB", file.display(), size / (1024 * 1024));
             }

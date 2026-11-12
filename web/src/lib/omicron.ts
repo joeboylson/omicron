@@ -31,7 +31,36 @@ export async function signIn(): Promise<{ db: SupabaseClient; me: Me }> {
 }
 
 /** Throw Supabase's error, if there is one, and return the data. */
-export function must<T>(r: { data: T; error: { message: string } | null }): T {
-  if (r.error) throw new Error(r.error.message);
+export function must<T>(r: { data: T; error: { message: string; code?: string } | null }): T {
+  if (r.error) throw new Error(plainError(r.error));
   return r.data;
+}
+
+/** What the database said, in words a person can act on (as the CLI says it). */
+export function plainError(e: { message: string; code?: string }): string {
+  const m = e.message ?? "";
+  switch (e.code) {
+    case "22007":
+    case "22008":
+      return "That date isn't on the calendar.";
+    case "23505":
+      return "There's already one with that name.";
+    case "23503":
+      return "It refers to something that isn't there any more.";
+    case "23514": {
+      const rules: [string, string][] = [
+        ["_body_or_images", "A comment needs some text or an image."],
+        ["_display_name_check", "The name needs some text."],
+        ["_title_check", "The title needs some text."],
+        ["_name_check", "The name needs some text."],
+        ["_body_check", "It needs some text."],
+        ["_text_check", "It needs some text."],
+        ["_prompt_check", "The prompt needs some text."],
+      ];
+      const hit = rules.find(([r]) => m.includes(r));
+      if (hit) return hit[1];
+    }
+  }
+  if (m && !m.includes("violates")) return m.charAt(0).toUpperCase() + m.slice(1);
+  return "That didn't save. Try again.";
 }

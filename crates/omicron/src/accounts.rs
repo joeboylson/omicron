@@ -291,7 +291,7 @@ pub fn switch(name: &str) -> Result<Saved> {
 
 pub fn remove(name: &str) -> Result<()> {
     let path = account_path(name)?;
-    std::fs::remove_file(&path).with_context(|| format!("there's no saved account called {name}"))
+    std::fs::remove_file(&path).ok().with_context(|| format!("there's no saved account called {name}"))
 }
 
 // ---- usage ------------------------------------------------------------------

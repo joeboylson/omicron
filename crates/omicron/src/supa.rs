@@ -144,7 +144,19 @@ impl Supabase {
                 let text = r.into_string().unwrap_or_default();
                 Err(anyhow!(SupabaseError { code, message: text }))
             }
-            Err(e) => Err(anyhow!("couldn't reach Supabase at {}: {e}", self.url)),
+            Err(e) => {
+                // Why, in words, without the request's address and error codes.
+                let why = match &e {
+                    ureq::Error::Transport(t) => match t.kind() {
+                        ureq::ErrorKind::ConnectionFailed => "nothing answered (is it running, and is this the right address?)",
+                        ureq::ErrorKind::Dns => "that name couldn't be found",
+                        ureq::ErrorKind::Io => "the connection broke off",
+                        _ => "the request didn't get through",
+                    },
+                    _ => "the request didn't get through",
+                };
+                Err(anyhow!("couldn't reach Supabase at {}: {why}", self.url))
+            }
         }
     }
 
@@ -168,7 +180,19 @@ impl Supabase {
         match res {
             Ok(_) => Ok(()),
             Err(ureq::Error::Status(code, r)) => Err(anyhow!(SupabaseError { code, message: r.into_string().unwrap_or_default() })),
-            Err(e) => Err(anyhow!("couldn't reach Supabase at {}: {e}", self.url)),
+            Err(e) => {
+                // Why, in words, without the request's address and error codes.
+                let why = match &e {
+                    ureq::Error::Transport(t) => match t.kind() {
+                        ureq::ErrorKind::ConnectionFailed => "nothing answered (is it running, and is this the right address?)",
+                        ureq::ErrorKind::Dns => "that name couldn't be found",
+                        ureq::ErrorKind::Io => "the connection broke off",
+                        _ => "the request didn't get through",
+                    },
+                    _ => "the request didn't get through",
+                };
+                Err(anyhow!("couldn't reach Supabase at {}: {why}", self.url))
+            }
         }
     }
 
@@ -185,7 +209,19 @@ impl Supabase {
                 Ok(bytes)
             }
             Err(ureq::Error::Status(code, r)) => Err(anyhow!(SupabaseError { code, message: r.into_string().unwrap_or_default() })),
-            Err(e) => Err(anyhow!("couldn't reach Supabase at {}: {e}", self.url)),
+            Err(e) => {
+                // Why, in words, without the request's address and error codes.
+                let why = match &e {
+                    ureq::Error::Transport(t) => match t.kind() {
+                        ureq::ErrorKind::ConnectionFailed => "nothing answered (is it running, and is this the right address?)",
+                        ureq::ErrorKind::Dns => "that name couldn't be found",
+                        ureq::ErrorKind::Io => "the connection broke off",
+                        _ => "the request didn't get through",
+                    },
+                    _ => "the request didn't get through",
+                };
+                Err(anyhow!("couldn't reach Supabase at {}: {why}", self.url))
+            }
         }
     }
 
@@ -335,7 +371,45 @@ pub struct SupabaseError {
 
 impl fmt::Display for SupabaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Supabase said {}: {}", self.code, self.message)
+        write!(f, "{}", plain_error(self.code, &self.message))
+    }
+}
+
+/// What the database said, in words a person can act on. Its own messages
+/// (from Omicron's rules) are already written that way; the few raw ones
+/// that reach people are put into words here.
+pub fn plain_error(status: u16, body: &str) -> String {
+    let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    let code = v["code"].as_str().unwrap_or("");
+    let message = v["message"].as_str().or_else(|| v["msg"].as_str()).or_else(|| v["error_description"].as_str()).unwrap_or("").trim();
+    match code {
+        "22007" | "22008" => return "that date isn't on the calendar (dates look like 2026-11-30)".into(),
+        "22P02" => return "one of the values isn't the right kind (a number or an id where something else was given)".into(),
+        "23505" => return "there's already one with that name".into(),
+        "23503" => return "it refers to something that isn't there (any more)".into(),
+        "23514" => {
+            let rules = [
+                ("_body_or_images", "a comment needs some text or an image"),
+                ("_display_name_check", "the name needs some text (not just spaces)"),
+                ("_title_check", "the title needs some text (not just spaces)"),
+                ("_name_check", "the name needs some text (not just spaces)"),
+                ("_body_check", "the text needs some text (not just spaces)"),
+                ("_text_check", "the text needs some text (not just spaces)"),
+                ("_prompt_check", "the prompt needs some text (not just spaces)"),
+                ("_folder_check", "the folder needs a name"),
+            ];
+            if let Some((_, words)) = rules.iter().find(|(r, _)| message.contains(r)) {
+                return words.to_string();
+            }
+        }
+        _ => {}
+    }
+    match (status, message.is_empty()) {
+        (_, false) if !message.contains("violates") => message.to_string(),
+        (401, _) => "the login was refused (check the keys in `omicron setup`, or the machine's key)".into(),
+        (403, _) => "that's not allowed for you".into(),
+        (404, _) => "not found".into(),
+        _ => format!("the database refused it ({status}{}{})", if code.is_empty() { "" } else { ", " }, code),
     }
 }
 
@@ -352,6 +426,17 @@ fn is_conflict(e: &anyhow::Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn database_errors_are_put_into_words() {
+        let raw = |code: &str, m: &str| serde_json::json!({ "code": code, "message": m }).to_string();
+        assert_eq!(plain_error(400, &raw("22008", "date/time field value out of range: \"2026-02-30\"")), "that date isn't on the calendar (dates look like 2026-11-30)");
+        assert_eq!(plain_error(400, &raw("23514", "new row for relation \"labels\" violates check constraint \"labels_name_check\"")), "the name needs some text (not just spaces)");
+        assert_eq!(plain_error(403, &raw("42501", "only a Claude session can mark a task as needing review")), "only a Claude session can mark a task as needing review");
+        assert_eq!(plain_error(409, &raw("23505", "duplicate key value violates unique constraint")), "there's already one with that name");
+        assert_eq!(plain_error(500, "not json"), "the database refused it (500)");
+        assert!(!plain_error(400, &raw("23514", "new row violates check constraint \"x_y\"")).contains("violates"));
+    }
 
     #[test]
     fn machine_keys_round_trip() {

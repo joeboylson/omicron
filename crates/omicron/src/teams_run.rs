@@ -265,8 +265,8 @@ fn launch_lead(board: &Board, team: &TeamRow, note: Option<&str>) -> Result<bool
 
 /// Who's calling: the team and worker in this session's environment.
 pub fn caller() -> Result<(Board, TeamRow, String)> {
-    let team_id = std::env::var(TEAM_ENV).context("run this in a team's session (it sets OMICRON_TEAM)")?;
-    let worker = std::env::var(WORKER_ENV).context("run this in a team's session (it sets OMICRON_WORKER)")?;
+    let team_id = std::env::var(TEAM_ENV).ok().context("run this in a team's session (it sets OMICRON_TEAM)")?;
+    let worker = std::env::var(WORKER_ENV).ok().context("run this in a team's session (it sets OMICRON_WORKER)")?;
     let board = crate::board_cmd::sign_in(true)?;
     let team = board.team_by_id(&team_id)?;
     Ok((board, team, worker))

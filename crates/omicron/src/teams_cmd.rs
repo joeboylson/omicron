@@ -177,7 +177,7 @@ const ROLES: &[(&str, &str)] = &[
 pub fn read_setup(folder: &Path) -> Result<(TeamSetup, Workflow, Vec<String>)> {
     let dir = folder.join(SETUP);
     let setup: TeamSetup = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("team.json")).with_context(|| format!("{} has no team set up: run `omicron teams init` there", folder.display()))?,
+        &std::fs::read_to_string(dir.join("team.json")).ok().with_context(|| format!("{} has no team set up: run `omicron teams init` there", folder.display()))?,
     )
     .context(".omicron-team/team.json isn't valid")?;
     let wf_path = dir.join("workflows").join(format!("{}.json", setup.workflow));
