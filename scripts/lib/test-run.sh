@@ -50,3 +50,26 @@ start_test_run() {
   since=$(psql -tAc "select to_char(now() at time zone 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')" | tr -d '[:space:]')
   trap 'clean "$since"; rm -rf "$fake"' EXIT
 }
+
+# Build `omicron` with the web page inside (a debug build, for speed), and
+# Playwright (in ~/.cache/omicron-e2e, the first time), for the browser tests
+# and screenshots.
+build_for_browser() {
+  # The program with the web page inside (a debug build, for speed).
+  (
+    cd web
+    [ -d node_modules ] && [ node_modules -nt package.json ] || { npm install --silent --no-audit --no-fund && touch node_modules; }
+    npx --no-install tsc --noEmit
+    OMICRON_WEB_OUT="$PWD/dist" npx --no-install vite build --logLevel warn
+  )
+  OMICRON_WEB_DIST="$PWD/web/dist" cargo build -q
+  export OMICRON_BIN="${CARGO_TARGET_DIR:-$PWD/target}/debug/omicron"
+
+  deps=$HOME/.cache/omicron-e2e
+  mkdir -p "$deps"
+  if ! cmp -s e2e/package.json "$deps/package.json" || [ ! -d "$deps/node_modules" ]; then
+    cp e2e/package.json "$deps/"
+    (cd "$deps" && npm install --silent --no-audit --no-fund && npx --no-install playwright install chromium >/dev/null)
+  fi
+  export NODE_PATH=$deps/node_modules
+}

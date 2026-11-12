@@ -1,6 +1,7 @@
-// Fill the dev (test) Supabase with made-up data to click around in.
-// Run inside the omicron-dev test machine, through dev/seed/seed.sh (which
-// wipes the database first).
+// Made-up data to look at, put into a running `omicron serve` (see
+// dev/seed/shots.js, run by scripts/shots.sh). It goes into the one
+// Supabase alongside the real data: every login is a throwaway one and no
+// Project is called Omicron, so scripts/lib/test-run.sh cleans it all up.
 //
 // Everything goes in the way it would for real: people sign in through a
 // real `omicron serve`, machines register and act with their keys, Claude
@@ -159,14 +160,21 @@ async function project(owner, name, statusList, labelList) {
   };
 }
 
-(async () => {
-  const omicron = await startOmicron();
+/** A throwaway login (never a real person's). */
+const login = (name) => `${name}-${crypto.randomBytes(4).toString("hex")}@example.com`;
+
+/**
+ * Put the made-up data into `omicron` (a running `omicron serve`). Returns
+ * the logins it made, and `stop()` for the stand-in Claude windows.
+ */
+async function seed(omicron) {
   const windows = [];
+  const logins = { joe: login("joe"), claire: login("claire"), sam: login("sam"), nina: login("nina") };
   try {
-    const joe = await person(omicron, "joeboylson@github", "Joe Boylson");
-    const claire = await person(omicron, "claireboylson@gmail.com", "Claire Boylson");
-    const sam = await person(omicron, "sam.rivera@example.com", "Sam Rivera");
-    const nina = await person(omicron, "nina.okafor@example.com", "Nina Okafor");
+    const joe = await person(omicron, logins.joe, "Joe Boylson");
+    const claire = await person(omicron, logins.claire, "Claire Boylson");
+    const sam = await person(omicron, logins.sam, "Sam Rivera");
+    const nina = await person(omicron, logins.nina, "Nina Okafor");
 
     // ---- House and garden: Joe and Claire.
     const house = await project(joe, "House and garden", ["To do", ["Doing", "blue"], ["Waiting on someone", "orange"], "Done"], [
@@ -277,8 +285,8 @@ async function project(owner, name, statusList, labelList) {
     await photos.task(nina, "Sent", "Prints for the grandparents", { labels: ["prints"] });
     await photos.task(joe, "Done", "Back up every card", {});
 
-    // ---- Omicron: Joe, plus Claude sessions on two machines.
-    const code = await project(joe, "Omicron", ["Backlog", ["To do", "teal"], ["Doing", "blue"], ["Review", "orange"], "Done"], [
+    // ---- Lumen (a made-up app): Joe, plus Claude sessions on two machines.
+    const code = await project(joe, "Lumen", ["Backlog", ["To do", "teal"], ["Doing", "blue"], ["Review", "orange"], "Done"], [
       ["web", "blue"],
       ["cli", "purple"],
       ["database", "teal"],
@@ -310,10 +318,10 @@ async function project(owner, name, statusList, labelList) {
     await code.task(joe, "Done", "Fix checklist tick flicker", { labels: ["bug", "web"] });
 
     // Sessions: two open, one closed, one that stopped without saying.
-    const webPage = mini.window("Omicron", "web-page", "/Users/joe/omicron/web");
-    const parser = studio.window("Omicron", "parser", "/Users/joe/omicron");
-    const docs = build.window("Omicron", "docs", "/home/joe/omicron/docs");
-    const old = mini.window("Omicron", "handoff", "/Users/joe/omicron");
+    const webPage = mini.window("Lumen", "web-page", "/Users/joe/omicron/web");
+    const parser = studio.window("Lumen", "parser", "/Users/joe/omicron");
+    const docs = build.window("Lumen", "docs", "/home/joe/omicron/docs");
+    const old = mini.window("Lumen", "handoff", "/Users/joe/omicron");
     windows.push(webPage, parser, docs, old);
 
     // Tasks sent to sessions: the strip one picked up and reported, the
@@ -327,7 +335,7 @@ async function project(owner, name, statusList, labelList) {
     webPage.cli(
       "tasks",
       "comment",
-      "Omicron",
+      "Lumen",
       String(stripTask.number),
       "Done: open sessions first, closed ones faded, tap one for its handoff notes. Screenshots on desktop and phone attached.",
       "--review",
@@ -338,7 +346,7 @@ async function project(owner, name, statusList, labelList) {
     );
     await sendTo(parserTask, "parser");
     parser.cli("tasks", "mine");
-    parser.cli("tasks", "comment", "Omicron", String(parserTask.number), "Inserts and updates work and are tested. Deletes next.");
+    parser.cli("tasks", "comment", "Lumen", String(parserTask.number), "Inserts and updates work and are tested. Deletes next.");
     const docsTask = await code.task(joe, "To do", "Document the hooks", { labels: ["docs"] });
     await sendTo(docsTask, "docs");
 
@@ -377,13 +385,13 @@ async function project(owner, name, statusList, labelList) {
     // Chat.
     await joe.call("PATCH", `/rest/v1/projects?id=eq.${code.id}`, { chat_enabled: true });
     await joe.call("POST", "/rest/v1/chat_messages", { project_id: code.id, body: "Morning. @web-page how's the sessions strip going?" });
-    webPage.cli("chat", "send", "Omicron", "Chips are done and open their handoff notes. Screenshots next.");
+    webPage.cli("chat", "send", "Lumen", "Chips are done and open their handoff notes. Screenshots next.");
     await joe.call("POST", "/rest/v1/chat_messages", { project_id: code.id, body: "Great. @parser how far are you?" });
-    parser.cli("chat", "send", "Omicron", "Inserts and updates done; starting deletes.");
+    parser.cli("chat", "send", "Lumen", "Inserts and updates done; starting deletes.");
     await joe.call("POST", "/rest/v1/chat_messages", { project_id: code.id, body: "Thanks both." });
 
     // A Needs review mark from a session without a comment, too.
-    webPage.cli("tasks", "needs-review", "Omicron", "9");
+    webPage.cli("tasks", "needs-review", "Lumen", "9");
 
     // Claude accounts each machine reports (names and numbers only).
     const soon = (mins) => new Date(Date.now() + mins * 60000).toISOString();
@@ -422,17 +430,21 @@ async function project(owner, name, statusList, labelList) {
       input: JSON.stringify({ session_id: crypto.randomUUID(), cwd: "/tmp", source: "startup" }),
     });
     other.kill();
-  } finally {
-    // Leave web-page and parser "open"; stop the stand-in processes.
-    for (const w of windows) {
-      try {
-        w.proc.kill();
-      } catch {}
-    }
-    omicron.stop();
+  } catch (e) {
+    stopWindows(windows);
+    throw e;
   }
   console.log("Seeded: 4 people, 5 Projects, 3 machines, 4 Claude sessions, tasks, comments, handoff notes and chat.");
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+  // Leave web-page and parser "open" until the caller is done with the page.
+  return { logins, stop: () => stopWindows(windows) };
+}
+
+function stopWindows(windows) {
+  for (const w of windows) {
+    try {
+      w.proc.kill();
+    } catch {}
+  }
+}
+
+module.exports = { seed };

@@ -72,8 +72,9 @@ The browser tests (`e2e/`, Playwright 1.62, using the Chromium already in
 `~/Library/Caches/ms-playwright`) run the same way: `bash scripts/e2e.sh`
 (any Playwright arguments, like `-g "drag"` or `--project a11y`), one test
 file at a time, cleaning up after. Each file starts its own `omicron serve`.
-The made-up seed data (and `scripts/shots.sh`, which uses it) still need a
-new home: they used the old `omicron-dev` container, stopped for good.
+`scripts/shots.sh` does the same for screenshots: it fills a page of its own
+with made-up data (`dev/seed/`, throwaway logins, a Project called Lumen)
+and cleans it up after.
 
 The real Omicron runs on this Mac (atlas): `bash dev/mac.sh` builds,
 installs `~/.local/bin/omicron`, and restarts the web page (127.0.0.1:9010,
@@ -90,15 +91,14 @@ omicron-gate` in home_lab.
 
 Errors the web page catches (a crash, a background error, a failed change)
 are sent to its Web Machine and logged as `page error [...]` lines: in
-`~/.omicron/serve.log` for the real page and `~/.omicron-dev/serve.log` for
-the dev page.
+`~/.omicron/serve.log` for the real page.
 
 ## Scripts
 
 Repeated steps, in `scripts/` (run on the Mac):
-- `scripts/shots.sh [folder]`: screenshots of the dev web page (seeded
-  data), desktop and phone, copied to a folder here. Needs the retired
-  `omicron-dev` container; not usable until the seed data has a new home.
+- `scripts/shots.sh [folder]`: screenshots of the web page full of made-up
+  data, desktop and phone, into a folder (default /tmp/omicron-shots),
+  cleaning up after.
 - `scripts/finish-task.sh <n> "<report>" [images...]`: finish an Omicron
   task like a session does: tick its checklist, post the report with the
   last commit's hash (and screenshots) marked for review, move it to Review.
@@ -114,7 +114,7 @@ Repeated steps, in `scripts/` (run on the Mac):
 ## How to work here
 
 - Keep every file for this project in this folder.
-- Run tests in the multipass VM or the `omicron-dev` container. Omicron
+- Run tests on the Mac with `scripts/test.sh` and `scripts/e2e.sh`. Omicron
   itself runs for real on this Mac (`dev/mac.sh`). The old tools keep running
   until each Omicron part replaces them.
 - `ref/` is planning notes (the brainstorm, the Teams plan), kept in git.
