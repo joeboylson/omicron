@@ -515,12 +515,19 @@ function Column({
   }, [addSignal]);
   const { setNodeRef, isOver } = useDroppable({ id: column });
 
+  // One add at a time: while it's on its way (it may wait for the
+  // connection), pressing Add again mustn't add it twice.
+  const [saving, setSaving] = useState(false);
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const t = title.trim();
-    if (!t) return;
-    if (await act(() => addTask(db, project, status.id, t, topicId))) {
-      setTitle("");
+    if (!t || saving) return;
+    setSaving(true);
+    const ok = await act(() => addTask(db, project, status.id, t, topicId));
+    setSaving(false);
+    if (ok) {
+      // Only if it's still what was sent (more may have been typed since).
+      setTitle((now) => (now.trim() === t ? "" : now));
       onAdded();
     }
   };
@@ -558,8 +565,8 @@ function Column({
             aria-label={`New task in ${label}`}
           />
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={!title.trim()}>
-              Add task
+            <Button type="submit" size="sm" disabled={!title.trim() || saving} aria-label="Add task">
+              {saving ? "Adding…" : "Add task"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
               Cancel

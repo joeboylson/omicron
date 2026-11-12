@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
-import { signIn, type Me } from "@/lib/omicron";
+import { errorWords, OFFLINE_WORDS, signIn, type Me } from "@/lib/omicron";
+import { Button } from "@/components/ui/button";
 import { AppContext, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
@@ -30,7 +31,7 @@ export default function App() {
       loadAppearance(s.db, s.me.personId).then(applyAppearance, () => {});
     }, (e) => {
       reportError("sign-in", e);
-      setSignInError(e.message ?? String(e));
+      setSignInError(errorWords(e));
     });
   }, []);
 
@@ -39,7 +40,7 @@ export default function App() {
   useEffect(() => {
     const show = (e: unknown) => {
       reportError("uncaught", e);
-      setError({ message: e instanceof Error ? e.message : String(e), from: "uncaught" });
+      setError({ message: errorWords(e), from: "uncaught" });
     };
     const onError = (e: ErrorEvent) => show(e.error ?? e.message);
     const onRejection = (e: PromiseRejectionEvent) => show(e.reason);
@@ -57,8 +58,10 @@ export default function App() {
       setError((current) => (current?.from === "action" ? null : current));
       return true;
     } catch (e) {
-      reportError("action", e);
-      setError({ message: e instanceof Error ? e.message : String(e), from: "action" });
+      // Not reported when it's only the connection: nothing to fix.
+      const words = errorWords(e);
+      if (words !== OFFLINE_WORDS) reportError("action", e);
+      setError({ message: words, from: "action" });
       return false;
     }
   }, []);
@@ -70,8 +73,11 @@ export default function App() {
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-2xl font-semibold">Omicron</h1>
         <p role="alert" className="mt-4 text-destructive">
-          Couldn't sign in: {signInError}
+          {signInError === OFFLINE_WORDS ? signInError : `Couldn't sign in: ${signInError}`}
         </p>
+        <Button className="mt-4" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
       </main>
     );
   }

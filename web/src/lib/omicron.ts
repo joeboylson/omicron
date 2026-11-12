@@ -36,9 +36,22 @@ export function must<T>(r: { data: T; error: { message: string; code?: string } 
   return r.data;
 }
 
+/** The browser's ways of saying it couldn't connect. */
+const OFFLINE = /Failed to fetch|NetworkError|Load failed|network connection was lost|ERR_INTERNET_DISCONNECTED|ERR_NETWORK/i;
+
+export const OFFLINE_WORDS = "Couldn't reach Omicron. Check your connection, then try again.";
+
+/** Any error, in words a person can act on. */
+export function errorWords(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  if (OFFLINE.test(m) || (typeof navigator !== "undefined" && navigator.onLine === false)) return OFFLINE_WORDS;
+  return m;
+}
+
 /** What the database said, in words a person can act on (as the CLI says it). */
 export function plainError(e: { message: string; code?: string }): string {
   const m = e.message ?? "";
+  if (OFFLINE.test(m)) return OFFLINE_WORDS;
   switch (e.code) {
     case "22007":
     case "22008":
