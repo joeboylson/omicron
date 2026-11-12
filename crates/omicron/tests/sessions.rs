@@ -1330,3 +1330,85 @@ fn a_team_splits_a_job_into_parts_and_comes_back_after_restarts() {
     d.kill().unwrap();
     let _ = d.wait();
 }
+
+/// Loops when things go wrong: two daemons for one machine (each run typed
+/// once), the daemon restarting (the loop carries on), and an end time that
+/// passed while nothing ran (it ends without typing).
+#[test]
+fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name, path) = machine_with_claude(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let folder = mac.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
+        .env("PATH", &path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    wait_for("claude started", || mac.home.join("claude-args").exists());
+    record(&s, &project, "parser");
+    ok(&pat, None, &["loops", "start", "Next task please", "--every", "10m", "--session", "parser", "--project", &project]);
+    let loop_id = s
+        .admin_request("GET", "/rest/v1/loops?prompt=eq.Next task please&state=eq.running&select=id,sessions!inner(projects!inner(name))", None)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["sessions"]["projects"]["name"] == json!(project))
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let due_now = || {
+        s.admin_request("PATCH", &format!("/rest/v1/loops?id=eq.{loop_id}"), Some(json!({ "next_run_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    };
+    let sid = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=session_id"), None).unwrap()[0]["session_id"].as_str().unwrap().to_string();
+    let not_busy = || {
+        let _ = std::fs::remove_file(mac.home.join("run/busy").join(&sid));
+    };
+
+    // Two daemons for the same machine: each due run is typed in once.
+    let mut d1 = daemon(&mac, &path);
+    let mut d2 = daemon(&mac, &path);
+    for round in 1..=3 {
+        not_busy();
+        due_now();
+        wait_for("the run", || typed_lines(&mac).len() == round);
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        assert_eq!(typed_lines(&mac).len(), round, "typed twice with two daemons running: {:?}", typed_lines(&mac));
+    }
+    let runs = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=runs"), None).unwrap()[0]["runs"].as_i64();
+    assert_eq!(runs, Some(3));
+
+    // The daemon restarts: the loop carries on.
+    let _ = d1.kill();
+    let _ = d2.kill();
+    let _ = d1.wait();
+    let _ = d2.wait();
+    let mut d3 = daemon(&mac, &path);
+    not_busy();
+    due_now();
+    wait_for("a run after the restart", || typed_lines(&mac).len() == 4);
+
+    // Its end time passed while it wasn't due: it ends, and nothing more is typed.
+    s.admin_request(
+        "PATCH",
+        &format!("/rest/v1/loops?id=eq.{loop_id}"),
+        Some(json!({ "until": "2020-06-01T00:00:00Z", "next_run_at": "2020-07-01T00:00:00Z" })),
+    )
+    .unwrap();
+    not_busy();
+    wait_for("the loop ended", || {
+        s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=state"), None).unwrap()[0]["state"] != json!("running")
+    });
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    assert_eq!(typed_lines(&mac).len(), 4, "nothing typed after its end time");
+
+    let _ = d3.kill();
+    let _ = d3.wait();
+    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
+}

@@ -334,10 +334,18 @@ impl Runner {
             // Still working on the last one: wait for its turn to end.
             return Ok(());
         }
-        // Mark it busy first, so the next tick can't type it in twice.
+        // Claim this run in the database first: only one claim of a run
+        // can succeed, so two daemons for the same machine (or a tick run
+        // twice) never type it in twice. Then mark the session busy and type.
+        let claimed = board.loop_ran(&l.id, &l.next_run_at)?;
+        if claimed.is_none() {
+            // Someone else ran it (or it was stopped): catch up on its state.
+            self.recorded(None, &l.id);
+            return Ok(());
+        }
         omicron::windows::set_busy(&l.session_id, true)?;
         omicron::host::say(&name, &l.prompt)?;
-        self.recorded(board.loop_ran(&l.id, &l.next_run_at)?, &l.id);
+        self.recorded(claimed, &l.id);
         Ok(())
     }
 

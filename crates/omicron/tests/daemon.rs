@@ -467,3 +467,40 @@ fn picking_a_machine_opens_ssh_to_its_tailnet_name() {
     std::thread::sleep(Duration::from_secs(2));
     assert!(!pick(&[&name]).status.success());
 }
+
+/// Every change for `project` that arrives within `wait`, as (seq, table).
+fn collect(daemon: &Daemon, project: &str, wait: Duration) -> Vec<(i64, String)> {
+    let deadline = Instant::now() + wait;
+    let mut got = Vec::new();
+    while Instant::now() < deadline {
+        if let Ok(line) = daemon.lines.recv_timeout(Duration::from_millis(200)) {
+            if line["project_id"] == json!(project) {
+                got.push((line["seq"].as_i64().unwrap_or(0), line["table"].as_str().unwrap_or("").to_string()));
+            }
+        }
+    }
+    got
+}
+
+#[test]
+fn a_burst_of_changes_all_arrive_once_and_in_order() {
+    let s = supabase_or_skip!();
+    let (home, id) = registered_machine(&s, &unique("busy"));
+    let me = person(&s, "owner");
+    let project = start_project(&s, &me, &unique("Busy"));
+    s.request_as(&me, "POST", "/rest/v1/project_machines", Some(json!({ "project_id": project, "machine_id": id }))).unwrap();
+    let status = s.request_as(&me, "GET", &format!("/rest/v1/statuses?project_id=eq.{project}&select=id&limit=1"), None).unwrap();
+    let daemon = start_daemon(&home, &[]);
+    daemon.wait_until_listening();
+
+    // 300 tasks at once, in three requests.
+    for b in 0..3 {
+        let rows: Vec<Value> = (0..100).map(|i| json!({ "project_id": project, "status_id": status[0]["id"], "title": format!("Task {}", b * 100 + i) })).collect();
+        s.request_as(&me, "POST", "/rest/v1/tasks", Some(Value::Array(rows))).unwrap();
+    }
+    let got = collect(&daemon, &project, Duration::from_secs(8));
+    let tasks: Vec<i64> = got.iter().filter(|(_, t)| t == "tasks").map(|(seq, _)| *seq).collect();
+    assert_eq!(tasks.len(), 300, "every change arrives, once");
+    assert!(tasks.windows(2).all(|w| w[0] < w[1]), "in order");
+}
+

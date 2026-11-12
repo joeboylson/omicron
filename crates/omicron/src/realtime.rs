@@ -190,8 +190,11 @@ fn connection(
         }
         let payload = &msg["payload"];
         let keep_going = match msg["event"].as_str().unwrap_or("") {
+            // Refused: just after Realtime restarts it refuses for a moment
+            // (its rules aren't loaded yet), so try again shortly rather
+            // than stopping. A bad login fails earlier, when signing in.
             "phx_reply" if payload["status"] == "error" => {
-                return Err(Fatal(anyhow!("Realtime refused the channel: {}", payload["response"])));
+                return Err(Dropped(anyhow!("Realtime refused the channel: {}", payload["response"])));
             }
             // With no tables to watch, the join reply is all there is.
             "phx_reply" if !joined && what.tables.is_empty() && payload["status"] == "ok" => {

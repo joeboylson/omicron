@@ -335,7 +335,11 @@ impl Supabase {
 
     /// Switch a machine off (its key stops working for anything) or on.
     pub fn set_machine_active(&self, id: Uuid, active: bool) -> Result<()> {
-        self.admin("PATCH", &format!("/rest/v1/machines?id=eq.{id}"), Some(json!({ "active": active })), None)?;
+        // Switched back on counts as seen now; otherwise the next clean-up
+        // (which switches off machines unseen for 30 days) would switch it
+        // straight back off before it had a chance to check in.
+        let change = if active { json!({ "active": true, "last_seen": "now" }) } else { json!({ "active": false }) };
+        self.admin("PATCH", &format!("/rest/v1/machines?id=eq.{id}"), Some(change), None)?;
         Ok(())
     }
 

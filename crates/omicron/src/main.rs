@@ -348,7 +348,8 @@ fn machines(m: Machines) -> Result<()> {
             let rows = supabase.admin_request(
                 "PATCH",
                 &format!("/rest/v1/machines?name=eq.{}", machine.replace(' ', "%20")),
-                Some(json!({ "active": true })),
+                // Seen now too, or the next clean-up switches it straight back off.
+                Some(json!({ "active": true, "last_seen": "now" })),
             )?;
             if rows.as_array().is_some_and(|a| a.is_empty()) {
                 bail!("no machine called {machine}");
