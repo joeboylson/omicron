@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, MessageCircle, Plus, Search, Settings } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useApp, go } from "@/lib/app";
+import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addTask, deleteTask, loadProject, moveTask, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
 import {
@@ -39,7 +39,23 @@ export function ProjectPage({ id }: { id: string }) {
   const { db, act, me } = useApp();
   // undefined: still loading. null: not found, or no longer a member.
   const [loaded, setProject] = useState<ProjectData | null | undefined>(undefined);
-  const [openTask, setOpenTask] = useState<number | null>(null);
+  // The open task is in the address (?task=6): reloading keeps it open, a
+  // link opens it, and Back closes it.
+  const [taskInAddress, setTaskInAddress] = useAddressValue("task");
+  const openTask = taskInAddress && /^\d+$/.test(taskInAddress) ? Number(taskInAddress) : null;
+  const setOpenTask = useCallback(
+    (n: number | null) => {
+      if (n === null) {
+        // Opened here: Back takes the step off. Opened from a link: just drop it.
+        if (window.history.state?.omicronTask) window.history.back();
+        else setTaskInAddress(null);
+      } else {
+        setTaskInAddress(String(n), true);
+        window.history.replaceState({ omicronTask: n }, "", window.location.href);
+      }
+    },
+    [setTaskInAddress],
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
@@ -49,7 +65,10 @@ export function ProjectPage({ id }: { id: string }) {
   // Bumped to open "Add a task" in the first column (c, or the menu).
   const [addSignal, setAddSignal] = useState(0);
   // Search and filters (not kept: a fresh look each visit).
-  const [query, setQuery] = useState("");
+  // The search is in the address too.
+  const [queryInAddress, setQueryInAddress] = useAddressValue("q");
+  const query = queryInAddress ?? "";
+  const setQuery = (q: string) => setQueryInAddress(q);
   const [filters, setFilters] = useState<{ mine: boolean; review: boolean; due: boolean; label: string | null }>({
     mine: false,
     review: false,
@@ -156,6 +175,15 @@ export function ProjectPage({ id }: { id: string }) {
     window.addEventListener("touchmove", hold, { passive: false });
     return () => window.removeEventListener("touchmove", hold);
   }, []);
+  // A link to a task that isn't there (deleted, or a wrong number): say so
+  // and drop it from the address.
+  const missing = loaded && openTask !== null && !loaded.tasks.some((t) => t.number === openTask);
+  useEffect(() => {
+    if (!missing) return;
+    toast({ message: `There's no task #${openTask} in this Project (it may have been deleted).` });
+    setTaskInAddress(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missing]);
   if (project === undefined) return <BoardSkeleton />;
   if (project === null) {
     return (

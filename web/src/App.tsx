@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { errorWords, OFFLINE_WORDS, signIn, type Me } from "@/lib/omicron";
 import { Button } from "@/components/ui/button";
-import { AppContext, usePath, type AppState } from "@/lib/app";
+import { AppContext, go, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
@@ -15,6 +15,19 @@ import { BoardSkeleton } from "@/components/Skeleton";
 import { ToastProvider } from "@/lib/toast";
 import { CommandMenu } from "@/components/CommandMenu";
 import { GlobalCommands } from "@/components/GlobalCommands";
+
+/** An address that isn't a page here. */
+function NotFound() {
+  return (
+    <main className="mx-auto w-full max-w-md p-6">
+      <h1 className="text-2xl font-semibold">Nothing here</h1>
+      <p className="mt-2 text-muted-foreground">There's no page at this address.</p>
+      <Button className="mt-4" onClick={() => go("/")}>
+        Go to Projects
+      </Button>
+    </main>
+  );
+}
 
 export default function App() {
   const [session, setSession] = useState<{ db: SupabaseClient; me: Me } | null>(null);
@@ -96,7 +109,19 @@ export default function App() {
         <GlobalCommands />
         <CommandMenu />
       <div className="flex min-h-dvh flex-col">
-        {projectId ? <ProjectPage key={projectId} id={projectId} /> : path === "/people" ? <PeoplePage /> : path === "/settings" ? <SettingsPage /> : path === "/keys" ? <KeysPage /> : <ProjectsPage />}
+        {projectId ? (
+          <ProjectPage key={projectId} id={projectId} />
+        ) : path === "/people" ? (
+          <PeoplePage />
+        ) : path === "/settings" ? (
+          <SettingsPage />
+        ) : path === "/keys" ? (
+          <KeysPage />
+        ) : path === "/" || path === "/index.html" ? (
+          <ProjectsPage />
+        ) : (
+          <NotFound />
+        )}
         {error && (
           <div
             role="alert"
