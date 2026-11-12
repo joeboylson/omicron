@@ -62,7 +62,11 @@ Tests run against the real Supabase in their own throwaway people, machines
 and Projects (logins like name-1234abcd@example.com), never the Omicron
 Project. `scripts/test.sh` cleans up everything a run made, even when tests
 fail (`--clean-only <time>` after an interrupted run). It also hides this
-Mac's own Tailscale login from the tests.
+Mac's own Tailscale login from the tests. Two test files act on the real setup
+on purpose: `realtime_restart.rs` restarts Omicron's own Realtime container
+(the real page's live updates pause a few seconds, then reconnect), and
+`backup.rs` makes a backup into a temporary folder and restores it into the
+scratch database `omicron_restore`, never over the real one.
 
 Apply a new migration to it with `scripts/migrate.sh` and the database
 connection string, or through `docker exec -i omicron-supabase-db psql -U
