@@ -236,12 +236,22 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
                 None => std::env::current_dir()?,
             };
             let (setup, workflow, _) = read_setup(&folder)?;
+            crate::teams_run::needs_trust(&folder)?;
             // Teams run on the machine.
             let board = sign_in(true)?;
             let p = board.project(&project)?;
             let session = this_session();
             let team = board.start_team(&p, &setup.name, &folder.to_string_lossy(), &setup.workflow, session.as_deref())?;
             println!("Started {} in {} on this machine ({} → … → done).", team.name, p.name, workflow.first);
+            // Where its job checkouts go: Claude Code must trust it too.
+            let home = crate::teams_run::team_home(&team)?;
+            std::fs::create_dir_all(&home)?;
+            if !crate::teams_run::claude_trusts(&home) {
+                println!(
+                    "Before it can start workers: run `claude` once in {} (where its job checkouts go), choose \"Yes, I trust this folder\", then quit it.",
+                    home.display()
+                );
+            }
         }
         Teams::Stop { team } => {
             let board = sign_in(true)?;

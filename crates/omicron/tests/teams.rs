@@ -89,7 +89,8 @@ fn omicron(home: &std::path::Path, dir: &std::path::Path, args: &[&str]) -> (boo
             cmd.env_remove(k);
         }
     }
-    let o = cmd.env("OMICRON_HOME", home).current_dir(dir).args(args).output().unwrap();
+    // Claude Code's own settings, just for this test machine.
+    let o = cmd.env("OMICRON_HOME", home).env("CLAUDE_CONFIG_DIR", home.join("claude")).current_dir(dir).args(args).output().unwrap();
     (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
 }
 
@@ -117,8 +118,15 @@ fn a_folder_is_set_up_its_team_started_and_given_jobs() {
     let (ok, out) = omicron(&home, &folder, &["teams", "init", "--name", &team]);
     assert!(ok && out.contains("three roles"), "{out}");
     assert!(folder.join(".omicron-team/workflows/default.json").exists());
+    // Claude Code must trust the folder first: nobody is there to answer.
+    let (ok, out) = omicron(&home, &folder, &["teams", "start", "--project", &pname]);
+    assert!(!ok && out.contains("doesn't trust") && out.contains("Yes, I trust this folder"), "{out}");
+    std::fs::create_dir_all(home.join("claude")).unwrap();
+    let trust = json!({ "projects": { folder.canonicalize().unwrap().to_string_lossy(): { "hasTrustDialogAccepted": true } } });
+    std::fs::write(home.join("claude/.claude.json"), trust.to_string()).unwrap();
     let (ok, out) = omicron(&home, &folder, &["teams", "start", "--project", &pname]);
     assert!(ok, "{out}");
+    assert!(out.contains("Before it can start workers: run `claude` once in"), "{out}");
     assert!(out.starts_with(&format!("Started {team} in {pname} on this machine (planner")), "{out}");
 
     let (ok, out) = omicron(&home, &folder, &["teams", "add-job", &team, "Add a login page", "--text", "Email and password."]);
