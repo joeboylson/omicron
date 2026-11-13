@@ -415,6 +415,34 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
   }
 });
 
+test("the Dev view on a phone, through the home lab's gate, for the computer's owner", async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
+  try {
+    omicron.cli("machines", "owner", robin.login);
+    await page.goto(`${page.url().split("?")[0]}?view=dev`);
+    const sessions = page.getByRole("list", { name: "Sessions" });
+    await sessions.getByRole("button", { name: /parser/ }).click();
+    const term = page.getByTestId("terminal-parser");
+    await expect(term.getByRole("status")).toHaveCount(0);
+    // The terminal fits the screen: nothing scrolls sideways.
+    const box = await term.boundingBox();
+    expect(box.width).toBeLessThanOrEqual(390);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await term.locator(".xterm").click();
+    await page.keyboard.type("from the phone");
+    await expect(term.locator(".xterm-rows")).toContainText("from the phone");
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-phone.png`, fullPage: true });
+  } finally {
+    win.kill();
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

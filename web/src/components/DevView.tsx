@@ -62,7 +62,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
   const sessionName = (id: string | null) => project.sessions.find((s) => s.id === id)?.name;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(20rem,1fr)_auto] gap-px border-t bg-border lg:grid-cols-[15rem_1fr_19rem] lg:grid-rows-1">
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(20rem,1fr)_auto] gap-px border-t bg-border lg:grid-cols-[15rem_minmax(0,1fr)_19rem] lg:grid-rows-1">
       <aside aria-label="Folders and sessions" className="overflow-y-auto bg-background p-3 text-sm">
         <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Folders on {dev.machine}</h2>
         {folders.length === 0 ? (
@@ -133,7 +133,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
         <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
       </aside>
 
-      <section aria-label="Terminals" className="flex min-h-0 flex-col bg-[#111113]">
+      <section aria-label="Terminals" className="flex min-h-0 min-w-0 flex-col bg-[#111113]">
         <div role="tablist" aria-label="Open sessions" className="flex shrink-0 overflow-x-auto border-b border-white/10 bg-[#1a1a1d]">
           {tabs.map((name) => (
             <div key={name} className={cn("flex items-center", active === name ? "bg-[#111113] text-white" : "text-white/60")}>

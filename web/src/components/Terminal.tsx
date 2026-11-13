@@ -104,7 +104,7 @@ export function Terminal({ session, active }: { session: string; active: boolean
   }, [active]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col bg-[#111113]" hidden={!active} data-testid={`terminal-${session}`}>
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#111113]" hidden={!active} data-testid={`terminal-${session}`}>
       {state !== "open" && (
         <p role="status" className="px-3 py-2 text-xs text-white/70">
           {state === "connecting" ? `Connecting to ${session}…` : state === "ended" ? `${session} ended.` : state}
