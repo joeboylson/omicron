@@ -1432,3 +1432,71 @@ fn open_gate(mac: &Computer, owner: &Computer) {
     let later = std::process::Command::new("date").args(["-v+2H", "+%H:%M"]).output().unwrap();
     ok(mac, None, &["gate", "open", "--until", String::from_utf8_lossy(&later.stdout).trim()]);
 }
+
+/// Linking (ref/BRAINSTORM.md, "Linking"): a Claude started in one of the
+/// machine's folders links itself; any other chat links with `omicron link`
+/// typed into it, without quitting.
+#[test]
+fn a_chat_in_a_folder_links_itself_and_any_other_links_in_place() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+
+    // A folder: Omicron's hooks go in its own local settings, kept out of git.
+    let app = mac.home.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    let app = app.canonicalize().unwrap();
+    Command::new("git").arg("-C").arg(&app).args(["init", "-q"]).status().unwrap();
+    let o = command(&mac, None, &["folders", "add"]).current_dir(&app).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let settings = std::fs::read_to_string(app.join(".claude/settings.local.json")).unwrap();
+    assert!(settings.contains("hook session-start") && settings.contains("hook session-end"), "{settings}");
+    let ignored = Command::new("git").arg("-C").arg(&app).args(["check-ignore", "-q", ".claude/settings.local.json"]).status().unwrap();
+    assert!(ignored.success(), "kept out of git");
+
+    // A plain Claude started there (in a folder inside it too): linked at
+    // start, named after the folder, and told so.
+    let mut w = window();
+    let chat = Uuid::new_v4().to_string();
+    let said = hook_out(&mac, w.id(), "session-start", json!({ "session_id": chat, "cwd": app.to_str().unwrap(), "source": "startup" }));
+    assert!(said.contains(&format!("this chat is the session app in the Project {project}")), "{said}");
+    let mut w2 = window();
+    let sub = app.join("web");
+    std::fs::create_dir_all(&sub).unwrap();
+    hook_out(&mac, w2.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": sub.to_str().unwrap(), "source": "startup" }));
+    let listed = ok(&pat, None, &["sessions", "list"]);
+    assert!(listed.lines().any(|l| l.contains("app") && !l.contains("web")) && listed.contains("web"), "{listed}");
+    // It ends when it closes.
+    hook(&mac, w.id(), "session-end", json!({ "session_id": chat, "reason": "prompt_input_exit" }));
+    hook(&mac, w2.id(), "session-end", json!({ "session_id": Uuid::new_v4().to_string(), "reason": "prompt_input_exit" }));
+    w.kill().unwrap();
+    w2.kill().unwrap();
+
+    // A chat anywhere else: typed into it, `omicron link` brings it in.
+    let notes = mac.home.join("notes");
+    std::fs::create_dir_all(&notes).unwrap();
+    let notes = notes.canonicalize().unwrap();
+    let mut w3 = window();
+    let chat = Uuid::new_v4().to_string();
+    let link = |args: &[&str]| {
+        let mut all = vec!["link"];
+        all.extend_from_slice(args);
+        command(&mac, Some(w3.id()), &all).env("CLAUDE_CODE_SESSION_ID", &chat).current_dir(&notes).output().unwrap()
+    };
+    let o = link(&[]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(String::from_utf8_lossy(&o.stdout).starts_with(&format!("This chat is now the session notes in {project}")));
+    let o = link(&[]);
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("already linked"));
+    // Its folder is remembered: the next chat there links itself.
+    assert!(ok(&pat, None, &["folders", "list", "--project", &project]).contains(notes.to_str().unwrap()));
+    // Outside a chat there's nothing to link.
+    let o = command(&mac, None, &["link"]).output().unwrap();
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("! omicron link"));
+    hook(&mac, w3.id(), "session-end", json!({ "session_id": chat, "reason": "prompt_input_exit" }));
+    w3.kill().unwrap();
+    assert!(!ok(&pat, None, &["sessions", "list"]).contains("notes"));
+}

@@ -225,6 +225,26 @@ pub fn add_skill(claude_dir: &std::path::Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Take Omicron's hooks out of a settings file, leaving the rest. Nothing
+/// to do if there's no file.
+pub fn remove_hooks(path: &std::path::Path) -> Result<()> {
+    let Ok(text) = std::fs::read_to_string(path) else { return Ok(()) };
+    let mut settings: Value = serde_json::from_str(&text).with_context(|| format!("{} isn't valid JSON", path.display()))?;
+    if let Some(hooks) = settings["hooks"].as_object_mut() {
+        for list in hooks.values_mut() {
+            if let Some(list) = list.as_array_mut() {
+                list.retain(|group| !is_ours(group));
+            }
+        }
+        hooks.retain(|_, list| list.as_array().is_none_or(|l| !l.is_empty()));
+        if hooks.is_empty() {
+            settings.as_object_mut().unwrap().remove("hooks");
+        }
+    }
+    std::fs::write(path, serde_json::to_string_pretty(&settings)? + "\n")?;
+    Ok(())
+}
+
 fn is_ours(group: &Value) -> bool {
     group["hooks"].as_array().is_some_and(|hs| {
         hs.iter().any(|h| h["command"].as_str().is_some_and(|c| c.contains("omicron") && c.contains(" hook ")))
@@ -319,6 +339,8 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         return Ok(None);
     }
     let mut pick_up = None;
+    // Said to a chat that just linked itself.
+    let mut linked = None;
     // After /clear, the window's waiting handoff note goes to the new
     // conversation. When the window closes, it's cancelled.
     let mut handoff = None;
@@ -337,6 +359,21 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
                 .get(&pid)
                 .and_then(|w| w.session_id.clone())
                 .or_else(|| windows.links.get(&claude_id).cloned());
+            // A Claude started in one of this machine's folders links itself.
+            let session_id = match session_id {
+                Some(id) => Some(id),
+                None => match link_in_folder(&claude_id, &folder) {
+                    Ok(Some((id, said))) => {
+                        linked = Some(said);
+                        Some(id)
+                    }
+                    Ok(None) => None,
+                    Err(e) => {
+                        eprintln!("omicron: couldn't link this chat: {e:#}");
+                        None
+                    }
+                },
+            };
             if let Some(id) = &session_id {
                 windows.links.insert(claude_id.clone(), id.clone());
                 updates.push((id.clone(), json!({ "claude_session_id": claude_id, "folder": folder, "state": "open" })));
@@ -379,7 +416,7 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     }
     // A conversation starting gets its handoff note and the tasks waiting
     // for it.
-    let mut context = Vec::new();
+    let mut context: Vec<String> = linked.into_iter().collect();
     if let Some(id) = handoff {
         if let Some(note) = board.waiting_handoff(&id)? {
             board.set_handoff_state(&note.id, "picked_up")?;
@@ -554,7 +591,7 @@ pub fn open(name: Option<String>, project: Option<String>, resume: Option<String
     let record = board.add_session(&project, &name, &claude_id, &folder.to_string_lossy())?;
     // Remembered as the Project's folder here, for next time.
     if known.as_ref().is_none_or(|f| f.project != project.name) {
-        if let Err(e) = board.add_folder(&project, &folder.to_string_lossy()) {
+        if let Err(e) = crate::folders_cmd::remember(&board, &project, &folder) {
             eprintln!("couldn't remember {} as a folder for {}: {e:#}", folder.display(), project.name);
         }
     }
@@ -569,6 +606,80 @@ pub fn open(name: Option<String>, project: Option<String>, resume: Option<String
         return Err(e);
     }
     attach_here(&record.name)
+}
+
+/// A chat starting in one of this machine's folders becomes a session of
+/// its Project, named after the folder. Returns the session's id and what
+/// to tell the chat, or None outside a known folder (no Supabase then).
+fn link_in_folder(claude_id: &str, folder: &str) -> Result<Option<(String, String)>> {
+    let Some((_, project)) = omicron::known_folders::find(std::path::Path::new(folder)) else { return Ok(None) };
+    let board = sign_in(true)?;
+    let project = board.project(&project)?;
+    let base = std::path::Path::new(folder).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "claude".into());
+    let name = free_name(&board, &base)?;
+    let record = board.add_session(&project, &name, claude_id, folder)?;
+    let said = format!(
+        "Omicron: this chat is the session {name} in the Project {}. Its tasks: `omicron tasks mine`.",
+        project.name
+    );
+    Ok(Some((record.id, said)))
+}
+
+/// A session name not taken on this machine: the name, or name-2, name-3...
+fn free_name(board: &omicron::board::Board, base: &str) -> Result<String> {
+    let me = board.session.user.id.to_string();
+    let taken: Vec<String> = board.sessions(None)?.into_iter().filter(|s| s.machine_id == me).map(|s| s.name.to_lowercase()).collect();
+    let mut name = base.to_string();
+    let mut n = 1;
+    while taken.contains(&name.to_lowercase()) || omicron::host::is_running(&name) {
+        n += 1;
+        name = format!("{base}-{n}");
+    }
+    Ok(name)
+}
+
+/// `omicron link`, typed into a Claude chat (`! omicron link`): the chat
+/// becomes an Omicron session where it is, without quitting it. Its folder
+/// is remembered as the Project's, so the next chat there links itself.
+pub fn link(name: Option<String>, project: Option<String>) -> Result<()> {
+    let claude_id = std::env::var("CLAUDE_CODE_SESSION_ID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .context("run this inside a Claude chat: type `! omicron link` there")?;
+    if let Ok(session) = std::env::var("OMICRON_SESSION") {
+        bail!("this chat is already the session {session}");
+    }
+    let mut windows = Windows::load()?;
+    let pid = this_window(&windows)?.context("couldn't find this chat's Claude process")?;
+    if let Some(id) = windows.windows.get(&pid).and_then(|w| w.session_id.clone()).or_else(|| windows.links.get(&claude_id).cloned()) {
+        bail!("this chat is already linked (session {id})");
+    }
+    let board = sign_in(true).context("this computer isn't ready for sessions yet (`omicron doctor` says what's missing)")?;
+    let folder = std::env::current_dir()?;
+    let known = crate::folders_cmd::here(&board, &folder)?;
+    let project = match (project, &known) {
+        (Some(p), _) => board.project(&p)?,
+        (None, Some(f)) => board.project(&f.project)?,
+        (None, None) => crate::folders_cmd::only_project(&board)?,
+    };
+    let base = folder.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "claude".into());
+    let name = match name {
+        Some(n) => n,
+        None => free_name(&board, &base)?,
+    };
+    let record = board.add_session(&project, &name, &claude_id, &folder.to_string_lossy())?;
+    windows.links.insert(claude_id.clone(), record.id.clone());
+    windows.windows.insert(pid, Window { claude_session_id: claude_id, folder: folder.to_string_lossy().into_owned(), session_id: Some(record.id), clearing: false });
+    windows.save()?;
+    if known.as_ref().is_none_or(|f| f.project != project.name) {
+        crate::folders_cmd::remember(&board, &project, &folder)?;
+    }
+    println!(
+        "This chat is now the session {name} in {}. Get its tasks with `omicron tasks mine`. The next Claude started in {} links itself.",
+        project.name,
+        folder.display()
+    );
+    Ok(())
 }
 
 /// One of this machine's sessions, by its record: jump in if it's running.

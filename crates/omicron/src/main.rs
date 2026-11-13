@@ -117,6 +117,15 @@ enum Command {
     /// conversation). It runs in the background and gets messages from the
     /// web page and other machines. Ctrl-\ lets go and leaves it running;
     /// quitting Claude ends it.
+    /// Link the Claude chat this runs in (type `! omicron link` in it): it
+    /// becomes an Omicron session without quitting. Named after its folder
+    /// if no name is given.
+    Link {
+        name: Option<String>,
+        /// Its Project (not needed in a known folder, or when this machine is in only one)
+        #[arg(long)]
+        project: Option<String>,
+    },
     Open {
         /// The session's name (a new one is named after the folder if left out)
         name: Option<String>,
@@ -308,6 +317,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Folders(cmd) => folders_cmd::folders(cmd, cli.as_machine),
+        Command::Link { name, project } => sessions_cmd::link(name, project),
         Command::Accounts(cmd) => accounts_cmd::accounts(cmd),
         Command::Daemon { action: None } => daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {

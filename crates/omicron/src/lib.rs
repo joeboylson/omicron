@@ -5,6 +5,7 @@ pub mod gate;
 pub mod host;
 pub mod identity;
 pub mod inbox;
+pub mod known_folders;
 pub mod login;
 pub mod names;
 pub mod realtime;
