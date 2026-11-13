@@ -1,6 +1,8 @@
-//! `omicron sessions` and the Claude Code hooks that keep sessions' records
-//! up to date. Omicron doesn't start sessions: you open Claude Code as usual,
-//! and `omicron sessions add` (run inside it) records it.
+//! `omicron open`, `omicron sessions` and the Claude Code hooks that keep
+//! sessions' records up to date. Every session runs the same way: opened
+//! in a terminal with `omicron open`, which records it and loads Omicron's
+//! hooks and add-on. Messages for it (Dispatch, loops, `sessions send`) go
+//! into its inbox, and the add-on puts them into its window.
 
 use crate::board_cmd::sign_in;
 use anyhow::{bail, Context, Result};
@@ -12,34 +14,9 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum Sessions {
-    /// Start a new Claude session in a Project, in Omicron's session host
-    /// (asks for whatever isn't given), and jump into it
-    New {
-        /// Its name, like `parser-work`. The Claude session gets it too.
-        name: Option<String>,
-        #[arg(long)]
-        project: Option<String>,
-        /// The folder to work in (this one if left out)
-        #[arg(long)]
-        folder: Option<PathBuf>,
-        /// Start it without jumping in
-        #[arg(long)]
-        no_attach: bool,
-        /// Bring in an existing conversation (Claude Code's session id)
-        /// instead of starting a new one
-        #[arg(long)]
-        resume: Option<String>,
-    },
-    /// Pick one of this machine's sessions from a full-screen list and jump
-    /// in (a closed one is reopened first)
+    /// Pick one of this machine's sessions from a full-screen list and
+    /// open it here (`omicron open`)
     Pick,
-    /// Record the Claude session this runs in, under a Project
-    Add {
-        /// A name for it, like `parser-work`
-        name: String,
-        #[arg(long)]
-        project: String,
-    },
     /// List sessions (all the ones you can see, or one Project's)
     List {
         #[arg(long)]
@@ -50,19 +27,6 @@ pub enum Sessions {
         name: String,
         #[arg(long)]
         project: String,
-    },
-    /// Give a session's open tasks to a member or to another session (for a
-    /// session that's gone)
-    GiveTasks {
-        name: String,
-        #[arg(long)]
-        project: String,
-        /// A member of the Project, by name
-        #[arg(long, conflicts_with = "to_session", required_unless_present = "to_session")]
-        to: Option<String>,
-        /// Another session in the Project
-        #[arg(long)]
-        to_session: Option<String>,
     },
     /// Run a command in the background in Omicron's session host, to jump
     /// into later with `attach`. Example: omicron sessions host work -- claude
@@ -84,6 +48,10 @@ pub enum Sessions {
     },
     /// The hosted sessions running on this machine
     Hosted,
+    /// Follow a conversation's inbox, printing each message as one JSON
+    /// line (run by Omicron's add-on inside the Claude window)
+    #[command(hide = true)]
+    Inbox { conversation: String },
     /// The host process itself (started by `host`)
     #[command(hide = true)]
     HostRun {
@@ -115,31 +83,12 @@ pub enum Hook {
 
 pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
     match cmd {
-        Sessions::New { name, project, folder, no_attach, resume } => new_session(name, project, folder, no_attach, resume)?,
-        Sessions::Add { name, project } => {
-            let mut windows = Windows::load()?;
-            let pid = this_window(&windows)?.context("run this inside a Claude Code session")?;
-            let window = windows.windows.get(&pid).cloned().context(
-                "Omicron hasn't heard from this Claude session. Run `omicron sessions setup-claude`, then restart Claude Code.",
-            )?;
-            if window.session_id.is_some() {
-                bail!("this window is already a session. Remove it first to add it again.");
-            }
-            // Sessions belong to the machine they run on.
-            let board = sign_in(true)?;
-            let project = board.project(&project)?;
-            let record = board.add_session(&project, &name, &window.claude_session_id, &window.folder)?;
-            windows.links.insert(window.claude_session_id.clone(), record.id.clone());
-            windows.windows.insert(pid, Window { session_id: Some(record.id), ..window });
-            windows.save()?;
-            println!("Added session {name} to {}.", project.name);
-        }
         Sessions::List { project } => {
             let board = sign_in(as_machine)?;
             let project = project.map(|p| board.project(&p)).transpose()?;
             let rows = board.sessions(project.as_ref())?;
             if rows.is_empty() {
-                println!("No sessions yet. In a Claude Code session, run `omicron sessions add <name> --project <Project>`.");
+                println!("No sessions yet. In a Claude Code session, open one with `omicron open`.");
             }
             for s in rows {
                 let why = s.gone_why.map(|w| format!("\t({w})")).unwrap_or_default();
@@ -162,17 +111,6 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             println!("Removed session {name} from {}.", project.name);
         }
         Sessions::Pick => crate::picker::pick()?,
-        Sessions::GiveTasks { name, project, to, to_session } => {
-            let board = sign_in(as_machine)?;
-            let p = board.project(&project)?;
-            let n = board.give_session_tasks(&p, &name, to.as_deref(), to_session.as_deref())?;
-            let who = to.or(to_session).unwrap_or_default();
-            match n {
-                0 => println!("{name} has no open tasks."),
-                1 => println!("Gave {name}'s open task to {who}."),
-                n => println!("Gave {name}'s {n} open tasks to {who}."),
-            }
-        }
         Sessions::Host { name, command } => {
             let folder = std::env::current_dir()?;
             omicron::host::start(&name, &folder, &command, &[])?;
@@ -186,11 +124,42 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
         Sessions::Send { name, text, no_enter } => {
             let text = text.replace("\\r", "\r").replace("\\n", "\n");
             if no_enter {
+                // Keys, as they are (like Ctrl-D), into whatever runs in the host.
                 omicron::host::send(&name, &text)?;
-            } else {
-                // Typed, then Enter on its own, so it sends.
-                omicron::host::say(&name, &text)?;
+                return Ok(());
             }
+            // A session (when this machine can look it up), or else
+            // whatever runs in the host under that name.
+            let found = match sign_in(true) {
+                Ok(board) => {
+                    let me = omicron::config::Config::load()?.machine_key()?.machine_id.to_string();
+                    board.sessions(None)?.into_iter().find(|s| s.name == name && s.machine_id == me).map(|s| (board, s))
+                }
+                Err(_) if omicron::host::is_running(&name) => None,
+                Err(e) => return Err(e),
+            };
+            match found {
+                // A session: through its inbox, as if typed once Claude is free.
+                Some((board, session)) => {
+                    if deliver(&board, &session, &text)? {
+                        println!("Sent it to {name}.");
+                    } else {
+                        println!("Left it for {name}. It shows up once Omicron's add-on runs in its window.");
+                    }
+                }
+                // Something else in the host (a team member): typed, then
+                // Enter on its own, so it sends.
+                None if omicron::host::is_running(&name) => omicron::host::say(&name, &text)?,
+                None => bail!("no session called {name} on this machine"),
+            }
+        }
+        Sessions::Inbox { conversation } => {
+            use std::io::Write;
+            let mut out = std::io::stdout().lock();
+            // Stops once the window stops reading (its add-on ended).
+            omicron::inbox::follow(&conversation, |text| {
+                writeln!(out, "{}", json!(text)).and_then(|_| out.flush()).is_ok()
+            })?;
         }
         Sessions::Hosted => {
             let names = omicron::host::hosted()?;
@@ -210,8 +179,10 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             let exe = std::env::current_exe()?.canonicalize()?;
             add_hooks(&path, &exe.to_string_lossy())?;
             let skill = add_skill(path.parent().context("the settings file has no folder")?)?;
+            let addon = add_addon(&exe.to_string_lossy())?;
             println!("Added Omicron's hooks to {}. Restart open Claude Code sessions to pick them up.", path.display());
             println!("Added the /omicron-handoff command ({}).", skill.display());
+            println!("Added Omicron's add-on ({}). Start Claude with `--plugin-dir {}` to get Omicron's messages.", addon.display(), addon.display());
         }
     }
     Ok(())
@@ -253,13 +224,6 @@ pub fn add_skill(claude_dir: &std::path::Path) -> Result<PathBuf> {
     let path = dir.join("SKILL.md");
     std::fs::write(&path, HANDOFF_SKILL)?;
     Ok(path)
-}
-
-/// Does this Claude Code settings file have Omicron's SessionStart hook?
-pub fn has_hooks(path: &std::path::Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(path) else { return false };
-    let Ok(settings) = serde_json::from_str::<Value>(&text) else { return false };
-    settings["hooks"]["SessionStart"].as_array().is_some_and(|l| l.iter().any(is_ours))
 }
 
 fn is_ours(group: &Value) -> bool {
@@ -380,7 +344,9 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     let mut handoff = None;
     let mut cancel_handoff = None;
     // What to tell Supabase, if anything. Untracked windows never call it.
-    let mut updates: Vec<(String, Value)> = gone.into_iter().map(|id| (id, json!({ "state": "gone", "gone_why": omicron::windows::STOPPED }))).collect();
+    // Sessions whose window ended (closed, or crashed unseen) end too.
+    let mut updates: Vec<(String, Value)> = Vec::new();
+    let mut ended: Vec<String> = gone;
     match event {
         Hook::SessionStart => {
             let folder = input["cwd"].as_str().unwrap_or("").to_string();
@@ -411,14 +377,14 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
             } else if let Some(w) = windows.windows.remove(&pid) {
                 if let Some(id) = w.session_id {
                     omicron::windows::set_busy(&id, false)?;
-                    updates.push((id.clone(), json!({ "state": "closed" })));
-                    cancel_handoff = Some(id);
+                    cancel_handoff = Some(id.clone());
+                    ended.push(id);
                 }
             }
         }
     }
     windows.save()?;
-    if updates.is_empty() && pick_up.is_none() {
+    if updates.is_empty() && ended.is_empty() && pick_up.is_none() {
         return Ok(None);
     }
     let board = sign_in(true)?;
@@ -427,6 +393,9 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     }
     if let Some(id) = cancel_handoff {
         board.cancel_waiting_handoff(&id)?;
+    }
+    for id in ended {
+        board.end_session(&id)?;
     }
     // A conversation starting gets its handoff note and the tasks waiting
     // for it.
@@ -485,139 +454,172 @@ pub fn omicron_claude_settings() -> Result<PathBuf> {
     let path = omicron::config::home()?.join("claude/settings.json");
     let exe = std::env::current_exe()?.canonicalize()?;
     add_hooks(&path, &exe.to_string_lossy())?;
+    add_addon(&exe.to_string_lossy())?;
     Ok(path)
 }
 
-fn ask(question: &str) -> Result<String> {
-    use std::io::{BufRead, IsTerminal, Write};
-    if !std::io::stdin().is_terminal() {
-        bail!("{question} (give it as an option when there's no one to ask)");
-    }
-    eprint!("{question} ");
-    std::io::stderr().flush()?;
-    let mut line = String::new();
-    std::io::stdin().lock().read_line(&mut line)?;
-    Ok(line.trim().to_string())
+const ADDON_PLUGIN: &str = include_str!("claude/addon/plugin.json");
+const ADDON_HOOKS: &str = include_str!("claude/addon/hooks.json");
+const ADDON_REGISTER: &str = include_str!("claude/addon/register.ts");
+
+/// Omicron's add-on for Claude Code (`~/.omicron/claude/addon`), which puts
+/// a session's inbox into its window. Replaced each time, so it follows
+/// this program. Load it with `claude --plugin-dir <it>`.
+pub fn add_addon(exe: &str) -> Result<PathBuf> {
+    let dir = addon_dir()?;
+    std::fs::create_dir_all(dir.join(".claude-plugin"))?;
+    std::fs::create_dir_all(dir.join("hooks"))?;
+    std::fs::write(dir.join(".claude-plugin/plugin.json"), ADDON_PLUGIN)?;
+    std::fs::write(dir.join("hooks/hooks.json"), ADDON_HOOKS)?;
+    std::fs::write(dir.join("hooks/register.ts"), ADDON_REGISTER.replace("__OMICRON__", &exe.replace('\\', "\\\\").replace('\'', "\\'")))?;
+    Ok(dir)
 }
 
-/// `omicron sessions new`: record the session, then start Claude Code in the
-/// session host with that name and session id. Its start hook links the
-/// window to the record, so /clear and closing are followed as usual.
-fn new_session(
-    name: Option<String>,
-    project: Option<String>,
-    folder: Option<PathBuf>,
-    no_attach: bool,
-    resume: Option<String>,
-) -> Result<()> {
-    // Sessions belong to the machine they run on.
-    let board = sign_in(true)?;
-    let project = match project {
-        Some(p) => board.project(&p)?,
+pub fn addon_dir() -> Result<PathBuf> {
+    Ok(omicron::config::home()?.join("claude/addon"))
+}
+
+/// Send a session a message: it goes into the session's inbox, and
+/// Omicron's add-on puts it into the session's window. True when a window
+/// has the session open now; otherwise it waits there until it's opened.
+pub fn deliver(board: &omicron::board::Board, session: &omicron::board::SessionRecord, text: &str) -> Result<bool> {
+    let conversation = match &session.claude_session_id {
+        Some(c) => c.clone(),
         None => {
-            let all = board.projects()?;
-            if all.is_empty() {
-                bail!("this machine isn't in any Project yet. Add it with `omicron machines add <machine> <Project>`.");
-            }
-            for (i, p) in all.iter().enumerate() {
-                eprintln!("{}. {}", i + 1, p.name);
-            }
-            let n: usize = ask("Which Project?")?.parse().context("type the Project's number")?;
-            all.into_iter().nth(n.wrapping_sub(1)).context("there's no Project with that number")?
+            // Never opened yet: give it the conversation it'll start with.
+            let c = uuid::Uuid::new_v4().to_string();
+            board.update_session(&session.id, json!({ "claude_session_id": c }))?;
+            c
         }
     };
-    let name = match name {
-        Some(n) => n,
-        None => ask("Name for the session (like parser-work):")?,
-    };
-    // Check the name works for the host before recording anything.
-    omicron::host::socket_path(&name)?;
-    if omicron::host::is_running(&name) {
-        bail!("a session called {name} is already running on this machine");
+    omicron::inbox::put(&conversation, text)?;
+    Ok(omicron::inbox::listening(&conversation))
+}
+
+/// `omicron open`: the one way to run a Claude session. Claude runs in the
+/// background, with Omicron's hooks and add-on (so it gets its messages
+/// from the web page and other machines live), and this terminal jumps in:
+/// Ctrl-\ (or `omicron detach` inside it) lets go and leaves it running, and
+/// `omicron open <name>` jumps back in. A session exists only while it
+/// runs: quitting Claude ends it. With `--resume` it starts from an existing
+/// Claude conversation.
+pub fn open(name: Option<String>, project: Option<String>, resume: Option<String>, folder: Option<PathBuf>) -> Result<()> {
+    // Run from inside a Claude window: it can't start Claude in there, so
+    // say exactly what to run once this window is closed.
+    if let Some(here) = std::env::var("CLAUDE_CODE_SESSION_ID").ok().filter(|v| !v.is_empty()) {
+        if let Ok(session) = std::env::var("OMICRON_SESSION") {
+            bail!("this is already the session {session}. `omicron detach` lets go of it and leaves it running.");
+        }
+        let name = match name {
+            Some(n) => n,
+            None => std::env::current_dir()?.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "<name>".into()),
+        };
+        let project = project.map(|p| format!(" --project {}", shell_quote(&p))).unwrap_or_default();
+        bail!(
+            "this starts Claude itself, so it can't run inside a Claude window. Quit this window (/exit), then run:\n  omicron open {}{project} --resume {}",
+            shell_quote(&name),
+            resume.unwrap_or(here)
+        );
     }
-    let folder = match folder {
-        Some(f) => f.canonicalize().with_context(|| format!("there's no folder {}", f.display()))?,
-        None => std::env::current_dir()?,
-    };
+    let board = sign_in(true).context("this computer isn't ready for sessions yet (`omicron doctor` says what's missing)")?;
+    let me = omicron::config::Config::load()?.machine_key()?.machine_id.to_string();
+    let project = project.map(|p| board.project(&p)).transpose()?;
+    let mine: Vec<_> = board.sessions(project.as_ref())?.into_iter().filter(|s| s.machine_id == me).collect();
     if let Some(id) = &resume {
         uuid::Uuid::parse_str(id).context("--resume takes Claude Code's session id (a UUID)")?;
+        if let Some(s) = mine.iter().find(|s| s.claude_session_id.as_deref() == Some(id.as_str())) {
+            return jump_in(&board, s);
+        }
         if !omicron::windows::transcript_exists(id) {
             bail!("there's no conversation {id} on this machine");
         }
     }
+    if let Some(n) = &name {
+        let named: Vec<_> = mine.iter().filter(|s| &s.name == n).collect();
+        if named.len() > 1 {
+            bail!(
+                "{n} is a session in more than one Project here; say which with --project ({})",
+                named.iter().map(|s| s.project.as_str()).collect::<Vec<_>>().join(", ")
+            );
+        }
+        if let Some(s) = named.first() {
+            return jump_in(&board, s);
+        }
+    }
+
+    // A new session.
+    let project = match project {
+        Some(p) => p,
+        None => match board.projects()?.as_slice() {
+            [one] => one.clone(),
+            [] => bail!("this machine isn't in any Project yet. Add it with `omicron machines add <machine> <Project>`."),
+            all => bail!("say which Project with --project ({})", all.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")),
+        },
+    };
+    let folder = match folder {
+        Some(f) => f.canonicalize().with_context(|| format!("there's no folder {}", f.display()))?,
+        None => std::env::current_dir()?,
+    };
+    let name = match name {
+        Some(n) => n,
+        None => {
+            let suggested = folder.file_name().map(|f| f.to_string_lossy().into_owned());
+            ask_name(suggested.as_deref())?
+        }
+    };
+    // Its name must work for the background runner, and be free here.
+    omicron::host::socket_path(&name)?;
+    if omicron::host::is_running(&name) {
+        bail!("something called {name} is already running on this machine");
+    }
     let claude_id = resume.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let record = board.add_session(&project, &name, &claude_id, &folder.to_string_lossy())?;
+    // So the start hook ties Claude's window to the session.
     let mut windows = Windows::load()?;
     windows.links.insert(claude_id.clone(), record.id.clone());
     windows.save()?;
-    let command = claude_command(&name, &claude_id, resume.is_some(), None)?;
-    if let Err(e) = omicron::host::start(&name, &folder, &command, &[]) {
-        // Don't leave a record for a session that never started.
-        let _ = board.remove_session(&project, &name);
+    let command = claude_command(&record.name, &claude_id, resume.is_some())?;
+    if let Err(e) = omicron::host::start(&record.name, &folder, &command, &[]) {
+        // Never ran: no session.
+        let _ = board.end_session(&record.id);
         return Err(e);
     }
-    println!("Started {name} in {} on this machine.", project.name);
-    if no_attach || !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-        println!("Jump in with `omicron sessions attach {name}`.");
+    attach_here(&record.name)
+}
+
+/// One of this machine's sessions, by its record: jump in if it's running.
+/// A record whose Claude stopped unseen (a crash) ends, and says so.
+fn jump_in(board: &omicron::board::Board, s: &omicron::board::SessionRecord) -> Result<()> {
+    if omicron::host::is_running(&s.name) {
+        return attach_here(&s.name);
+    }
+    board.end_session(&s.id)?;
+    bail!("{} had stopped, so it's ended. `omicron open` starts a new one (`--resume {}` picks its conversation up).", s.name, s.claude_session_id.as_deref().unwrap_or("<id>"))
+}
+
+/// Jump into a running session in this terminal, if there is one.
+fn attach_here(name: &str) -> Result<()> {
+    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        println!("{name} is running. Jump in with `omicron open {name}`.");
         return Ok(());
     }
-    omicron::host::attach(&name)?;
+    if omicron::host::attach(name)? {
+        eprintln!("{name} ended.");
+    }
     Ok(())
 }
 
-/// The command that runs Claude Code for a session in the host: a new
-/// conversation (`--session-id`) or an old one (`--resume`), with Omicron's
-/// hooks and an optional first message.
-pub fn claude_command(name: &str, claude_id: &str, resume: bool, first: Option<&str>) -> Result<Vec<String>> {
+/// The command that runs Claude Code for a session: a new conversation
+/// (`--session-id`) or an old one (`--resume`), with Omicron's hooks and
+/// add-on.
+pub fn claude_command(name: &str, claude_id: &str, resume: bool) -> Result<Vec<String>> {
     let settings = omicron_claude_settings()?;
     let mut command = vec!["claude".to_string()];
     command.extend([if resume { "--resume" } else { "--session-id" }.to_string(), claude_id.to_string()]);
     command.extend(["--name".into(), name.to_string(), "--settings".into(), settings.to_string_lossy().into_owned()]);
+    command.extend(["--plugin-dir".into(), addon_dir()?.to_string_lossy().into_owned()]);
     command.extend(omicron::config::Config::load()?.claude_args);
-    if let Some(text) = first {
-        command.push(text.to_string());
-    }
     Ok(command)
-}
-
-/// Reopen a session that isn't running, in the host on this machine, with
-/// an optional first message. Refuses when it's open in a window Omicron
-/// doesn't host, gone for good (not just crashed), or its conversation or
-/// folder is gone (marking it gone then).
-pub fn reopen(board: &omicron::board::Board, session: &omicron::board::SessionRecord, machine: &str, first: Option<&str>) -> Result<()> {
-    let name = &session.name;
-    let mut windows = Windows::load()?;
-    let gone = windows.sweep();
-    if windows.windows.values().any(|w| w.session_id.as_deref() == Some(session.id.as_str())) {
-        bail!("{name} is open in a window Omicron doesn't host");
-    }
-    for g in gone {
-        board.update_session(&g, json!({ "state": "gone", "gone_why": omicron::windows::STOPPED }))?;
-    }
-    if session.state == "gone" && session.gone_why.as_deref() != Some(omicron::windows::STOPPED) {
-        bail!("{name} is gone ({}), so it can't be opened. Give its work to someone else.", session.gone_why.as_deref().unwrap_or("no reason saved"));
-    }
-    let folder = PathBuf::from(&session.folder);
-    if session.folder.is_empty() || !folder.is_dir() {
-        bail!("{name}'s folder ({}) isn't on {machine} any more", session.folder);
-    }
-    let (claude_id, resume) = match &session.claude_session_id {
-        Some(id) if !omicron::windows::transcript_exists(id) => {
-            board.update_session(&session.id, json!({ "state": "gone", "gone_why": omicron::windows::DELETED }))?;
-            bail!("{name}'s conversation was deleted on {machine}, so it can't be reopened. Give its work to someone else.");
-        }
-        Some(id) => (id.clone(), true),
-        None => {
-            let id = uuid::Uuid::new_v4().to_string();
-            board.update_session(&session.id, json!({ "claude_session_id": id }))?;
-            (id, false)
-        }
-    };
-    let command = claude_command(name, &claude_id, resume, first)?;
-    // So the start hook ties the new window to this session.
-    windows.links.insert(claude_id, session.id.clone());
-    windows.save()?;
-    omicron::host::start(name, &folder, &command, &[])
 }
 
 /// `omicron tasks mine`: "go get your tasks". Everything given to the
@@ -627,7 +629,7 @@ pub fn tasks_mine() -> Result<()> {
     let session_id = this_window(&windows)?
         .and_then(|pid| windows.windows.get(&pid))
         .and_then(|w| w.session_id.clone())
-        .context("run this inside a Claude session Omicron tracks (`omicron sessions add` or `omicron sessions new`)")?;
+        .context("run this inside a Claude session Omicron tracks (opened with `omicron open`)")?;
     let board = sign_in(true)?;
     let new: Vec<String> = board.pick_up_tasks(&session_id)?.into_iter().map(|(_, t)| t.id).collect();
     let tasks = board.session_tasks(&session_id)?;
@@ -637,4 +639,29 @@ pub fn tasks_mine() -> Result<()> {
         print!("{}", tasks_message(&tasks, &new));
     }
     Ok(())
+}
+
+/// A new session's name: asked for in a terminal (Enter takes the
+/// suggestion, the folder's name), otherwise the suggestion.
+fn ask_name(suggested: Option<&str>) -> Result<String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return suggested.map(String::from).context("give it a name: omicron open <name>");
+    }
+    loop {
+        match suggested {
+            Some(s) => eprint!("Name for the session ({s}): "),
+            None => eprint!("Name for the session: "),
+        }
+        std::io::stderr().flush()?;
+        let mut line = String::new();
+        if std::io::stdin().lock().read_line(&mut line)? == 0 {
+            bail!("no name given");
+        }
+        match (line.trim(), suggested) {
+            ("", Some(s)) => return Ok(s.to_string()),
+            ("", None) => continue,
+            (n, _) => return Ok(n.to_string()),
+        }
+    }
 }

@@ -1,10 +1,11 @@
 //! Full-screen pickers: `omicron sessions pick` (this machine's sessions)
 //! and `omicron teams pick` (this machine's running team members).
 //! Arrow keys (or Ctrl-P/Ctrl-N) move, typing filters by any column,
-//! Enter jumps in (reopening a closed session in the host first), Esc quits.
+//! Enter opens a session here (`omicron open`) or jumps into a team member,
+//! Esc quits.
 
 use crate::board_cmd::sign_in;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use omicron::board::SessionRecord;
 use omicron::text::line;
 use std::io::{Read, Write};
@@ -18,21 +19,20 @@ pub struct Row {
     pub detail: String,
 }
 
-/// One row: a session and whether it's running in the host here.
+/// One row: a session and whether it's running here.
 #[derive(Debug, Clone)]
 pub struct Entry {
     pub session: SessionRecord,
-    pub hosted: bool,
+    pub running: bool,
 }
 
 impl Entry {
-    /// What Enter does, in a word or two.
+    /// Running, or stopped without saying (it ends when picked).
     fn status(&self) -> &'static str {
-        match (self.hosted, self.session.state.as_str()) {
-            (true, _) => "running",
-            (false, "open") => "open elsewhere",
-            (false, "closed") => "closed",
-            _ => "crashed",
+        if self.running {
+            "running"
+        } else {
+            "stopped"
         }
     }
 
@@ -46,24 +46,15 @@ impl Entry {
     }
 }
 
-/// This machine's sessions that can be opened, in the order shown: running
-/// in the host first, then open elsewhere, closed, crashed; by name within
-/// each. Sessions gone for good (machine removed, conversation deleted)
-/// aren't listed.
-pub fn entries(sessions: Vec<SessionRecord>, machine_id: &str, hosted: &[String]) -> Vec<Entry> {
+/// This machine's sessions, in the order shown: running first, then any
+/// that stopped without saying; by name within each.
+pub fn entries(sessions: Vec<SessionRecord>, machine_id: &str, running: &[String]) -> Vec<Entry> {
     let mut list: Vec<Entry> = sessions
         .into_iter()
         .filter(|s| s.machine_id == machine_id)
-        .filter(|s| s.state != "gone" || s.gone_why.as_deref() == Some(omicron::windows::STOPPED))
-        .map(|s| Entry { hosted: hosted.contains(&s.name), session: s })
+        .map(|s| Entry { running: running.contains(&s.name), session: s })
         .collect();
-    let rank = |e: &Entry| match (e.hosted, e.session.state.as_str()) {
-        (true, _) => 0,
-        (false, "open") => 1,
-        (false, "closed") => 2,
-        _ => 3,
-    };
-    list.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.session.name.cmp(&b.session.name)));
+    list.sort_by(|a, b| b.running.cmp(&a.running).then_with(|| a.session.name.cmp(&b.session.name)));
     list
 }
 
@@ -83,10 +74,9 @@ pub fn pick() -> Result<()> {
     let board = sign_in(true)?;
     let config = omicron::config::Config::load()?;
     let me = config.machine_key()?.machine_id.to_string();
-    let hosted = omicron::host::hosted()?;
-    let list = entries(board.sessions(None)?, &me, &hosted);
+    let list = entries(board.sessions(None)?, &me, &omicron::host::hosted()?);
     if list.is_empty() {
-        println!("No sessions on this machine yet. Start one with `omicron sessions new`.");
+        println!("No sessions on this machine yet. Start one with `omicron open`.");
         return Ok(());
     }
     if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
@@ -97,19 +87,8 @@ pub fn pick() -> Result<()> {
     }
     let rows: Vec<Row> = list.iter().map(Entry::row).collect();
     let Some(at) = choose("Sessions on this machine", &rows)? else { return Ok(()) };
-    let chosen = &list[at];
-    let s = &chosen.session;
-    if chosen.hosted {
-        omicron::host::attach(&s.name)?;
-        return Ok(());
-    }
-    if s.state == "open" {
-        bail!("{} is open in a window Omicron doesn't host ({}). Switch to that window.", s.name, s.folder);
-    }
-    let machine = board.machines()?.into_iter().find(|m| m.id == me).map(|m| m.name).unwrap_or_else(|| "this machine".into());
-    crate::sessions_cmd::reopen(&board, s, &machine, None)?;
-    omicron::host::attach(&s.name)?;
-    Ok(())
+    let s = &list[at].session;
+    crate::sessions_cmd::open(Some(s.name.clone()), Some(s.project.clone()), None, None)
 }
 
 /// A team member, as `omicron teams pick` lists it.
@@ -424,27 +403,23 @@ mod tests {
     }
 
     #[test]
-    fn running_first_then_open_closed_crashed_and_only_this_machines() {
+    fn running_first_then_stopped_and_only_this_machines() {
         let all = vec![
-            s("zeta", "Code", "me", "closed", None),
-            s("alpha", "Code", "me", "closed", None),
+            s("zeta", "Code", "me", "open", None),
             s("parser", "Code", "me", "open", None),
             s("web", "Site", "me", "open", None),
-            s("crashed", "Code", "me", "gone", Some(omicron::windows::STOPPED)),
-            s("removed", "Code", "me", "gone", Some("its machine was taken out of the Project")),
+            s("crashed", "Code", "me", "open", None),
             s("theirs", "Code", "other", "open", None),
         ];
-        let list = entries(all, "me", &["web".to_string()]);
+        let running = ["web".to_string(), "parser".to_string(), "zeta".to_string()];
+        let list = entries(all, "me", &running);
         let names: Vec<(&str, &str)> = list.iter().map(|e| (e.session.name.as_str(), e.status())).collect();
-        assert_eq!(
-            names,
-            [("web", "running"), ("parser", "open elsewhere"), ("alpha", "closed"), ("zeta", "closed"), ("crashed", "crashed")]
-        );
+        assert_eq!(names, [("parser", "running"), ("web", "running"), ("zeta", "running"), ("crashed", "stopped")]);
         // Filtering by name and Project, every word.
         let rows: Vec<Row> = list.iter().map(Entry::row).collect();
         let names = |q: &str| matching(&rows, q).iter().map(|&i| rows[i].name.clone()).collect::<Vec<_>>();
         assert_eq!(names("site"), ["web"]);
-        assert_eq!(names("code r"), ["parser", "crashed"]);
+        assert_eq!(names("code r"), ["parser", "zeta", "crashed"]);
         assert!(names("nothing").is_empty());
     }
 

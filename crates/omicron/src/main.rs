@@ -99,7 +99,29 @@ enum Command {
     /// People: link Tailscale identities
     #[command(subcommand)]
     People(People),
-    /// Claude sessions: record the one you're in, list them
+    /// Open a Claude session and jump in: one of this machine's by name, or
+    /// a new one (asks for its name; --resume starts from an existing Claude
+    /// conversation). It runs in the background and gets messages from the
+    /// web page and other machines. Ctrl-\ lets go and leaves it running;
+    /// quitting Claude ends it.
+    Open {
+        /// The session's name (a new one is named after the folder if left out)
+        name: Option<String>,
+        /// Its Project (not needed when this machine is in only one)
+        #[arg(long)]
+        project: Option<String>,
+        /// An existing Claude conversation (Claude Code's session id) to
+        /// bring in
+        #[arg(long)]
+        resume: Option<String>,
+        /// The folder to work in, for a new session (this one if left out)
+        #[arg(long)]
+        folder: Option<std::path::PathBuf>,
+    },
+    /// Let go of the session this runs in, leaving it running (like
+    /// Ctrl-\): `! omicron detach` from inside it
+    Detach,
+    /// Claude sessions: list them, pick one, send one a message
     #[command(subcommand)]
     Sessions(sessions_cmd::Sessions),
     /// Handoff notes: write where a session stopped; the next conversation
@@ -233,6 +255,11 @@ fn run(cli: Cli) -> Result<()> {
                 hosts.push(name);
             }
             omicron::web::WebMachine { supabase, public_supabase_url, extra_hosts: hosts }.serve(port)
+        }
+        Command::Open { name, project, resume, folder } => sessions_cmd::open(name, project, resume, folder),
+        Command::Detach => {
+            let name = std::env::var("OMICRON_SESSION").ok().filter(|n| !n.is_empty()).context("run this inside a session opened with `omicron open`")?;
+            omicron::host::detach(&name)
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
@@ -461,25 +488,17 @@ fn daemon() -> Result<()> {
         }
         bail!(why);
     }
-    // Claude windows that ended while nobody was watching (a crash, a
-    // restart): their sessions are gone.
+    // Sessions that stopped while nobody was watching (a crash, this
+    // machine restarting): not running here any more, so they end.
     let mut windows = omicron::windows::Windows::load()?;
-    let gone = windows.sweep();
+    windows.sweep();
+    windows.save()?;
     let board = omicron::board::Board { supabase: supabase.clone(), session: first.clone() };
-    if !gone.is_empty() {
-        for id in gone {
-            board.update_session(&id, json!({ "state": "gone", "gone_why": omicron::windows::STOPPED }))?;
-        }
-        windows.save()?;
-    }
-    // Closed sessions whose conversation was deleted can't be reopened:
-    // they're gone too.
+    let hosted = omicron::host::hosted()?;
     for s in board.sessions(None)? {
-        let deleted = s.machine_id == key.machine_id.to_string()
-            && s.state == "closed"
-            && s.claude_session_id.as_deref().is_some_and(|id| !omicron::windows::transcript_exists(id));
-        if deleted {
-            board.update_session(&s.id, json!({ "state": "gone", "gone_why": omicron::windows::DELETED }))?;
+        let in_a_window = windows.windows.values().any(|w| w.session_id.as_deref() == Some(s.id.as_str()));
+        if s.machine_id == key.machine_id.to_string() && !hosted.contains(&s.name) && !in_a_window {
+            board.end_session(&s.id)?;
         }
     }
     // Switching Claude accounts on their own: Anthropic's usage numbers can
@@ -550,7 +569,7 @@ fn daemon() -> Result<()> {
         });
     }
     // Sessions' loops on this machine, run when due.
-    let runner = loops_cmd::Runner::start(supabase.clone(), key.clone(), name.clone());
+    let runner = loops_cmd::Runner::start(supabase.clone(), key.clone());
     let react = |row: &serde_json::Value| {
         runner.heard(row);
         if matches!(row["table_name"].as_str(), Some("teams" | "jobs" | "comments")) {

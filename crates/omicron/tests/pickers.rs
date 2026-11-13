@@ -26,14 +26,16 @@ fn short_machine(s: &omicron::supa::Supabase) -> Computer {
 }
 
 /// Host a little program as a session called `name`: it prints `hello
-/// from <name>`, then echoes what it's typed.
+/// from <name>`, then echoes what it's typed; typed `detach`, it runs
+/// `omicron detach` from inside.
 fn host(c: &Computer, name: &str) {
-    let script = format!("echo hello from {name}; while read -r l; do echo \"got: $l\"; done");
+    let o = env!("CARGO_BIN_EXE_omicron");
+    let script = format!("echo hello from {name}; while read -r l; do if [ \"$l\" = detach ]; then {o} detach; else echo \"got: $l\"; fi; done");
     ok(c, &["sessions", "host", name, "--", "sh", "-c", &script]);
 }
 
 #[test]
-fn sessions_pick_and_attach_through_a_terminal() {
+fn sessions_pick_attach_and_detach_through_a_terminal() {
     let Some(s) = admin() else {
         eprintln!("skipped: no test Supabase set up");
         return;
@@ -47,9 +49,10 @@ fn sessions_pick_and_attach_through_a_terminal() {
         .unwrap();
     ok(&pat, &["machines", "add", &names[0], &project]);
     let pid = s.admin_request("GET", &format!("/rest/v1/projects?name=eq.{project}&select=id"), None).unwrap()[0]["id"].as_str().unwrap().to_string();
-    // Three sessions on this machine: two running in the host, one closed.
-    for (name, state) in [("alpha", "open"), ("bravo-web", "open"), ("charlie", "closed")] {
-        s.admin_request("POST", "/rest/v1/sessions", Some(json!({ "project_id": pid, "machine_id": mac_id, "name": name, "folder": "/code", "state": state })))
+    // Three sessions on this machine: two running in the background, one
+    // whose Claude stopped without saying.
+    for name in ["alpha", "bravo-web", "charlie"] {
+        s.admin_request("POST", "/rest/v1/sessions", Some(json!({ "project_id": pid, "machine_id": mac_id, "name": name, "folder": "/code" })))
             .unwrap();
     }
     host(&mac, "alpha");
@@ -60,6 +63,7 @@ fn sessions_pick_and_attach_through_a_terminal() {
     let first: Vec<&str> = listed.lines().map(|l| l.split('\t').next().unwrap()).collect();
     assert_eq!(first, ["alpha", "bravo-web", "charlie"], "{listed}");
     assert!(listed.lines().next().unwrap().contains("\trunning\t"), "{listed}");
+    assert!(listed.lines().nth(2).unwrap().contains("\tstopped\t"), "{listed}");
 
     // Arrows and Ctrl-N/Ctrl-P move; typing filters; Enter jumps in.
     let mut t = Term::start(&mac, &["sessions", "pick"]);
@@ -80,7 +84,7 @@ fn sessions_pick_and_attach_through_a_terminal() {
     t.keys("ping");
     t.keys(ENTER);
     t.wait_for("got: ping");
-    // Ctrl-\ detaches: the session keeps running.
+    // Ctrl-\ lets go: it keeps running.
     t.keys(DETACH);
     let (fine, screen) = t.finish();
     assert!(fine, "{screen}");
@@ -90,6 +94,15 @@ fn sessions_pick_and_attach_through_a_terminal() {
     let raw = last_raw();
     assert!(raw.contains("\x1b[?1049h") && raw.contains("\x1b[?1049l") && raw.contains("\x1b[?25h"), "{raw:?}");
 
+    // One that stopped without saying: picking it says so, and it ends.
+    let mut t = Term::start(&mac, &["sessions", "pick"]);
+    t.wait_for("charlie");
+    t.keys("charlie");
+    t.keys(ENTER);
+    let (fine, screen) = t.finish();
+    assert!(!fine && screen.contains("charlie had stopped, so it's ended"), "{screen}");
+    assert!(!ok(&mac, &["sessions", "list", "--project", &project]).contains("charlie"));
+
     // Esc quits, doing nothing.
     let mut t = Term::start(&mac, &["sessions", "pick"]);
     t.wait_for("alpha");
@@ -97,17 +110,22 @@ fn sessions_pick_and_attach_through_a_terminal() {
     let (fine, _) = t.finish();
     assert!(fine);
 
-    // Attach directly, and what was printed before shows when jumping in.
-    let mut t = Term::start(&mac, &["sessions", "attach", "alpha"]);
+    // `omicron open <name>` jumps straight back in, and what was printed
+    // before shows.
+    let mut t = Term::start(&mac, &["open", "alpha"]);
     t.wait_for("hello from alpha");
     t.keys("again");
     t.keys(ENTER);
     t.wait_for("got: again");
-    t.keys(DETACH);
+    // `omicron detach`, run inside the session, lets go too.
+    t.keys("detach");
+    t.keys(ENTER);
     let (fine, screen) = t.finish();
     assert!(fine, "{screen}");
+    assert!(screen.contains("[detached from alpha"), "{screen}");
+    assert!(ok(&mac, &["sessions", "hosted"]).contains("alpha"));
 
-    // A session that ends while attached: attach says so and returns.
+    // It ends while jumped in: says so and returns.
     let mut t = Term::start(&mac, &["sessions", "attach", "alpha"]);
     t.wait_for("got: again");
     t.keys("\x04"); // Ctrl-D: its `read` ends, and so does the program
@@ -209,5 +227,51 @@ fn teams_view_and_pick_through_a_terminal() {
 
     ok(&mac, &["sessions", "send", &format!("{team}.lead"), "\x04", "--no-enter"]);
     git(&["worktree", "remove", "--force", wt.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&mac.home);
+}
+
+#[test]
+fn open_asks_for_a_new_sessions_name_in_a_terminal() {
+    let Some(s) = admin() else {
+        eprintln!("skipped: no test Supabase set up");
+        return;
+    };
+    let (pat, project) = person_with_project(&s, "Pat");
+    let mac = short_machine(&s);
+    let mac_id = mac.machine_id.unwrap();
+    let name = s.admin_request("GET", &format!("/rest/v1/machines?id=eq.{mac_id}&select=name"), None).unwrap()[0]["name"].as_str().unwrap().to_string();
+    ok(&pat, &["machines", "add", &name, &project]);
+    let code = mac.home.join("code");
+    std::fs::create_dir_all(&code).unwrap();
+    let bin = mac.home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("claude"), "#!/bin/sh\necho \"claude $3 $4\"\ncat\n").unwrap();
+    std::process::Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let open = |typed: &str| {
+        let mut t = Term::start_env(&mac, &["open", "--project", &project, "--folder", code.to_str().unwrap()], &[("PATH", &path)]);
+        t.wait_for("Name for the session (code):");
+        t.keys(typed);
+        t.keys(ENTER);
+        t
+    };
+
+    // Typed: that name. (Ctrl-\ lets go, leaving it running.)
+    let mut t = open("parser");
+    t.wait_for("claude --name parser");
+    t.keys(DETACH);
+    let (fine, screen) = t.finish();
+    assert!(fine, "{screen}");
+    // Just Enter: the folder's name.
+    let mut t = open("");
+    t.wait_for("claude --name code");
+    t.keys(DETACH);
+    let (fine, screen) = t.finish();
+    assert!(fine, "{screen}");
+    let listed = ok(&mac, &["sessions", "list", "--project", &project]);
+    assert!(listed.contains("parser\t") && listed.contains("code\t"), "{listed}");
+    for name in ["parser", "code"] {
+        ok(&mac, &["sessions", "send", name, "\x04", "--no-enter"]);
+    }
     let _ = std::fs::remove_dir_all(&mac.home);
 }

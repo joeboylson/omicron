@@ -15,7 +15,8 @@
 #   claude --settings ~/.omicron/claude/settings.json
 set -euo pipefail
 cd "$(dirname "$0")/.."
-port=9010
+# A Mac where 9010 is taken keeps its own port in ~/.omicron/web-port.
+port=$(cat "$HOME/.omicron/web-port" 2>/dev/null || echo 9010)
 host=atlas.taileedd95.ts.net
 
 stop() {

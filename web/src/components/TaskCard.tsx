@@ -1,4 +1,4 @@
-import { CalendarDays, CheckSquare, MessageSquare, Terminal } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckSquare, MessageSquare, Terminal } from "lucide-react";
 import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
   const session = project.sessions.find((c) => c.id === task.assignee_session_id);
   const ticked = task.checklist.filter((c) => c.done).length;
   const done = project.statuses.find((s) => s.id === task.status_id)?.is_done ?? false;
+  // Given to a session that has since ended, and not given out again.
+  const ended = !assignee && !session && !done && task.ended_session ? task.ended_session : null;
   return (
     <Card
       role="button"
@@ -34,7 +36,7 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
           ))}
         </div>
       )}
-      {(task.due_on || task.checklist.length > 0 || task.comments.length > 0 || assignee || session) && (
+      {(task.due_on || task.checklist.length > 0 || task.comments.length > 0 || assignee || session || ended) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {task.due_on && (
             <span
@@ -67,6 +69,13 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
               <Terminal className="h-3.5 w-3.5" />
               <span className="font-mono">{session.name}</span>
               {!task.picked_up_at && <span>· waiting</span>}
+            </span>
+          )}
+          {ended && (
+            <span className="ml-auto flex items-center gap-1 text-[var(--sys-orange)]" title={`${task.ended_session} has ended: give it to someone else`}>
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span className="font-mono">{task.ended_session}</span>
+              <span>· ended</span>
             </span>
           )}
           {assignee && (

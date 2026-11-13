@@ -18,16 +18,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, fo
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
-const STATE_TEXT = { open: "open", closed: "closed", gone: "stopped" } as const;
 const NOTE_STATE = { waiting: "waiting", picked_up: "picked up", replaced: "replaced", cancelled: "cancelled" } as const;
 
-/** The Project's Claude sessions, open ones first. Tap one for its handoff notes. */
+/**
+ * The Project's Claude sessions: only ones running now (a session's record
+ * goes when it ends). Tap one for its handoff notes.
+ */
 export function Sessions({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
   const { sessions, handoffs } = project;
   const [openId, setOpenId] = useState<string | null>(null);
   if (sessions.length === 0) return null;
-  const order = { open: 0, closed: 1, gone: 2 };
-  const sorted = [...sessions].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+  const sorted = [...sessions].sort((a, b) => a.name.localeCompare(b.name));
   const open = sessions.find((s) => s.id === openId) ?? null;
   return (
     <section aria-label="Claude sessions" className="flex items-center gap-2 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-3 text-sm">
@@ -36,21 +37,14 @@ export function Sessions({ project, onChanged }: { project: ProjectData; onChang
         {sorted.map((s) => (
           <li key={s.id} title={s.folder ? `${s.folder} on ${s.machine}` : s.machine}>
             <button type="button" className="flex min-h-11 items-center sm:min-h-0" onClick={() => setOpenId(s.id)}>
-              <Badge
-                variant={s.state === "open" ? "secondary" : "outline"}
-                className={cn("cursor-pointer gap-1.5 whitespace-nowrap font-normal", s.state !== "open" && "text-muted-foreground")}
-              >
-                <span
-                  aria-hidden
-                  className={cn("h-1.5 w-1.5 rounded-full", s.state !== "open" && "border border-muted-foreground")}
-                  style={s.state === "open" ? { background: "var(--sys-green)" } : undefined}
-                />
+              <Badge variant="secondary" className="cursor-pointer gap-1.5 whitespace-nowrap font-normal">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--sys-green)" }} />
                 <span className="font-medium">{s.name}</span>
                 {project.loops.some((l) => l.session_id === s.id) && (
                   <Repeat className="h-3 w-3 text-[var(--sys-blue)]" aria-label="looping" />
                 )}
                 <span className="text-muted-foreground">
-                  <span className="font-mono text-[11px]">{s.machine}</span> · {STATE_TEXT[s.state]}
+                  <span className="font-mono text-[11px]">{s.machine}</span>
                 </span>
               </Badge>
             </button>
@@ -82,7 +76,7 @@ function SessionNotes({
   const { db, act } = useApp();
   const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
   const tasks = project.tasks.filter((t) => t.assignee_session_id === session.id && !done.has(t.status_id));
-  const others = project.sessions.filter((s) => s.id !== session.id && s.state === "open");
+  const others = project.sessions.filter((s) => s.id !== session.id);
   const loop = project.loops.find((l) => l.session_id === session.id);
   const [copied, setCopied] = useState<number | null>(null);
   const copy = async (n: HandoffNote) => {
@@ -102,27 +96,11 @@ function SessionNotes({
               <span className="font-mono">{session.folder}</span>
             </>
           )}
-          {" · "}
-          {STATE_TEXT[session.state]}
         </DialogDescription>
       </DialogHeader>
-      {session.state === "gone" && (
-        <p role="status" className="-mt-2 text-sm text-muted-foreground" data-testid="gone-why">
-          Stopped: {session.gone_why ?? "it stopped without saying"}.
-        </p>
-      )}
       {loop && <LoopGroup loop={loop} machine={session.machine} onChanged={onChanged} />}
       {tasks.length > 0 && (
-        <Group
-          title="Open tasks"
-          note={
-            session.state !== "gone"
-              ? undefined
-              : session.gone_why?.startsWith("it stopped without saying")
-                ? "Dispatch can reopen it on its machine, or give them to someone else."
-                : "A stopped session can't work on these. Give them to someone else."
-          }
-        >
+        <Group title="Open tasks">
           <ul aria-label="Open tasks" className="divide-y">
             {tasks.map((t) => (
               <li key={t.id} className="flex gap-2 px-4 py-3 text-[15px] sm:text-sm">

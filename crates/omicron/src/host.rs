@@ -12,7 +12,11 @@
 //! The socket's protocol: the host sends the terminal's output as plain
 //! bytes (first the kept output, then live). A client sends frames of
 //! `[kind: u8][length: u32 big-endian][data]`: kind 0 is input for the
-//! terminal, kind 1 is a new size (rows, cols as two u16).
+//! terminal, kind 1 is a new size (rows, cols as two u16), kind 2 lets go
+//! of everyone jumped in (`omicron detach`, from inside the session).
+//!
+//! The program runs with `OMICRON_SESSION` set to its name, so a command
+//! inside it knows which session it's in.
 
 use anyhow::{bail, Context, Result};
 use std::io::{Read, Write};
@@ -26,6 +30,7 @@ use std::sync::{Arc, Mutex};
 const KEEP: usize = 256 * 1024;
 pub const INPUT: u8 = 0;
 pub const RESIZE: u8 = 1;
+pub const DETACH: u8 = 2;
 /// Ctrl-\ detaches, as in dtach.
 pub const DETACH_KEY: u8 = 0x1c;
 
@@ -136,7 +141,7 @@ pub fn host(name: &str, command: &[String]) -> Result<()> {
     let master: OwnedFd = pty.master;
     let slave: OwnedFd = pty.slave;
     let mut cmd = Command::new(&command[0]);
-    cmd.args(&command[1..]).env("TERM", std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".into()));
+    cmd.args(&command[1..]).env("TERM", std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".into())).env("OMICRON_SESSION", name);
     cmd.stdin(Stdio::from(slave.try_clone()?)).stdout(Stdio::from(slave.try_clone()?)).stderr(Stdio::from(slave));
     unsafe {
         use std::os::unix::process::CommandExt;
@@ -196,8 +201,8 @@ pub fn host(name: &str, command: &[String]) -> Result<()> {
                         list.push(out);
                     }
                 }
-                let master = master.clone();
-                std::thread::spawn(move || serve_client(stream, &master));
+                let (master, clients) = (master.clone(), clients.clone());
+                std::thread::spawn(move || serve_client(stream, &master, &clients));
             }
         });
     }
@@ -207,8 +212,9 @@ pub fn host(name: &str, command: &[String]) -> Result<()> {
     std::process::exit(status.code().unwrap_or(0));
 }
 
-/// Read one client's frames: input goes to the terminal, sizes resize it.
-fn serve_client(mut stream: UnixStream, master: &OwnedFd) {
+/// Read one client's frames: input goes to the terminal, sizes resize it,
+/// and a detach lets go of everyone jumped in.
+fn serve_client(mut stream: UnixStream, master: &OwnedFd, clients: &Mutex<Vec<UnixStream>>) {
     let mut writer = match master.try_clone() {
         Ok(fd) => std::fs::File::from(fd),
         Err(_) => return,
@@ -243,9 +249,21 @@ fn serve_client(mut stream: UnixStream, master: &OwnedFd) {
                     nix::libc::ioctl(master.as_raw_fd(), nix::libc::TIOCSWINSZ as _, &size);
                 }
             }
+            DETACH => {
+                for c in clients.lock().unwrap().drain(..) {
+                    let _ = c.shutdown(std::net::Shutdown::Both);
+                }
+            }
             _ => {}
         }
     }
+}
+
+/// Let go of everyone jumped into the session `name` (it keeps running).
+pub fn detach(name: &str) -> Result<()> {
+    let mut s = connect(name)?;
+    s.write_all(&frame(DETACH, &[]))?;
+    Ok(())
 }
 
 pub fn frame(kind: u8, data: &[u8]) -> Vec<u8> {
@@ -384,6 +402,12 @@ pub fn attach(name: &str) -> Result<bool> {
         }
     }
     restore();
+    // Let go of from inside (`omicron detach`): the session still runs.
+    // (When it ended instead, its socket goes a moment after its output.)
+    if !detached {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        detached = is_running(name);
+    }
     if detached {
         eprintln!("\r\n[detached from {name}: `omicron sessions attach {name}` to jump back in]");
     }

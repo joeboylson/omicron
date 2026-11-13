@@ -1,0 +1,5 @@
+{
+  "name": "omicron",
+  "version": "1.0.0",
+  "description": "Puts Omicron's messages for this session (tasks, loops, `omicron sessions send`) into the window, as if typed."
+}

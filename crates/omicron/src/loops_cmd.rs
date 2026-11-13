@@ -1,12 +1,13 @@
-//! Loops: Omicron keeps a session's loop going. A loop types a prompt into
-//! a session every so often, so the session doesn't have to remember to
+//! Loops: Omicron keeps a session's loop going. A loop sends a session a
+//! prompt every so often, so the session doesn't have to remember to
 //! wake itself up (which it can forget, or be stopped from doing by a usage
 //! limit or a long conversation being condensed).
 //!
 //! The session's machine runs it (`Runner`, in the daemon). A run waits
 //! while the session is busy (between a prompt going in and its turn
-//! ending, as the hooks mark it), so runs never stack up. Only sessions
-//! running in Omicron's host can be typed into.
+//! ending, as the hooks mark it), so runs never stack up, and while the
+//! session isn't open in a window (`omicron open`), so they don't pile up
+//! for when it is.
 
 use crate::board_cmd::sign_in;
 use anyhow::{bail, Context, Result};
@@ -227,14 +228,13 @@ fn say_end(l: &Loop) -> String {
 pub struct Runner {
     supabase: Supabase,
     key: MachineKey,
-    machine: String,
     loops: Mutex<HashMap<String, Loop>>,
     names: Mutex<HashMap<String, String>>,
 }
 
 impl Runner {
-    pub fn start(supabase: Supabase, key: MachineKey, machine: String) -> Arc<Runner> {
-        let runner = Arc::new(Runner { supabase, key, machine, loops: Mutex::default(), names: Mutex::default() });
+    pub fn start(supabase: Supabase, key: MachineKey) -> Arc<Runner> {
+        let runner = Arc::new(Runner { supabase, key, loops: Mutex::default(), names: Mutex::default() });
         let r = runner.clone();
         std::thread::spawn(move || loop {
             if let Err(e) = r.tick() {
@@ -308,24 +308,16 @@ impl Runner {
                 n
             }
         };
-        if !omicron::host::is_running(&name) {
-            // Not running (closed, or this machine restarted): reopen it in
-            // the host with the prompt as its first message, so a loop keeps
-            // going through restarts. If it can't be, say why and wait.
-            let session = board.session_by_id(&l.session_id)?;
-            match crate::sessions_cmd::reopen(&board, &session, &self.machine, Some(&l.prompt)) {
-                Ok(()) => {
-                    omicron::windows::set_busy(&l.session_id, true)?;
-                    self.recorded(board.loop_ran(&l.id, &l.next_run_at)?, &l.id);
-                }
-                Err(e) => {
-                    let note = format!("waiting: couldn't reopen {name}: {e:#}");
-                    if l.note.as_deref() != Some(note.as_str()) {
-                        board.loop_note(&l.id, Some(&note))?;
-                        if let Some(x) = self.loops.lock().unwrap().get_mut(&l.id) {
-                            x.note = Some(note);
-                        }
-                    }
+        let session = board.session_by_id(&l.session_id)?;
+        let open = session.claude_session_id.as_deref().is_some_and(omicron::inbox::listening);
+        if !open {
+            // Not open in any window: wait rather than pile prompts up for
+            // when it is. Say so once.
+            let note = format!("waiting: {name} isn't open (`omicron open {name}`)");
+            if l.note.as_deref() != Some(note.as_str()) {
+                board.loop_note(&l.id, Some(&note))?;
+                if let Some(x) = self.loops.lock().unwrap().get_mut(&l.id) {
+                    x.note = Some(note);
                 }
             }
             return Ok(());
@@ -336,7 +328,7 @@ impl Runner {
         }
         // Claim this run in the database first: only one claim of a run
         // can succeed, so two daemons for the same machine (or a tick run
-        // twice) never type it in twice. Then mark the session busy and type.
+        // twice) never send it twice. Then mark the session busy and send.
         let claimed = board.loop_ran(&l.id, &l.next_run_at)?;
         if claimed.is_none() {
             // Someone else ran it (or it was stopped): catch up on its state.
@@ -344,7 +336,7 @@ impl Runner {
             return Ok(());
         }
         omicron::windows::set_busy(&l.session_id, true)?;
-        omicron::host::say(&name, &l.prompt)?;
+        crate::sessions_cmd::deliver(&board, &session, &l.prompt)?;
         self.recorded(claimed, &l.id);
         Ok(())
     }

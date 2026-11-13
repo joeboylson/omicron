@@ -35,7 +35,8 @@ function tailscaleStatus(dir, login, displayName) {
  * `omicron` command with the same settings.
  */
 async function startOmicron() {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "omicron-e2e-"));
+  // A short path: the background runner's socket paths have a length limit.
+  const home = fs.mkdtempSync("/tmp/oe-");
   const me = { login: `${unique("me")}@example.com`, name: "Pat Example" };
   fs.writeFileSync(
     path.join(home, "config.json"),
@@ -92,12 +93,54 @@ async function startOmicron() {
         env: { ...env, OMICRON_CLAUDE_PID: String(window) },
         encoding: "utf8",
       }),
-    /** `omicron sessions add` from inside the window with process id `window`. */
-    addSession: (window, name, project) =>
-      execFileSync(need("OMICRON_BIN"), ["sessions", "add", name, "--project", project], {
-        env: { ...env, OMICRON_CLAUDE_PID: String(window) },
-        encoding: "utf8",
-      }),
+    /**
+     * `omicron open` a session on this machine, bringing in the Claude
+     * conversation `claude`, with a stand-in for claude that only waits, in
+     * the background runner. Returns the window ({ pid, kill }), whose
+     * hooks the test runs itself.
+     */
+    open: async (name, project, claude) => {
+      const folder = fs.mkdtempSync(path.join(home, "work-"));
+      const transcripts = path.join(home, "claude-code", "projects", "work");
+      fs.mkdirSync(transcripts, { recursive: true });
+      fs.writeFileSync(path.join(transcripts, `${claude}.jsonl`), "");
+      const bin = path.join(home, "quiet-bin");
+      fs.mkdirSync(bin, { recursive: true });
+      fs.writeFileSync(path.join(bin, "claude"), '#!/bin/sh\necho $$ > "$OMICRON_HOME/pid-$OMICRON_SESSION"\nexec sleep 600\n', { mode: 0o755 });
+      execFileSync(need("OMICRON_BIN"), ["open", name, "--project", project, "--resume", claude, "--folder", folder], {
+        env: { ...env, PATH: `${bin}:${env.PATH}` },
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      const pidFile = path.join(home, `pid-${name}`);
+      for (let i = 0; !fs.existsSync(pidFile) || !fs.readFileSync(pidFile, "utf8").trim(); i++) {
+        if (i > 200) throw new Error(`omicron open ${name} never got going`);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+      return {
+        pid,
+        kill: () => {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {}
+        },
+      };
+    },
+    /**
+     * A stand-in for Omicron's add-on in conversation `claude`'s window: it
+     * follows the conversation's inbox. `got()` is what's reached it so far.
+     */
+    follow: async (claude) => {
+      const child = spawn(need("OMICRON_BIN"), ["sessions", "inbox", claude], { env });
+      let out = "";
+      child.stdout.on("data", (d) => (out += d));
+      const listener = path.join(home, "inbox", claude, "listener");
+      while (!fs.existsSync(listener)) await new Promise((r) => setTimeout(r, 50));
+      return {
+        got: () => out.split("\n").filter(Boolean).map((l) => JSON.parse(l)),
+        stop: () => child.kill(),
+      };
+    },
     /**
      * Start this machine's daemon, with a stand-in for `claude` on its PATH
      * (it runs the start hook as Claude Code does, then waits). Resolves

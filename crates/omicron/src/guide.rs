@@ -278,7 +278,7 @@ fn ask_value(path: &[String], name: &str, help: &str, context: &[(String, String
     // Names that mean different things in different commands.
     let name = match (path.as_slice(), name) {
         (["topics", "rename" | "remove"], "name") => "topic",
-        (["sessions", "remove" | "give-tasks"], "name") => "session",
+        (["sessions", "remove"], "name") => "session",
         (["sessions", "attach" | "send"], "name") => "hosted",
         (["accounts", "use" | "remove" | "run"], "name") => "account",
         (["tasks", "tick"], "item") => "item",

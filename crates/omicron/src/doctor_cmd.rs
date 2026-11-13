@@ -5,7 +5,6 @@ use anyhow::{bail, Result};
 use omicron::config::{self, Config};
 use omicron::supa::{MachineKey, Supabase};
 use omicron::{identity, login};
-use std::path::PathBuf;
 
 /// One line of the report: fine, or what to run.
 enum Check {
@@ -98,7 +97,7 @@ fn checks() -> Vec<(&'static str, Check)> {
     out.push(("Start at login", start_at_login()));
 
     // Claude Code's hooks, so Omicron knows which window is which session.
-    out.push(("Claude hooks", claude_hooks()));
+    out.push(("Claude hooks and add-on", claude_hooks()));
     out
 }
 
@@ -166,28 +165,8 @@ fn start_at_login() -> Check {
     }
 }
 
-/// Omicron's own Claude settings first (`claude --settings` it), then Claude
-/// Code's own.
+/// Omicron's hooks and add-on for Claude Code: `omicron open` writes them
+/// each time it starts a session, so there's nothing to do by hand.
 fn claude_hooks() -> Check {
-    let mut places: Vec<PathBuf> = Vec::new();
-    if let Ok(h) = config::home() {
-        places.push(h.join("claude/settings.json"));
-    }
-    let claude_dir = match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|d| !d.is_empty()) {
-        Some(d) => Some(PathBuf::from(d)),
-        None => std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".claude")),
-    };
-    if let Some(d) = claude_dir {
-        places.push(d.join("settings.json"));
-    }
-    for path in &places {
-        if crate::sessions_cmd::has_hooks(path) {
-            let how = if Some(path) == places.first() { format!(" (start Claude with `claude --settings {}`)", path.display()) } else { String::new() };
-            return Check::Ok(format!("in {}{how}", path.display()));
-        }
-    }
-    let ours = places.first().map(|p| p.display().to_string()).unwrap_or_else(|| "~/.omicron/claude/settings.json".into());
-    Check::Fix(format!(
-        "not set up. Run `omicron sessions setup-claude --settings {ours}`, then start Claude with `claude --settings {ours}`."
-    ))
+    Check::Ok("set up by `omicron open` when it starts a session".into())
 }

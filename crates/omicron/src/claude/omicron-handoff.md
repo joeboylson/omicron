@@ -13,7 +13,7 @@ the user types `/clear`, the new conversation in this window gets the note.
 
 Run `omicron sessions list --as-machine` and find this window's session. If
 `omicron handoff write` later says this isn't a tracked session, tell the user
-to run `omicron sessions add <name> --project <Project>` here first, and stop.
+to quit and reopen this conversation with `omicron open --resume <its id>`, and stop.
 
 ## 2. Check the real state
 

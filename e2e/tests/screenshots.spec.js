@@ -5,7 +5,7 @@
 const { test, expect, devices } = require("@playwright/test");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { startOmicron, unique, sessionFor, rest, visitAs, fakeWindow } = require("./omicron");
+const { startOmicron, unique, sessionFor, rest, visitAs } = require("./omicron");
 
 test.skip(!process.env.OMICRON_SCREENSHOTS, "set OMICRON_SCREENSHOTS=1 to take screenshots");
 
@@ -74,10 +74,10 @@ test("screenshots", async ({ browser, request }) => {
   await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Sessions on the web page" });
   const windows = [];
   for (const [name, folder] of [["web-page", "~/omicron/web"], ["parser", "~/omicron"], ["handoff", "~/omicron"]]) {
-    const win = fakeWindow();
+    const claude = crypto.randomUUID();
+    const win = await omicron.open(name, omicronProject.id, claude);
     windows.push(win);
-    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: folder, source: "startup" });
-    omicron.addSession(win.pid, name, omicronProject.id);
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: folder, source: "startup" });
   }
   omicron.hook(windows[2].pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
   // Task #2 sent to web-page, which picked it up; a third waits for parser.

@@ -3,6 +3,7 @@ pub mod board;
 pub mod config;
 pub mod host;
 pub mod identity;
+pub mod inbox;
 pub mod login;
 pub mod names;
 pub mod realtime;

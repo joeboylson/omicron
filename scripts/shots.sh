@@ -2,7 +2,8 @@
 # Screenshots of the web page full of made-up data, desktop and phone, for
 # looking at UI changes. Run on the Mac:
 #   bash scripts/shots.sh [folder]     (default: /tmp/omicron-shots)
-# It starts its own `omicron serve`, fills the one Supabase with throwaway
+# It starts its own `omicron serve`, fills the test Supabase
+# (scripts/test.conf) with throwaway
 # people, machines and Projects (dev/seed/seed.js), takes the pictures
 # (dev/seed/shots.js), and cleans it all up after, like scripts/e2e.sh.
 set -euo pipefail

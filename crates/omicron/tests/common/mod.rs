@@ -55,7 +55,7 @@ pub fn machine(s: &Supabase) -> Computer {
 pub fn command(c: &Computer, args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
     for (k, _) in std::env::vars() {
-        if k.starts_with("OMICRON_") {
+        if k.starts_with("OMICRON_") || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE" {
             cmd.env_remove(k);
         }
     }
@@ -104,10 +104,16 @@ pub struct Term {
 
 impl Term {
     pub fn start(c: &Computer, args: &[&str]) -> Term {
+        Term::start_env(c, args, &[])
+    }
+
+    /// `start`, with more settings for the program (like a PATH).
+    pub fn start_env(c: &Computer, args: &[&str], env: &[(&str, &str)]) -> Term {
         let size = nix::pty::Winsize { ws_row: 40, ws_col: 120, ws_xpixel: 0, ws_ypixel: 0 };
         let pty = nix::pty::openpty(Some(&size), None).unwrap();
         let slave: OwnedFd = pty.slave;
         let mut cmd = command(c, args);
+        cmd.envs(env.iter().copied());
         cmd.env("TERM", "xterm-256color")
             .stdin(Stdio::from(slave.try_clone().unwrap()))
             .stdout(Stdio::from(slave.try_clone().unwrap()))

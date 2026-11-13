@@ -89,17 +89,22 @@ the command for each missing piece.
 On a machine that's in a Project:
 
 ```sh
-omicron sessions new parser --project <Project> --folder ~/code/app
+omicron open parser --project <Project> --folder ~/code/app
 ```
 
-That starts Claude Code in Omicron's own background host (no tmux), with
-Omicron's hooks. Jump in with `omicron sessions attach parser` (Ctrl-\
-leaves it running) or `omicron sessions pick`. Give it a task from the web
-page, and press **Dispatch** to hand it over; it reports back on the task.
+That records the session and starts Claude Code right here in your
+terminal, with Omicron's hooks and add-on. `omicron open parser` later
+picks the same conversation back up, and `omicron sessions pick` lists them
+all. Give it a task from the web page and press **Dispatch**: the add-on
+puts it into the window as if you'd typed it (once Claude is free), or the
+task waits until the session is next opened. Loops and `omicron sessions
+send` arrive the same way.
 
-For sessions with nobody watching (Dispatch and loops open them), you can
-pass Claude Code options, like `["--permission-mode", "auto"]`, as
-`claude_args` in `~/.omicron/config.json`.
+Already in a Claude conversation you started with plain `claude`? Quit it
+and run `omicron open <name> --resume <its session id>`.
+
+Claude Code options for every session, like `["--permission-mode",
+"auto"]`, go in `claude_args` in `~/.omicron/config.json`.
 
 ### Everyday commands
 

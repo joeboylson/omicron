@@ -33,8 +33,10 @@ fn unique(name: &str) -> String {
     format!("{name}-{}", &Uuid::new_v4().simple().to_string()[..8])
 }
 
+/// A settings folder with a short path: the background runner's socket
+/// paths have a length limit.
 fn new_home() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("omicron-test-{}", Uuid::new_v4().simple()));
+    let dir = PathBuf::from(format!("/tmp/os-{}", &Uuid::new_v4().simple().to_string()[..10]));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -77,7 +79,7 @@ fn machine(s: &Supabase) -> (Computer, String) {
 fn command(c: &Computer, window: Option<u32>, args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
     for (k, _) in std::env::vars() {
-        if k.starts_with("OMICRON_") {
+        if k.starts_with("OMICRON_") || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE" {
             cmd.env_remove(k);
         }
     }
@@ -124,6 +126,48 @@ fn window() -> Child {
     Command::new("sleep").arg("600").spawn().unwrap()
 }
 
+/// A Claude window `omicron open` started in the background runner: the
+/// stand-in claude's process, to run hooks for, or to kill like a crash.
+struct Win {
+    pid: u32,
+}
+
+impl Win {
+    fn id(&self) -> u32 {
+        self.pid
+    }
+    fn kill(&mut self) -> std::io::Result<()> {
+        Command::new("kill").args(["-9", &self.pid.to_string()]).status().map(|_| ())
+    }
+    fn wait(&mut self) -> std::io::Result<()> {
+        wait_for("the window gone", || !Command::new("kill").args(["-0", &self.pid.to_string()]).stderr(Stdio::null()).status().unwrap().success());
+        Ok(())
+    }
+}
+
+/// `omicron open` a session with a stand-in claude that only waits: a
+/// window whose hooks the test runs itself. Returns the window and the
+/// conversation it was opened with.
+fn opened(s: &Supabase, c: &Computer, name: &str, project: &str) -> (Win, String) {
+    let bin = c.home.join("quiet-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("claude"), "#!/bin/sh\necho $$ > \"$OMICRON_HOME/pid-$OMICRON_SESSION\"\nexec sleep 600\n").unwrap();
+    Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
+    let folder = c.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    let o = command(c, None, &["open", name, "--project", project, "--folder", folder.to_str().unwrap()])
+        .env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let pid_file = c.home.join(format!("pid-{name}"));
+    wait_for("claude started", || std::fs::read_to_string(&pid_file).is_ok_and(|p| !p.trim().is_empty()));
+    let pid = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+    let conversation = record(s, project, name)["claude_session_id"].as_str().unwrap().to_string();
+    (Win { pid }, conversation)
+}
+
 fn record(s: &Supabase, project: &str, name: &str) -> Value {
     let rows = s
         .admin_request("GET", &format!("/rest/v1/sessions?name=eq.{name}&select=state,claude_session_id,folder,projects!inner(name)&projects.name=eq.{project}"), None)
@@ -132,7 +176,7 @@ fn record(s: &Supabase, project: &str, name: &str) -> Value {
 }
 
 #[test]
-fn a_session_is_recorded_and_follows_clear_close_resume_and_crash() {
+fn a_session_is_recorded_while_it_runs_and_ends_when_it_closes_or_crashes() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
@@ -140,12 +184,11 @@ fn a_session_is_recorded_and_follows_clear_close_resume_and_crash() {
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
 
-    // Claude Code starts in a window; the session adds itself.
-    let mut first = window();
-    let a = Uuid::new_v4().to_string();
+    // `omicron open` records the session and starts Claude Code, whose
+    // start hook ties the window to it.
+    let (mut first, a) = opened(&s, &mac, "parser", &project);
     let said = hook(&mac, first.id(), "session-start", json!({ "session_id": a, "cwd": "/work/app", "source": "startup" }));
     assert_eq!(said, "");
-    assert_eq!(ok(&mac, Some(first.id()), &["sessions", "add", "parser", "--project", &project]).trim(), format!("Added session parser to {project}."));
     let listed = ok(&pat, None, &["sessions", "list", "--project", &project]);
     assert_eq!(listed, format!("parser\t{project}\t{mac_name}\topen\t/work/app\n"));
     assert_eq!(record(&s, &project, "parser")["claude_session_id"], json!(a));
@@ -153,34 +196,36 @@ fn a_session_is_recorded_and_follows_clear_close_resume_and_crash() {
     // /clear: a new Claude conversation in the same window, same session.
     let b = Uuid::new_v4().to_string();
     hook(&mac, first.id(), "session-end", json!({ "session_id": a, "reason": "clear" }));
-    assert_eq!(record(&s, &project, "parser")["state"], "open");
+    assert!(record(&s, &project, "parser").is_object());
     hook(&mac, first.id(), "session-start", json!({ "session_id": b, "cwd": "/work/app", "source": "clear" }));
     assert_eq!(record(&s, &project, "parser")["claude_session_id"], json!(b));
 
-    // Closed normally.
+    // Closed: the session ends, and the change log says so.
+    let id = s.admin_request("GET", &format!("/rest/v1/sessions?select=id&claude_session_id=eq.{b}"), None).unwrap()[0]["id"].as_str().unwrap().to_string();
     hook(&mac, first.id(), "session-end", json!({ "session_id": b, "reason": "prompt_input_exit" }));
-    assert_eq!(record(&s, &project, "parser")["state"], "closed");
+    assert!(record(&s, &project, "parser").is_null());
+    let logged = s.admin_request("GET", &format!("/rest/v1/changes?select=kind&table_name=eq.sessions&kind=eq.DELETE&old_record->>id=eq.{id}"), None).unwrap();
+    assert_eq!(logged.as_array().map(Vec::len), Some(1), "{logged}");
     first.kill().unwrap();
     first.wait().unwrap();
 
-    // `claude --resume` of that conversation in a new window: open again.
-    let mut second = window();
-    hook(&mac, second.id(), "session-start", json!({ "session_id": b, "cwd": "/work/app2", "source": "resume" }));
-    let r = record(&s, &project, "parser");
-    assert_eq!((r["state"].as_str(), r["folder"].as_str()), (Some("open"), Some("/work/app2")));
-
-    // The window dies without saying so. The next hook on this machine, from
-    // any window, notices.
+    // Crashed (it stops without saying): the next hook on this machine,
+    // from any window, notices, and it ends.
+    let (mut second, c) = opened(&s, &mac, "docs", &project);
+    hook(&mac, second.id(), "session-start", json!({ "session_id": c, "cwd": "/work", "source": "startup" }));
     second.kill().unwrap();
     second.wait().unwrap();
     let mut other = window();
     hook(&mac, other.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/tmp", "source": "startup" }));
-    assert_eq!(record(&s, &project, "parser")["state"], "gone");
+    assert!(record(&s, &project, "docs").is_null());
     other.kill().unwrap();
-
-    // A member removes the record.
-    assert!(ok(&pat, None, &["sessions", "remove", "parser", "--project", &project]).contains("Removed session parser"));
     assert!(ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("No sessions yet."));
+
+    // A member removes one by hand.
+    let (mut third, _) = opened(&s, &mac, "build", &project);
+    assert!(ok(&pat, None, &["sessions", "remove", "build", "--project", &project]).contains("Removed session build"));
+    assert!(ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("No sessions yet."));
+    third.kill().unwrap();
 }
 
 #[test]
@@ -203,17 +248,6 @@ fn windows_omicron_doesnt_track_never_reach_supabase() {
 }
 
 #[test]
-fn adding_needs_a_window_omicron_has_heard_from() {
-    let s = supabase_or_skip!();
-    let (mac, _) = machine(&s);
-    let mut w = window();
-    let o = run(&mac, Some(w.id()), &["sessions", "add", "x", "--project", "Anything"]);
-    assert!(!o.status.success());
-    assert!(String::from_utf8_lossy(&o.stderr).contains("setup-claude"), "{}", String::from_utf8_lossy(&o.stderr));
-    w.kill().unwrap();
-}
-
-#[test]
 fn only_the_sessions_machine_can_change_it() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
@@ -223,9 +257,8 @@ fn only_the_sessions_machine_can_change_it() {
     let (other, other_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
     ok(&pat, None, &["machines", "add", &other_name, &project]);
-    let mut w = window();
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "mine", "--project", &project]);
+    let (mut w, conversation) = opened(&s, &mac, "mine", &project);
+    hook(&mac, w.id(), "session-start", json!({ "session_id": conversation, "cwd": "/w", "source": "startup" }));
 
     // The other machine sees it but can't close it: the update matches no rows.
     let key = std::fs::read_to_string(other.home.join("config.json")).unwrap();
@@ -245,10 +278,8 @@ fn a_session_gets_its_tasks_only_when_told() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    let claude = Uuid::new_v4().to_string();
+    let (mut w, claude) = opened(&s, &mac, "parser", &project);
     hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/w", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
 
     // Nothing sent yet: the Stop hook says nothing, so Claude stops as usual.
     let stop = |m: &Computer| {
@@ -300,9 +331,8 @@ fn a_session_gets_its_tasks_only_when_told() {
     // Given to another session and back: new again.
     let (other, other_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &other_name, &project]);
-    let mut w2 = window();
-    hook(&other, w2.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
-    ok(&other, Some(w2.id()), &["sessions", "add", "helper", "--project", &project]);
+    let (mut w2, conversation) = opened(&s, &other, "helper", &project);
+    hook(&other, w2.id(), "session-start", json!({ "session_id": conversation, "cwd": "/w", "source": "startup" }));
     ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
     assert!(ok(&mac, Some(w.id()), &["tasks", "mine"]).starts_with("Nothing is given to this session"));
     ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
@@ -337,9 +367,8 @@ fn a_session_reports_on_its_task_and_a_person_answers() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+    let (mut w, conversation) = opened(&s, &mac, "parser", &project);
+    hook(&mac, w.id(), "session-start", json!({ "session_id": conversation, "cwd": "/w", "source": "startup" }));
     ok(&pat, None, &["tasks", "add", &project, "Write the parser"]);
 
     // The session reports, from inside its window, and asks for review.
@@ -398,10 +427,8 @@ fn a_handoff_note_reaches_the_next_conversation_in_the_window() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    let a = Uuid::new_v4().to_string();
+    let (mut w, a) = opened(&s, &mac, "parser", &project);
     hook(&mac, w.id(), "session-start", json!({ "session_id": a, "cwd": "/w", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
 
     // Written, then replaced by a newer one (piped in, as a skill would).
     assert!(ok(&mac, Some(w.id()), &["handoff", "write", "First try."]).contains("Saved handoff note #1 for session parser"));
@@ -434,7 +461,8 @@ fn a_handoff_note_reaches_the_next_conversation_in_the_window() {
     hook(&mac, w.id(), "session-end", json!({ "session_id": b, "reason": "prompt_input_exit" }));
     assert!(ok(&pat, None, &["handoff", "list", "--project", &project]).lines().next().unwrap().contains("cancelled"));
     let shown = ok(&pat, None, &["handoff", "show", &project, "3", "--pickup"]);
-    assert!(shown.starts_with(&format!("Handoff note #3 in {project} from session parser, written ")), "{shown}");
+    // Its session has ended, so the note no longer names it.
+    assert!(shown.starts_with(&format!("Handoff note #3 in {project}, written ")), "{shown}");
     assert!(shown.contains("Stopped at the tests."));
     assert!(ok(&pat, None, &["handoff", "list", "--project", &project]).lines().next().unwrap().contains("picked up"));
 
@@ -452,10 +480,8 @@ fn a_projects_chat_reaches_the_sessions_it_names() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    let claude = Uuid::new_v4().to_string();
+    let (mut w, claude) = opened(&s, &mac, "parser", &project);
     hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/w", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
     let stop = || hook_out(&mac, w.id(), "stop", json!({ "session_id": claude, "stop_hook_active": false }));
 
     // Off until someone turns it on.
@@ -485,104 +511,178 @@ fn a_projects_chat_reaches_the_sessions_it_names() {
 }
 
 #[test]
-fn a_new_session_starts_claude_in_the_host_and_records_it() {
+fn open_runs_claude_in_the_background_records_it_and_jumps_back_in() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
     ok(&pat, None, &["projects", "new", &project]);
-    // A short settings folder: the host's socket path has a length limit.
-    let (mac, mac_name) = machine(&s);
-    let short = PathBuf::from(format!("/tmp/os-{}", &Uuid::new_v4().simple().to_string()[..8]));
-    std::fs::rename(&mac.home, &short).unwrap();
-    let mac = Computer { home: short, tailscale: None };
+    let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
 
-    // A stand-in for claude: runs Omicron's start hook as Claude Code does
-    // (with the session id it was given), says it's ready, then waits.
-    let bin = mac.home.join("bin");
-    std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(
-        bin.join("claude"),
-        format!(
-            "#!/bin/sh\necho \"$@\" > \"$OMICRON_HOME/claude-args\"\nid=\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; esac; shift; done\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"startup\"}}' \"$id\" \"$PWD\" | {} hook session-start\necho stand-in claude ready\nexec cat\n",
-            env!("CARGO_BIN_EXE_omicron")
-        ),
-    )
-    .unwrap();
-    Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
-    let new = |name: &str| {
-        command(&mac, None, &["sessions", "new", name, "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
-            .env("PATH", &path)
-            .output()
-            .unwrap()
-    };
-
-    let out = new("parser");
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(String::from_utf8_lossy(&out.stdout).contains(&format!("Started parser in {project}")));
-
-    // It runs in the host, with the right options.
-    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !mac.home.join("claude-args").exists() {
-        assert!(std::time::Instant::now() < deadline, "claude never started");
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    let args = std::fs::read_to_string(mac.home.join("claude-args")).unwrap();
-    assert!(args.starts_with("--session-id "), "{args}");
-    assert!(args.contains(" --name parser "), "{args}");
-    assert!(args.contains(&format!("--settings {}", mac.home.join("claude/settings.json").display())), "{args}");
-    let settings: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("claude/settings.json")).unwrap()).unwrap();
+    // A new session: recorded, then Claude Code starts in the background
+    // with Omicron's hooks and add-on, under a new conversation.
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
+    let args = w.args.clone();
+    assert_eq!(args[0], "--session-id");
+    let id = args[1].clone();
+    assert_eq!(args[2..4], ["--name".to_string(), "parser".into()]);
+    let at = |flag: &str| PathBuf::from(&args[args.iter().position(|a| a == flag).unwrap() + 1]);
+    assert_eq!(at("--settings"), mac.home.join("claude/settings.json"));
+    let settings: Value = serde_json::from_str(&std::fs::read_to_string(at("--settings")).unwrap()).unwrap();
     assert!(settings["hooks"]["SessionStart"].is_array(), "Omicron's hooks are in its own settings file");
-
-    // Recorded, with the session id it was started with, and the start hook
-    // tied the window to the record.
-    let id = args.split_whitespace().nth(1).unwrap().to_string();
+    let register = std::fs::read_to_string(at("--plugin-dir").join("hooks/register.ts")).unwrap();
+    let exe = std::fs::canonicalize(env!("CARGO_BIN_EXE_omicron")).unwrap();
+    assert!(register.contains(&format!("const OMICRON = '{}'", exe.display())), "the add-on runs this program: {register}");
     let r = record(&s, &project, "parser");
     assert_eq!((r["state"].as_str(), r["claude_session_id"].as_str()), (Some("open"), Some(id.as_str())));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        let w: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("windows.json")).unwrap_or_default()).unwrap_or_default();
-        if w["windows"].as_object().is_some_and(|m| m.values().any(|w| w["claude_session_id"] == json!(id) && w["session_id"].is_string())) {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "the start hook never tied the window to the session: {w}");
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
+    let windows: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("windows.json")).unwrap()).unwrap();
+    assert!(windows["windows"].as_object().unwrap().values().any(|w| w["claude_session_id"] == json!(id) && w["session_id"].is_string()), "{windows}");
 
-    // The same name again is refused while it runs; it ends cleanly.
-    let again = new("parser");
-    assert!(!again.status.success() && String::from_utf8_lossy(&again.stderr).contains("already running"));
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
+    // Opened again by name: the same one (no second Claude).
+    let o = command(&mac, None, &["open", "parser"]).env("PATH", &path).stdin(Stdio::null()).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&o.stdout).trim(), "parser is running. Jump in with `omicron open parser`.");
+    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
+    // Inside it, `omicron open` says to let go instead.
+    let o = command(&mac, None, &["open"]).env("CLAUDE_CODE_SESSION_ID", &id).env("OMICRON_SESSION", "parser").output().unwrap();
+    assert!(String::from_utf8_lossy(&o.stderr).contains("this is already the session parser. `omicron detach`"));
+
+    // Quit: it ends. Opened by name later, it's a new session.
+    close_window(&mac, w);
+    assert!(record(&s, &project, "parser").is_null());
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
+    assert_eq!(w.args[0], "--session-id");
+    assert_ne!(w.args[1], id);
+    close_window(&mac, w);
+
+    // No name: named after its folder.
+    let w = open_window(&mac, &path, &["--project", &project]);
+    assert_eq!(w.name, "work");
+    close_window(&mac, w);
+
+    // An existing Claude conversation, brought in by its id.
+    assert!(open_refused(&mac, &path, &["build", "--resume", &Uuid::new_v4().to_string()]).contains("there's no conversation"));
+    let old = Uuid::new_v4().to_string();
+    std::fs::write(mac.home.join(format!("claude-code/projects/work/{old}.jsonl")), "").unwrap();
+    let w = open_window(&mac, &path, &["build", "--resume", &old]);
+    assert_eq!(w.args[..4], ["--resume".to_string(), old.clone(), "--name".into(), "build".into()]);
+    assert_eq!(record(&s, &project, "build")["claude_session_id"].as_str(), Some(old.as_str()));
+    // By its conversation again: the same session.
+    let o = command(&mac, None, &["open", "--resume", &old]).env("PATH", &path).stdin(Stdio::null()).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&o.stdout).trim(), "build is running. Jump in with `omicron open build`.");
+
+    // Its Claude dies without saying: opening it says so, and it ends.
+    let pid = Command::new("pgrep").args(["-f", "--", &format!("--resume {old}")]).output().unwrap();
+    for p in String::from_utf8_lossy(&pid.stdout).split_whitespace() {
+        Command::new("kill").args(["-9", p]).status().unwrap();
+    }
+    wait_for("it stopped", || !ok(&mac, None, &["sessions", "hosted"]).contains("build"));
+    assert!(open_refused(&mac, &path, &["build"]).contains("build had stopped, so it's ended"));
+    assert!(record(&s, &project, "build").is_null());
+    let _ = w;
 }
 
-/// A machine with a short settings folder (the host's socket path has a
-/// length limit) and a stand-in for claude on its PATH. The stand-in runs
-/// Omicron's start hook as Claude Code does, writes its options to
-/// `claude-args` (one per line), then writes each line typed into it to
-/// `typed`. Returns the machine, its name, and the PATH to use.
+#[test]
+fn open_inside_a_claude_window_says_what_to_run_once_its_closed() {
+    let home = new_home();
+    let c = Computer { home: home.clone(), tailscale: None };
+    let conversation = Uuid::new_v4().to_string();
+    let folder = home.join("my app");
+    std::fs::create_dir_all(&folder).unwrap();
+    let o = command(&c, None, &["open"]).env("CLAUDE_CODE_SESSION_ID", &conversation).current_dir(&folder).output().unwrap();
+    assert!(!o.status.success());
+    let said = String::from_utf8_lossy(&o.stderr);
+    assert!(said.contains("Quit this window (/exit)"), "{said}");
+    assert!(said.contains(&format!("omicron open 'my app' --resume {conversation}")), "{said}");
+    let o = command(&c, None, &["open", "parser", "--project", "Code"]).env("CLAUDE_CODE_SESSION_ID", &conversation).output().unwrap();
+    assert!(String::from_utf8_lossy(&o.stderr).contains(&format!("omicron open parser --project Code --resume {conversation}")));
+}
+
+#[test]
+fn open_says_which_project_when_the_machine_is_in_several() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let (code, docs) = (unique("Code"), unique("Docs"));
+    ok(&pat, None, &["projects", "new", &code]);
+    ok(&pat, None, &["projects", "new", &docs]);
+    let (mac, mac_name, path) = machine_with_claude(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &code]);
+    ok(&pat, None, &["machines", "add", &mac_name, &docs]);
+    let said = open_refused(&mac, &path, &["parser"]);
+    assert!(said.contains("--project") && said.contains(&code) && said.contains(&docs), "{said}");
+    let w = open_window(&mac, &path, &["parser", "--project", &docs]);
+    // One name runs once on a machine, whatever its Project.
+    assert!(open_refused(&mac, &path, &["parser", "--project", &code]).contains("something called parser is already running"));
+    close_window(&mac, w);
+}
+
+/// A machine with a stand-in for claude on its PATH, which acts like a
+/// Claude window with Omicron's hooks and add-on: it writes its options to
+/// `claude-args` (one per line), runs the start hook, follows its inbox as
+/// the add-on does (each message it gets goes to `typed`, one JSON line
+/// each), and when its input closes runs the end hook and stops. Returns
+/// the machine, its name, and the PATH to use.
 fn machine_with_claude(s: &Supabase) -> (Computer, String, String) {
     let (mac, mac_name) = machine(s);
-    let short = PathBuf::from(format!("/tmp/os-{}", &Uuid::new_v4().simple().to_string()[..8]));
-    std::fs::rename(&mac.home, &short).unwrap();
-    let mac = Computer { home: short, tailscale: None };
     let bin = mac.home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
+    let o = env!("CARGO_BIN_EXE_omicron");
     std::fs::write(
         bin.join("claude"),
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$OMICRON_HOME/claude-args\"\nid=\nsource=startup\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; --resume) id=\"$2\"; source=resume; shift;; esac; shift; done\nmkdir -p \"$CLAUDE_CONFIG_DIR/projects/work\" && touch \"$CLAUDE_CONFIG_DIR/projects/work/$id.jsonl\"\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"%s\"}}' \"$id\" \"$PWD\" \"$source\" | {} hook session-start\nwhile read -r line; do echo \"$line\" >> \"$OMICRON_HOME/typed\"; printf '{{\"session_id\":\"%s\",\"stop_hook_active\":false}}' \"$id\" | {} hook stop; done\n",
-            env!("CARGO_BIN_EXE_omicron"),
-            env!("CARGO_BIN_EXE_omicron")
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$OMICRON_HOME/claude-args\"\nid=\nsource=startup\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; --resume) id=\"$2\"; source=resume; shift;; esac; shift; done\nmkdir -p \"$CLAUDE_CONFIG_DIR/projects/work\" && touch \"$CLAUDE_CONFIG_DIR/projects/work/$id.jsonl\"\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"%s\"}}' \"$id\" \"$PWD\" \"$source\" | {o} hook session-start\n{o} sessions inbox \"$id\" >> \"$OMICRON_HOME/typed\" &\nf=$!\necho $f > \"$OMICRON_HOME/follower\"\ncat > /dev/null\nkill $f\nprintf '{{\"session_id\":\"%s\",\"reason\":\"prompt_input_exit\"}}' \"$id\" | {o} hook session-end\n"
         ),
     )
     .unwrap();
     Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
     let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
     (mac, mac_name, path)
+}
+
+/// A session `omicron open` started with `machine_with_claude`'s stand-in,
+/// in the machine's `work` folder: its name and claude's options.
+struct Opened {
+    name: String,
+    args: Vec<String>,
+}
+
+/// `omicron open` with `machine_with_claude`'s stand-in: Claude starts in
+/// the background, following its inbox.
+fn open_window(c: &Computer, path: &str, args: &[&str]) -> Opened {
+    for f in ["claude-args", "follower"] {
+        let _ = std::fs::remove_file(c.home.join(f));
+    }
+    let folder = c.home.join("work");
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut all = vec!["open"];
+    all.extend_from_slice(args);
+    let o = command(c, None, &all).env("PATH", path).current_dir(&folder).stdin(Stdio::null()).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let said = String::from_utf8_lossy(&o.stdout).to_string();
+    let name = said.split(" is running.").next().unwrap().trim().to_string();
+    assert!(said.contains(&format!("Jump in with `omicron open {name}`")), "{said}");
+    wait_for("claude started", || c.home.join("follower").exists());
+    let args: Vec<String> = std::fs::read_to_string(c.home.join("claude-args")).unwrap().lines().map(String::from).collect();
+    let id = args[1].clone();
+    wait_for("its add-on following", || c.home.join(format!("inbox/{id}/listener")).exists());
+    Opened { name, args }
+}
+
+
+
+/// Quit a session from `open_window` (Claude's input ends): it ends.
+fn close_window(c: &Computer, w: Opened) {
+    ok(c, None, &["sessions", "send", &w.name, "\u{4}", "--no-enter"]);
+    wait_for("it ended", || !ok(c, None, &["sessions", "hosted"]).lines().any(|l| l == w.name));
+}
+
+/// `omicron open` that's refused: what it said.
+fn open_refused(c: &Computer, path: &str, args: &[&str]) -> String {
+    let mut all = vec!["open"];
+    all.extend_from_slice(args);
+    let o = command(c, None, &all).env("PATH", path).current_dir(&c.home).stdin(Stdio::null()).output().unwrap();
+    assert!(!o.status.success(), "it opened: {:?}", args);
+    String::from_utf8_lossy(&o.stderr).to_string()
 }
 
 fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
@@ -619,22 +719,14 @@ fn daemon(c: &Computer, path: &str) -> Child {
 }
 
 #[test]
-fn dispatch_types_the_task_in_or_reopens_the_session_and_fails_when_asleep() {
+fn dispatch_reaches_the_session_and_fails_when_it_ended_or_its_machine_is_asleep() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
-        .env("PATH", &path)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    wait_for("claude started", || mac.home.join("claude-args").exists());
-    let claude_id = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().nth(1).unwrap().to_string();
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
 
     ok(&pat, None, &["tasks", "add", &project, "Fix the parser"]);
     // Not given to a session yet.
@@ -643,48 +735,42 @@ fn dispatch_types_the_task_in_or_reopens_the_session_and_fails_when_asleep() {
     ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
 
     let mut d = daemon(&mac, &path);
+    let told = format!("Omicron dispatched task #1 \"Fix the parser\" ({project}) to you. Run `omicron tasks mine` to get it, then work on it and report as it says.");
 
-    // Running in the host: typed in, one line, Enter pressed.
+    // It reaches the session's window, whole.
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert_eq!(said.trim(), format!("Typed the task into parser on {mac_name}."));
-    wait_for("the task typed in", || std::fs::read_to_string(mac.home.join("typed")).is_ok_and(|t| t.contains("dispatched task #1")));
-    let typed = std::fs::read_to_string(mac.home.join("typed")).unwrap();
-    assert_eq!(
-        typed.trim(),
-        format!("Omicron dispatched task #1 \"Fix the parser\" ({project}) to you. Run `omicron tasks mine` to get it, then work on it and report as it says.")
-    );
+    assert_eq!(said.trim(), format!("Sent the task to parser on {mac_name}."));
+    wait_for("the task in the window", || typed_lines(&mac).len() == 1);
+    assert_eq!(typed_lines(&mac), [told.clone()]);
+    // So does a message sent by name, and each only once.
+    assert_eq!(ok(&mac, None, &["sessions", "send", "parser", "hello there"]).trim(), "Sent it to parser.");
+    wait_for("the message in the window", || typed_lines(&mac).len() == 2);
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    assert_eq!(typed_lines(&mac), [told.clone(), "hello there".into()]);
+    let rows = s.admin_request("GET", "/rest/v1/dispatches?select=state,result&order=created_at", None).unwrap();
+    assert!(rows.as_array().unwrap().iter().any(|r| r["state"] == "done" && r["result"].as_str().is_some_and(|t| t.contains(&mac_name))));
 
-    // The session ends. Dispatch reopens it in the host, resuming the same
-    // conversation, with the task as its first message.
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
-    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
-    std::fs::remove_file(mac.home.join("claude-args")).unwrap();
-    let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert!(said.starts_with(&format!("Reopened parser on {mac_name} with the task.")), "{said}");
-    wait_for("claude reopened", || mac.home.join("claude-args").exists());
-    let args: Vec<String> = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().map(String::from).collect();
-    assert_eq!(args[..4], ["--resume".to_string(), claude_id.clone(), "--name".into(), "parser".into()]);
-    assert!(args.last().unwrap().starts_with("Omicron dispatched task #1"), "{args:?}");
-    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
-    wait_for("the session is open again", || record(&s, &project, "parser")["state"] == "open");
-
-    // Each request is kept, with how it went.
-    let rows = s.admin_request("GET", "/rest/v1/dispatches?select=state,result,error&order=created_at", None).unwrap();
-    let mine: Vec<&Value> = rows.as_array().unwrap().iter().filter(|r| r["result"].as_str().is_some_and(|t| t.contains(&mac_name))).collect();
-    assert_eq!(mine.len(), 2);
-    assert!(mine.iter().all(|r| r["state"] == "done"));
+    // It ended: the task is flagged, and can't be dispatched until it's
+    // given to someone again.
+    close_window(&mac, w);
+    let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("give the task to a Claude session first"));
+    let o = run(&mac, None, &["sessions", "send", "parser", "anyone?"]);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("no session called parser"));
 
     // Asleep: fails at once, and nothing is asked for.
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
+    ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
     d.kill().unwrap();
     d.wait().unwrap();
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
-    // The hosted Supabase takes a moment to notice the daemon went away.
+    // The Supabase takes a moment to notice the daemon went away.
     wait_for("the machine to show as asleep", || !ok(&mac, None, &["machines", "awake"]).lines().any(|l| l == mac_name));
     let started = std::time::Instant::now();
     let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(!o.status.success());
     assert!(String::from_utf8_lossy(&o.stderr).contains(&format!("{mac_name} is asleep")), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(started.elapsed() < std::time::Duration::from_secs(15));
+    close_window(&mac, w);
 }
 
 #[test]
@@ -695,9 +781,8 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/tmp", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
+    let (mut w, conversation) = opened(&s, &mac, "parser", &project);
+    hook(&mac, w.id(), "session-start", json!({ "session_id": conversation, "cwd": "/tmp", "source": "startup" }));
     ok(&pat, None, &["tasks", "add", &project, "Fix the parser"]);
     ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
 
@@ -731,110 +816,76 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     let again = s.request_as(&login, "POST", "/rest/v1/rpc/give_up_dispatch", Some(json!({ "dispatch": id, "why": "x" }))).unwrap();
     assert_eq!(again, json!([]));
 
-    // Open in a window Omicron doesn't host: it can't be typed into, so it
-    // fails and says how to hand it over instead.
+    // Its window doesn't follow its inbox (no add-on): the task waits for
+    // the next time it's opened, and Dispatch says so.
     let mut d = daemon(&mac, &path);
-    let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert!(!o.status.success());
-    assert!(String::from_utf8_lossy(&o.stderr).contains("open in a window Omicron doesn't host"), "{}", String::from_utf8_lossy(&o.stderr));
+    let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
+    assert!(said.starts_with("parser isn't open"), "{said}");
     d.kill().unwrap();
     w.kill().unwrap();
 }
 
 #[test]
-fn a_session_is_gone_when_its_machine_leaves_and_its_tasks_can_be_given_away() {
+fn a_session_ends_when_its_machine_leaves_and_its_tasks_are_flagged_until_given_out() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/work", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/work", "source": "startup" }));
+    let (mut w, conversation) = opened(&s, &mac, "parser", &project);
+    hook(&mac, w.id(), "session-start", json!({ "session_id": conversation, "cwd": "/work", "source": "startup" }));
     ok(&pat, None, &["tasks", "add", &project, "Fix the parser"]);
     ok(&pat, None, &["tasks", "add", &project, "Write the docs"]);
     ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
     ok(&pat, None, &["tasks", "send", &project, "2", "parser"]);
+    let tasks = || {
+        s.admin_request("GET", &format!("/rest/v1/tasks?select=number,assignee_session_id,ended_session,projects!inner(name)&projects.name=eq.{project}&order=number"), None)
+            .unwrap()
+    };
 
-    // The machine is taken out of the Project: its session there is gone, and says why.
+    // The machine is taken out of the Project: its session there ends, and
+    // its tasks say whose they were.
     ok(&pat, None, &["machines", "remove", &mac_name, &project]);
-    let listed = ok(&pat, None, &["sessions", "list", "--project", &project]);
-    assert_eq!(listed, format!("parser\t{project}\t{mac_name}\tgone\t/work\t(its machine was taken out of the Project)\n"));
+    assert!(ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("No sessions yet."));
+    let t = tasks();
+    assert!(t.as_array().unwrap().iter().all(|t| t["assignee_session_id"].is_null() && t["ended_session"] == "parser"), "{t}");
 
-    // It can't be given new tasks...
-    ok(&pat, None, &["tasks", "add", &project, "Another"]);
-    let o = run(&pat, None, &["tasks", "send", &project, "3", "parser"]);
-    assert!(String::from_utf8_lossy(&o.stderr).contains("that session is gone"), "{}", String::from_utf8_lossy(&o.stderr));
-    // ...and its open tasks go to someone else in one go.
-    assert_eq!(
-        ok(&pat, None, &["sessions", "give-tasks", "parser", "--project", &project, "--to", "Pat"]).trim(),
-        "Gave parser's 2 open tasks to Pat."
-    );
-    let tasks = s.admin_request("GET", &format!("/rest/v1/tasks?select=assignee_session_id,people(display_name),projects!inner(name)&projects.name=eq.{project}&number=lt.3"), None).unwrap();
-    assert!(tasks.as_array().unwrap().iter().all(|t| t["assignee_session_id"].is_null() && t["people"]["display_name"] == "Pat"), "{tasks}");
-    assert_eq!(ok(&pat, None, &["sessions", "give-tasks", "parser", "--project", &project, "--to", "Pat"]).trim(), "parser has no open tasks.");
-
-    // Back in the Project, the next start opens it again, with no reason left.
+    // Given to someone again: no longer flagged.
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/work", "source": "clear" }));
-    let r = record(&s, &project, "parser");
-    assert_eq!(r["state"], "open");
+    let (mut helper, _) = opened(&s, &mac, "helper", &project);
+    ok(&pat, None, &["tasks", "send", &project, "1", "helper"]);
+    let t = tasks();
+    assert_eq!((t[0]["ended_session"].is_null(), t[1]["ended_session"].as_str()), (true, Some("parser")), "{t}");
     w.kill().unwrap();
+    helper.kill().unwrap();
 }
 
 #[test]
-fn a_session_whose_conversation_was_deleted_is_gone_and_isnt_reopened() {
+fn the_daemon_ends_sessions_that_stopped_while_it_was_away() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
-        .env("PATH", &path)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    wait_for("claude started", || mac.home.join("claude-args").exists());
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
-    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
-    ok(&pat, None, &["tasks", "add", &project, "Fix the parser"]);
-    ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
-
-    // Its transcript is there: Dispatch reopens it.
+    // One keeps running; the other's Claude is killed while nothing watches.
+    let running = open_window(&mac, &path, &["parser", "--project", &project]);
+    let (mut gone, conversation) = opened(&s, &mac, "docs", &project);
+    hook(&mac, gone.id(), "session-start", json!({ "session_id": conversation, "cwd": "/work", "source": "startup" }));
+    gone.kill().unwrap();
+    gone.wait().unwrap();
+    assert!(record(&s, &project, "docs").is_object());
     let mut d = daemon(&mac, &path);
-    assert!(ok(&pat, None, &["tasks", "dispatch", &project, "1"]).starts_with("Reopened parser"));
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
-    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
-
-    // The transcript is deleted: Dispatch says so and the session is gone.
-    std::fs::remove_dir_all(mac.home.join("claude-code/projects")).unwrap();
-    let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert!(String::from_utf8_lossy(&o.stderr).contains("parser's conversation was deleted"), "{}", String::from_utf8_lossy(&o.stderr));
-    let r = record(&s, &project, "parser");
-    assert_eq!(r["state"], "gone");
-    d.kill().unwrap();
-    d.wait().unwrap();
-
-    // A closed session with no transcript is found when the daemon starts.
-    let mut w = window();
-    hook(&mac, w.id(), "session-start", json!({ "session_id": Uuid::new_v4().to_string(), "cwd": "/w", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "docs", "--project", &project]);
-    hook(&mac, w.id(), "session-end", json!({ "session_id": Uuid::new_v4().to_string(), "reason": "prompt_input_exit" }));
-    w.kill().unwrap();
-    assert_eq!(record(&s, &project, "docs")["state"], "closed");
-    let mut d = daemon(&mac, &path);
-    let listed = ok(&pat, None, &["sessions", "list", "--project", &project]);
-    assert!(listed.contains("docs\t") && listed.contains("(its conversation was deleted)"), "{listed}");
+    assert!(record(&s, &project, "docs").is_null());
+    assert!(record(&s, &project, "parser").is_object());
+    close_window(&mac, running);
     d.kill().unwrap();
 }
 
+/// What reached a `machine_with_claude` window, in order.
 fn typed_lines(c: &Computer) -> Vec<String> {
-    std::fs::read_to_string(c.home.join("typed")).unwrap_or_default().lines().map(String::from).collect()
+    std::fs::read_to_string(c.home.join("typed")).unwrap_or_default().lines().map(|l| serde_json::from_str::<String>(l).unwrap()).collect()
 }
 
 #[test]
@@ -845,16 +896,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
-        .env("PATH", &path)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    wait_for("claude started", || mac.home.join("claude-args").exists());
-    let session_id = record(&s, &project, "parser");
-    let _ = session_id;
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
     let mut d = daemon(&mac, &path);
 
     // Bad starts are refused.
@@ -869,7 +911,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     assert!(listed.starts_with(&format!("parser\t{project}\tevery 10m\t0 of 2 runs done\tnext ")), "{listed}");
     assert!(listed.trim_end().ends_with("Keep going with the next task"), "{listed}");
 
-    // Make it due now (instead of waiting 10 minutes): it's typed in, as one line.
+    // Make it due now (instead of waiting 10 minutes): it reaches the window.
     let loop_id = s.admin_request("GET", "/rest/v1/loops?prompt=eq.Keep going with the next task&state=eq.running&select=id,sessions!inner(name,projects!inner(name))", None)
         .unwrap()
         .as_array()
@@ -903,24 +945,11 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     let l = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=state,runs"), None).unwrap();
     assert_eq!((l[0]["state"].as_str(), l[0]["runs"].as_i64()), (Some("finished"), Some(2)));
 
-    // The session isn't running (it ended, or the machine restarted): the
-    // next run reopens it in the host, resuming it, with the prompt first.
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
-    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
-    std::fs::remove_file(mac.home.join("claude-args")).unwrap();
-    ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--until", "+8h", "--session", "parser", "--project", &project]);
-    let next = s.admin_request("GET", "/rest/v1/loops?prompt=eq.Check in&state=eq.running&select=id,sessions!inner(projects!inner(name))", None).unwrap();
-    let id2 = next.as_array().unwrap().iter().find(|l| l["sessions"]["projects"]["name"] == json!(project)).unwrap()["id"].as_str().unwrap().to_string();
-    s.admin_request("PATCH", &format!("/rest/v1/loops?id=eq.{id2}"), Some(json!({ "next_run_at": "2020-01-01T00:00:00Z" }))).unwrap();
-    wait_for("reopened", || mac.home.join("claude-args").exists());
-    let args: Vec<String> = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().map(String::from).collect();
-    assert_eq!(args[0], "--resume");
-    assert_eq!(args.last().unwrap(), "Check in");
-    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser");
-    wait_for("the run recorded", || ok(&pat, None, &["loops", "list", "--project", &project]).contains("(1 so far)"));
-    assert_eq!(ok(&pat, None, &["loops", "stop", "--session", "parser", "--project", &project]).trim(), "Stopped parser's loop (it ran 1 time).");
+    // Another loop; the session is quit: it ends, and its loop with it.
+    ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--session", "parser", "--project", &project]);
+    assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("parser\t"));
+    close_window(&mac, w);
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
     d.kill().unwrap();
 }
 
@@ -932,10 +961,8 @@ fn the_prompt_and_stop_hooks_mark_a_session_busy_and_free() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name) = machine(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let mut w = window();
-    let claude = Uuid::new_v4().to_string();
+    let (mut w, claude) = opened(&s, &mac, "parser", &project);
     hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/work", "source": "startup" }));
-    ok(&mac, Some(w.id()), &["sessions", "add", "parser", "--project", &project]);
     let sid = s.admin_request("GET", &format!("/rest/v1/sessions?name=eq.parser&select=id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap()[0]["id"]
         .as_str()
         .unwrap()
@@ -952,69 +979,15 @@ fn the_prompt_and_stop_hooks_mark_a_session_busy_and_free() {
 }
 
 #[test]
-fn a_new_session_can_bring_in_an_old_conversation_and_keeps_it_on_reopen() {
+fn rename_in_claude_renames_the_session_and_it_still_gets_messages() {
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    // An old conversation on this machine.
-    let old = Uuid::new_v4().to_string();
-    let transcripts = mac.home.join("claude-code/projects/work");
-    std::fs::create_dir_all(&transcripts).unwrap();
-    std::fs::write(transcripts.join(format!("{old}.jsonl")), "").unwrap();
-    let new = |args: &[&str]| {
-        let mut all = vec!["sessions", "new", "build", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"];
-        all.extend_from_slice(args);
-        command(&mac, None, &all).env("PATH", &path).output().unwrap()
-    };
-    let o = new(&["--resume", &Uuid::new_v4().to_string()]);
-    assert!(String::from_utf8_lossy(&o.stderr).contains("there's no conversation"), "{}", String::from_utf8_lossy(&o.stderr));
-
-    let o = new(&["--resume", &old]);
-    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    wait_for("claude started", || mac.home.join("claude-args").exists());
-    let args: Vec<String> = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().map(String::from).collect();
-    assert_eq!(args[..4], ["--resume".to_string(), old.clone(), "--name".into(), "build".into()]);
-    let r = s.admin_request("GET", &format!("/rest/v1/sessions?name=eq.build&select=claude_session_id,projects!inner(name)&projects.name=eq.{project}"), None).unwrap();
-    assert_eq!(r[0]["claude_session_id"].as_str(), Some(old.as_str()));
-
-    // It crashes (ends without saying). It can still be given tasks, and
-    // Dispatch reopens the same conversation.
-    ok(&mac, None, &["sessions", "send", "build", "\u{4}", "--no-enter"]);
-    wait_for("the session ended", || ok(&mac, None, &["sessions", "hosted"]).starts_with("No hosted sessions"));
-    std::fs::remove_file(mac.home.join("claude-args")).unwrap();
-    let mut d = daemon(&mac, &path);
-    ok(&pat, None, &["tasks", "add", &project, "Ship it"]);
-    ok(&pat, None, &["tasks", "send", &project, "1", "build"]);
-    assert!(ok(&pat, None, &["tasks", "dispatch", &project, "1"]).starts_with("Reopened build"));
-    wait_for("reopened", || mac.home.join("claude-args").exists());
-    let args = std::fs::read_to_string(mac.home.join("claude-args")).unwrap();
-    assert!(args.starts_with(&format!("--resume\n{old}\n")), "{args}");
-    ok(&mac, None, &["sessions", "send", "build", "\u{4}", "--no-enter"]);
-    d.kill().unwrap();
-}
-
-#[test]
-fn rename_in_claude_renames_the_session_and_its_host_keeps_answering() {
-    let s = supabase_or_skip!();
-    let pat = person(&s, "Pat");
-    let project = unique("Code");
-    ok(&pat, None, &["projects", "new", &project]);
-    let (mac, mac_name, path) = machine_with_claude(&s);
-    ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
-        .env("PATH", &path)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    wait_for("claude started", || mac.home.join("claude-args").exists());
-    let claude_id = std::fs::read_to_string(mac.home.join("claude-args")).unwrap().lines().nth(1).unwrap().to_string();
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
+    let claude_id = w.args[1].clone();
     let mut d = daemon(&mac, &path);
 
     // /rename writes a custom-title line into the transcript.
@@ -1023,11 +996,12 @@ fn rename_in_claude_renames_the_session_and_its_host_keeps_answering() {
     writeln!(t, "{}", json!({ "type": "custom-title", "customTitle": "Parser Work", "sessionId": claude_id })).unwrap();
     drop(t);
     wait_for("renamed", || ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("parser-work\t"));
-    // Still running in the host, under its new name.
-    assert_eq!(ok(&mac, None, &["sessions", "hosted"]).trim(), "parser-work");
-    ok(&mac, None, &["sessions", "send", "parser-work", "hello\r"]);
-    wait_for("typed in under the new name", || typed_lines(&mac).iter().any(|l| l == "hello"));
-    ok(&mac, None, &["sessions", "send", "parser-work", "\u{4}", "--no-enter"]);
+    // Still running in the background under its new name, and messages
+    // under that name reach it.
+    wait_for("its runner renamed", || ok(&mac, None, &["sessions", "hosted"]).trim() == "parser-work");
+    assert_eq!(ok(&mac, None, &["sessions", "send", "parser-work", "hello"]).trim(), "Sent it to parser-work.");
+    wait_for("the message under the new name", || typed_lines(&mac) == ["hello"]);
+    close_window(&mac, Opened { name: "parser-work".into(), args: w.args });
     d.kill().unwrap();
 }
 
@@ -1345,15 +1319,7 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
     ok(&pat, None, &["projects", "new", &project]);
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
-    let folder = mac.home.join("work");
-    std::fs::create_dir_all(&folder).unwrap();
-    let out = command(&mac, None, &["sessions", "new", "parser", "--project", &project, "--folder", folder.to_str().unwrap(), "--no-attach"])
-        .env("PATH", &path)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    wait_for("claude started", || mac.home.join("claude-args").exists());
-    record(&s, &project, "parser");
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
     ok(&pat, None, &["loops", "start", "Next task please", "--every", "10m", "--session", "parser", "--project", &project]);
     let loop_id = s
         .admin_request("GET", "/rest/v1/loops?prompt=eq.Next task please&state=eq.running&select=id,sessions!inner(projects!inner(name))", None)
@@ -1374,7 +1340,7 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
         let _ = std::fs::remove_file(mac.home.join("run/busy").join(&sid));
     };
 
-    // Two daemons for the same machine: each due run is typed in once.
+    // Two daemons for the same machine: each due run goes in once.
     let mut d1 = daemon(&mac, &path);
     let mut d2 = daemon(&mac, &path);
     for round in 1..=3 {
@@ -1382,7 +1348,7 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
         due_now();
         wait_for("the run", || typed_lines(&mac).len() == round);
         std::thread::sleep(std::time::Duration::from_secs(2));
-        assert_eq!(typed_lines(&mac).len(), round, "typed twice with two daemons running: {:?}", typed_lines(&mac));
+        assert_eq!(typed_lines(&mac).len(), round, "sent twice with two daemons running: {:?}", typed_lines(&mac));
     }
     let runs = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=runs"), None).unwrap()[0]["runs"].as_i64();
     assert_eq!(runs, Some(3));
@@ -1409,9 +1375,10 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
         s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=state"), None).unwrap()[0]["state"] != json!("running")
     });
     std::thread::sleep(std::time::Duration::from_secs(2));
-    assert_eq!(typed_lines(&mac).len(), 4, "nothing typed after its end time");
+    assert_eq!(typed_lines(&mac).len(), 4, "nothing sent after its end time");
 
     let _ = d3.kill();
     let _ = d3.wait();
-    ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
+    close_window(&mac, w);
 }
+

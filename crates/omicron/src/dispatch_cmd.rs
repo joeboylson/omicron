@@ -1,10 +1,10 @@
 //! Dispatch: hand a task to its Claude session, on the session's machine.
 //!
 //! Whoever asks adds a request (`dispatches` table) and waits. The session's
-//! machine hears it live (its daemon), claims it, and either types the task
-//! into the session if it's running in Omicron's host, or reopens it there
-//! (`claude --resume`) with the task as its first message. Then it saves how
-//! it went, which the asker hears.
+//! machine hears it live (its daemon), claims it, and leaves the task in the
+//! session's inbox: Omicron's add-on puts it into the session's window now,
+//! or when it's next opened (`omicron open`). Then it saves how it went,
+//! which the asker hears.
 //!
 //! The session is told the same way a person would tell it: "go get your
 //! tasks" (`omicron tasks mine`), so the task text and the report rules come
@@ -194,21 +194,9 @@ fn hand_over(board: &Board, machine: &str, d: &Dispatch) -> Result<String> {
     let session = board.session_by_id(&d.session_id)?;
     let text = message(&project, &task);
     let name = &session.name;
-
-    // Running in the host: type it in, then press Enter separately, so it
-    // isn't taken as pasted text with a new line in it.
-    if omicron::host::is_running(name) {
-        omicron::host::say(name, &text)?;
-        return Ok(format!("Typed the task into {name} on {machine}."));
+    if crate::sessions_cmd::deliver(board, &session, &text)? {
+        Ok(format!("Sent the task to {name} on {machine}."))
+    } else {
+        Ok(format!("{name} isn't open on {machine}. It gets the task when it's next opened (`omicron open {name}`)."))
     }
-
-    // Closed: reopen it in the host with the task as its first message.
-    crate::sessions_cmd::reopen(board, &session, machine, Some(&text)).map_err(|e| {
-        if e.to_string().contains("open in a window Omicron doesn't host") {
-            anyhow::anyhow!("{name} is open in a window Omicron doesn't host, so the task can't be typed in. Tell it to get its tasks (`omicron tasks mine`).")
-        } else {
-            e
-        }
-    })?;
-    Ok(format!("Reopened {name} on {machine} with the task. Jump in with `omicron sessions attach {name}`."))
 }

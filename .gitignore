@@ -11,3 +11,7 @@ dist/
 *.local
 
 .DS_Store
+
+# The tests' own Supabase: what its tool writes for itself
+dev/test-db/supabase/.branches/
+dev/test-db/supabase/.temp/

@@ -46,7 +46,8 @@ teams of Claude sessions (rewritten from legion).
 
 Omicron's database is a hosted Supabase project, `omicron` (ref
 `fofxgxabbatahrjpoxug`, us-west-2, free tier), linked to this GitHub
-repository. Nothing of Omicron's runs in Colima any more.
+repository. The real Omicron uses only this one; the tests have their own
+on this Mac (see "Running tests").
 - Database changes: add a file to `supabase/migrations/` (next number, like
   `0025_what_it_does.sql`), commit and push to `main`. Supabase's GitHub
   integration applies new migrations to the hosted database on every push to
@@ -68,15 +69,22 @@ bash scripts/test.sh                    # every Rust test
 bash scripts/test.sh --test sessions    # one test file (any cargo test arguments)
 ```
 
-Tests run against the hosted Supabase (the real one; the free tier allows
-only two projects, so there's no separate test one), in their own throwaway
-people, machines and Projects (logins like name-1234abcd@example.com), never
-the Omicron Project. `scripts/test.sh` cleans up after every run, even when
-tests fail (`--clean-only <time>` after an interrupted run), and only
-removes what is plainly a test's (see `scripts/lib/clean.py`). It also hides
-this Mac's own Tailscale login from the tests. Every request goes over the
-internet, so runs take minutes: run the test file a change touches, and the
-whole suite before committing a change to shared code.
+`scripts/test.conf` says where tests run. By default (`local`) it's the
+tests' own Supabase on this Mac, in Docker (OrbStack; Colima or Docker
+Desktop by setting `OMICRON_TEST_DOCKER`), set up in `dev/test-db` with the
+same migrations the hosted one gets. `scripts/test.sh` starts it the first
+time it's needed and leaves it running; `bash scripts/test-db.sh
+start|stop|reset|status` does it by hand. The whole suite takes under a
+minute there. `OMICRON_TEST_DB=hosted` (in the file, or for one run) uses
+the hosted Supabase instead, over the internet, which takes minutes.
+
+Either way tests make their own throwaway people, machines and Projects
+(logins like name-1234abcd@example.com), never the Omicron Project.
+`scripts/test.sh` cleans up after every run, even when tests fail
+(`--clean-only <time>` after an interrupted run), and only removes what is
+plainly a test's (see `scripts/lib/clean.py`). It also hides this Mac's own
+Tailscale login from the tests. Run the whole suite before committing a
+change to shared code.
 
 The browser tests (`e2e/`, Playwright 1.62, using the Chromium already in
 `~/Library/Caches/ms-playwright`) run the same way: `bash scripts/e2e.sh`
@@ -88,7 +96,8 @@ and cleans it up after.
 
 The real Omicron runs on this Mac (atlas): `bash dev/mac.sh` builds,
 installs `~/.local/bin/omicron`, and restarts the web page (127.0.0.1:9010,
-on the tailnet admin-only at https://atlas.taileedd95.ts.net:8451 through the
+or the port in `~/.omicron/web-port` on a Mac where 9010 is taken; the work
+Mac uses 9030 because its `minio` container holds 9010; on the tailnet admin-only at https://atlas.taileedd95.ts.net:8451 through the
 home lab's gate) and the daemon, in the tmux sessions `omicron-serve` and
 `omicron-daemon`. Claude sessions get Omicron's hooks with `claude --settings
 ~/.omicron/claude/settings.json`; Claude Code's own settings are left alone.

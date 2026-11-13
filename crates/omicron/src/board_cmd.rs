@@ -192,9 +192,9 @@ pub enum Tasks {
     Link { project: String, number: i64, team: String, job: i64 },
     /// Unlink a task from a team's job
     Unlink { project: String, number: i64, team: String, job: i64 },
-    /// Hand a task to its Claude session now, on the session's machine:
-    /// typed into it if it's running in Omicron's host, otherwise reopened
-    /// there with the task. Fails if the machine is asleep.
+    /// Hand a task to its Claude session now, on the session's machine: it
+    /// shows up in the session's window, or when the session is next opened
+    /// (`omicron open`). Fails if the machine is asleep.
     Dispatch { project: String, number: i64 },
     /// Comment on a task. From inside a Claude session, the comment says
     /// which session wrote it.

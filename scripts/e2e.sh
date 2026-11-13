@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run the browser tests (e2e/, Playwright) on this Mac against Omicron's one
-# Supabase, then clean up everything the run made, like scripts/test.sh.
+# Run the browser tests (e2e/, Playwright) on this Mac against the test
+# Supabase (scripts/test.conf), then clean up everything the run made, like scripts/test.sh.
 # Each test file starts its own `omicron serve` with its own settings and
 # throwaway people and Projects; the Omicron Project is never touched.
 #   bash scripts/e2e.sh                       every browser test

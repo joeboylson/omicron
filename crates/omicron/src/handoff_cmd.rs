@@ -50,7 +50,7 @@ pub fn handoff(cmd: HandoffCmd, as_machine: bool) -> Result<()> {
             let session_id = this_window(&windows)?
                 .and_then(|pid| windows.windows.get(&pid))
                 .and_then(|w| w.session_id.clone())
-                .context("run this inside a Claude session Omicron tracks (`omicron sessions add`)")?;
+                .context("run this inside a Claude session Omicron tracks (opened with `omicron open`)")?;
             // Notes belong to the session's machine.
             let board = sign_in(true)?;
             let session = board.session_by_id(&session_id)?;

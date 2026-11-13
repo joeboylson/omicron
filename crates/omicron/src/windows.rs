@@ -158,7 +158,7 @@ pub fn transcript_exists(claude_session_id: &str) -> bool {
     folders.flatten().any(|f| f.path().join(&file).is_file())
 }
 
-fn alive(pid: u32) -> bool {
+pub fn alive(pid: u32) -> bool {
     Command::new("ps")
         .args(["-o", "pid=", "-p", &pid.to_string()])
         .output()

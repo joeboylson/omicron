@@ -23,7 +23,7 @@ fn new_home() -> PathBuf {
 fn omicron(home: &Path, args: &[&str]) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
     for (k, _) in std::env::vars() {
-        if k.starts_with("OMICRON_") {
+        if k.starts_with("OMICRON_") || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE" {
             cmd.env_remove(k);
         }
     }
@@ -268,7 +268,7 @@ fn linking_a_second_tailscale_identity() {
 fn doctor(home: &Path) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
     for (k, _) in std::env::vars() {
-        if k.starts_with("OMICRON_") || k == "CLAUDE_CONFIG_DIR" {
+        if k.starts_with("OMICRON_") || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE" || k == "CLAUDE_CONFIG_DIR" {
             cmd.env_remove(k);
         }
     }
@@ -284,7 +284,8 @@ fn doctor_on_a_new_computer_says_to_run_setup() {
     assert!(out.contains("fix   Settings") && out.contains("omicron setup"), "{out}");
     // What depends on the settings isn't checked yet.
     assert!(out.contains("--    Machine"), "{out}");
-    assert!(out.contains("fix   Claude hooks") && out.contains("setup-claude"), "{out}");
+    // Nothing to do by hand for Claude: `omicron open` sets it up.
+    assert!(out.contains("ok    Claude hooks and add-on") && out.contains("omicron open"), "{out}");
     assert!(stderr(&o).contains("things left to set up"), "{}", stderr(&o));
 }
 
@@ -301,10 +302,4 @@ fn doctor_says_what_a_new_machine_still_needs_and_when_its_done() {
     let out = stdout(&doctor(&home));
     assert!(out.contains(&format!("{name} can't use any Project yet")), "{out}");
     assert!(out.contains("fix   Daemon") && out.contains("fix   Start at login"), "{out}");
-
-    // Claude's hooks, in Omicron's own settings file.
-    let settings = home.join("claude/settings.json");
-    ok(omicron(&home, &["sessions", "setup-claude", "--settings", settings.to_str().unwrap()]));
-    let out = stdout(&doctor(&home));
-    assert!(out.contains("ok    Claude hooks") && out.contains("claude --settings"), "{out}");
 }

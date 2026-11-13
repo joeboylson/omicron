@@ -33,6 +33,8 @@ export type Task = {
   topic_id: string | null;
   /** The Claude session it was sent to, and when the session picked it up. */
   assignee_session_id: string | null;
+  /** The session it was given to, which has since ended (until it's given out again). */
+  ended_session: string | null;
   picked_up_at: string | null;
   labelIds: string[];
   checklist: ChecklistItem[];
@@ -134,7 +136,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       db
         .from("tasks")
         .select(
-          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
+          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
         )
         .eq("project_id", id)
         .order("position")
@@ -182,6 +184,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       position: t.position,
       assignee_person_id: t.assignee_person_id,
       assignee_session_id: t.assignee_session_id,
+      ended_session: t.ended_session ?? null,
       topic_id: t.topic_id,
       picked_up_at: t.picked_up_at,
       labelIds: (t.task_labels ?? []).map((l: { label_id: string }) => l.label_id),

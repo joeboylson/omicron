@@ -3,7 +3,7 @@
 // and Supabase.
 const { test, expect } = require("@playwright/test");
 const crypto = require("node:crypto");
-const { startOmicron, unique, need, sessionFor, rest, visitAs, fakeWindow } = require("./omicron");
+const { startOmicron, unique, need, sessionFor, rest, visitAs } = require("./omicron");
 
 let omicron;
 let machineName;
@@ -243,12 +243,12 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
   await expect(page.getByRole("region", { name: "Claude sessions" })).toHaveCount(0);
 
   // A Claude Code window on the machine starts, and adds itself.
-  const win = fakeWindow();
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
   try {
-    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: "/work/code", source: "startup" });
-    omicron.addSession(win.pid, "parser", name);
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
     const sessions = page.getByRole("region", { name: "Claude sessions" });
-    await expect(sessions).toContainText(`parser${machineName} · open`);
+    await expect(sessions).toContainText(`parser${machineName}`);
 
     // Its handoff notes show when the session is tapped, live.
     await sessions.getByRole("button", { name: /parser/ }).click();
@@ -259,9 +259,9 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
     await expect(notes).toContainText("Parser half done. Next: error messages.");
     await escape(page);
 
-    // It's closed: the page shows that without reloading.
+    // It's closed: it ends, and leaves the page without reloading.
     omicron.hook(win.pid, "session-end", { session_id: crypto.randomUUID(), reason: "prompt_input_exit" });
-    await expect(sessions).toContainText(`parser${machineName} · closed`);
+    await expect(page.getByRole("region", { name: "Claude sessions" })).toHaveCount(0);
   } finally {
     win.kill();
   }
@@ -273,17 +273,18 @@ test("a task sent to a Claude session from the page is picked up by it", async (
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Write the parser");
 
-  const win = fakeWindow();
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
   try {
-    const claude = crypto.randomUUID();
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
-    omicron.addSession(win.pid, "parser", name);
     await expect(page.getByRole("region", { name: "Claude sessions" })).toContainText("parser");
 
     const card = page.getByRole("button", { name: "#1 Write the parser" });
     await card.click();
     await pick(page, "Given to", "parser");
     await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    // Saved (the page shows it a moment before).
+    await expect.poll(() => omicron.cliIn(win.pid, "tasks", "show", name, "1", "--as-machine")).toContain("sent to session parser");
 
     // The end of the session's turn doesn't hand it over...
     expect(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false })).toBe("");
@@ -320,14 +321,12 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Write the parser");
 
-  const win = fakeWindow();
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
   let daemon;
+  let addon;
   try {
-    const folder = omicron.folder();
-    const claude = crypto.randomUUID();
-    omicron.transcript(claude);
-    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: folder, source: "startup" });
-    omicron.addSession(win.pid, "parser", name);
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: omicron.folder(), source: "resume" });
     await page.getByRole("button", { name: "#1 Write the parser" }).click();
     await pick(page, "Given to", "parser");
 
@@ -342,25 +341,20 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     await expect(button).toBeEnabled();
     await expect(page.getByTestId("dispatch-asleep")).toHaveCount(0);
 
-    // Open in a window Omicron doesn't host: it can't be typed into.
+    // Its window has no add-on following the inbox: the task waits for the
+    // next time the session is opened.
     await button.click();
-    await expect(outcome).toContainText("open in a window Omicron doesn't host");
+    await expect(outcome).toContainText(`parser isn't open on ${machineName}. It gets the task when it's next opened`);
 
-    // The window closes. Dispatch reopens the session in the host, with the task.
-    win.kill();
+    // With the add-on: the waiting one arrives, and the next goes straight in.
+    addon = await omicron.follow(claude);
     await button.click();
-    await expect(outcome).toContainText(`Reopened parser on ${machineName} with the task.`);
-    expect(omicron.cli("sessions", "hosted").trim()).toBe("parser");
-    await expect.poll(() => omicron.cli("sessions", "list", "--project", name, "--as-machine")).toContain("\topen\t");
-
-    // Running in the host now, so the next one is typed in.
-    await button.click();
-    await expect(outcome).toHaveText(`Typed the task into parser on ${machineName}.now`);
+    await expect(outcome).toHaveText(`Sent the task to parser on ${machineName}.now`);
+    await expect.poll(() => addon.got().length).toBe(2);
+    expect(addon.got().every((m) => m.startsWith("Omicron dispatched task #1 \"Write the parser\""))).toBe(true);
   } finally {
+    addon?.stop();
     win.kill();
-    try {
-      omicron.cli("sessions", "send", "parser", "\u0004", "--no-enter");
-    } catch {}
     daemon?.stop();
   }
 });
@@ -369,11 +363,10 @@ test("a Project's chat: turned on, a session named in it answers, live", async (
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
-  const win = fakeWindow();
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
   try {
-    const claude = crypto.randomUUID();
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
-    omicron.addSession(win.pid, "parser", name);
 
     // Off to start with: nobody sees it.
     await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
@@ -532,7 +525,7 @@ test("comments hold images: picked, dropped, or posted by a session, and open fu
   await expect(comments.getByRole("listitem").filter({ hasText: "Done, screenshot attached." }).getByRole("img")).toBeVisible();
 });
 
-test("a session taken out with its machine says why, and its tasks go to someone else", async ({ page, request }) => {
+test("a session taken out with its machine ends, and its tasks are flagged until given out", async ({ page, request }) => {
   const robin = await newPerson(page, request, "Robin Example");
   const name = unique("Code");
   const projectId = await startProjectIn(page, name);
@@ -558,38 +551,35 @@ test("a session taken out with its machine says why, and its tasks go to someone
   const [session] = await rest(request, login, "POST", "/rest/v1/sessions", { project_id: projectId, name: "parser", folder: "/work" });
   await rest(request, login, "PATCH", `/rest/v1/tasks?project_id=eq.${projectId}`, { assignee_session_id: session.id });
   const sessions = page.getByRole("region", { name: "Claude sessions" });
-  await expect(sessions).toContainText(`parser${box} · open`);
+  await expect(sessions).toContainText(`parser${box}`);
 
-  // The machine is taken out of the Project: the page shows it stopped, live.
+  // The machine is taken out of the Project: the session ends and leaves
+  // the page, live, and its tasks say whose they were.
   await rest(request, robin.session, "DELETE", `/rest/v1/project_machines?project_id=eq.${projectId}&machine_id=eq.${uuid}`);
-  await expect(sessions).toContainText(`parser${box} · stopped`);
+  await expect(sessions).toHaveCount(0);
+  const card = page.getByRole("button", { name: "#1 Write the parser" });
+  await expect(card).toContainText("parser· ended");
+  await card.click();
+  await expect(page.getByTestId("ended-session")).toHaveText("It was given to parser, which has ended. Give it to someone else.");
+  await expect(page.getByRole("button", { name: "Dispatch" })).toHaveCount(0);
 
-  // The task says why, and Dispatch is off.
-  await page.getByRole("button", { name: "#1 Write the parser" }).click();
-  await expect(page.getByTestId("pickup")).toHaveText("parser stopped: its machine was taken out of the Project. Give the task to someone else.");
-  await expect(page.getByRole("button", { name: "Dispatch" })).toBeDisabled();
+  // Given to a person: no longer flagged.
+  await pick(page, "Given to", "Robin Example");
+  await expect(page.getByTestId("ended-session")).toHaveCount(0);
   await escape(page);
-
-  // From the session's sheet, both open tasks go to a person at once.
-  await sessions.getByRole("button", { name: /parser/ }).click();
-  await expect(page.getByTestId("gone-why")).toHaveText("Stopped: its machine was taken out of the Project.");
-  await expect(page.getByRole("list", { name: "Open tasks" }).getByRole("listitem")).toHaveCount(2);
-  await page.getByLabel("Give parser's open tasks to").click();
-  await page.getByRole("option", { name: "Robin Example" }).click();
-  await expect(page.getByRole("list", { name: "Open tasks" })).toHaveCount(0);
-  await escape(page);
-  await expect(page.getByRole("button", { name: "#1 Write the parser" })).toContainText("RE");
-  await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText("RE");
+  await expect(card).toContainText("RE");
+  await expect(card).not.toContainText("ended");
+  await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText("parser· ended");
 });
 
 test("a session's loop shows on the page, live, and can be stopped there", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
-  const win = fakeWindow();
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
   try {
-    omicron.hook(win.pid, "session-start", { session_id: crypto.randomUUID(), cwd: "/work", source: "startup" });
-    omicron.addSession(win.pid, "parser", name);
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work", source: "startup" });
     const sessions = page.getByRole("region", { name: "Claude sessions" });
     await expect(sessions).toContainText("parser");
     await expect(sessions.getByLabel("looping")).toHaveCount(0);

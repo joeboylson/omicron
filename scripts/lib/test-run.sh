@@ -1,23 +1,53 @@
-# Shared by scripts/test.sh and scripts/e2e.sh: run tests against Omicron's
-# hosted Supabase (the keys in ~/.omicron/config.json) and clean up what
-# they made afterwards (scripts/lib/clean.py). Source it.
+# Shared by scripts/test.sh and scripts/e2e.sh: run tests against the
+# Supabase scripts/test.conf names (the tests' own one on this Mac, or
+# Omicron's hosted one) and clean up what they made afterwards
+# (scripts/lib/clean.py). Source it.
 
 # This folder, so clean-up works wherever the script has moved to since.
 test_run_lib=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+. "$test_run_lib/../test.conf"
 
-clean() {
-  python3 "$test_run_lib/clean.py" "$1"
+# The settings file clean-up reads the address and key from.
+test_db_config() {
+  if [ "$OMICRON_TEST_DB" = local ]; then
+    echo "$HOME/.cache/omicron-test-db.json"
+  else
+    echo "$HOME/.omicron/config.json"
+  fi
 }
 
-# Point a test run at the hosted Supabase, start the clock for clean-up, and
-# clean up when the script exits, however it exits.
+clean() {
+  OMICRON_CONFIG=$(test_db_config) python3 "$test_run_lib/clean.py" "$1"
+}
+
+# Point a test run at the test Supabase (starting the local one if it isn't
+# running), start the clock for clean-up, and clean up when the script
+# exits, however it exits.
 start_test_run() {
-  eval "$(python3 -c '
+  case "$OMICRON_TEST_DB" in
+    local)
+      eval "$(bash "$test_run_lib/../test-db.sh" env)"
+      mkdir -p "$HOME/.cache"
+      python3 -c '
+import json, os, sys
+e = os.environ
+json.dump({"supabase_url": e["OMICRON_SUPABASE_URL"], "supabase_key": e["OMICRON_SUPABASE_KEY"], "supabase_secret_key": e["OMICRON_SUPABASE_SECRET_KEY"]}, open(sys.argv[1], "w"))
+' "$(test_db_config)"
+      ;;
+    hosted)
+      eval "$(python3 -c '
 import json, os, shlex
 c = json.load(open(os.path.expanduser("~/.omicron/config.json")))
 for k, v in [("OMICRON_SUPABASE_URL", c["supabase_url"]), ("OMICRON_SUPABASE_KEY", c["supabase_key"]), ("OMICRON_SUPABASE_SECRET_KEY", c["supabase_secret_key"])]:
     print("export %s=%s" % (k, shlex.quote(v)))
 ')"
+      ;;
+    *)
+      echo "OMICRON_TEST_DB is \"$OMICRON_TEST_DB\"; scripts/test.conf says what it can be (local or hosted)" >&2
+      exit 2
+      ;;
+  esac
+  echo "tests: on the $OMICRON_TEST_DB Supabase ($OMICRON_SUPABASE_URL)" >&2
   export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-2}
   # Tests decide who's on Tailscale themselves (a status file); this Mac's own
   # Tailscale login (Joe) must never leak into them, so `tailscale` fails here.

@@ -57,6 +57,18 @@ test("a Project with 1,200 tasks: nothing cut off, and it stays quick", async ({
   const cards = await page.locator('section[aria-label] [aria-label^="#"]').count();
   expect(cards, "every task is on the board").toBe(1200);
 
+  // Each column scrolls on its own: the page stays put, and so do the others.
+  const lists = page.locator("section[aria-label] ul");
+  const first = lists.nth(0);
+  const second = lists.nth(1);
+  expect(await first.evaluate((ul) => ul.scrollHeight > ul.clientHeight), "a long column scrolls").toBe(true);
+  await first.hover();
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => first.evaluate((ul) => ul.scrollTop)).toBeGreaterThan(0);
+  expect(await second.evaluate((ul) => ul.scrollTop), "the next column stays put").toBe(0);
+  expect(await page.evaluate(() => window.scrollY), "the page stays put").toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1), "the board fits the screen").toBe(true);
+
   // Search: finds the one task quickly.
   started = Date.now();
   await page.getByLabel("Search tasks").fill("needle");

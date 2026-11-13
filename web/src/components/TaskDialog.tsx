@@ -43,8 +43,6 @@ import { LabelBadge, NeedsReview } from "@/components/TaskCard";
 import { Comments } from "@/components/Comments";
 
 const NOBODY = "nobody";
-/** A session that stopped without saying can still be reopened by Dispatch. */
-const STOPPED = "it stopped without saying (a crash or a restart)";
 
 export function TaskDialog({
   project,
@@ -261,7 +259,7 @@ function TaskForm({
                 <SelectGroup>
                   <SelectLabel>Claude sessions</SelectLabel>
                   {project.sessions.map((c) => (
-                    <SelectItem key={c.id} value={`session:${c.id}`} disabled={c.state !== "open" && c.id !== task.assignee_session_id}>
+                    <SelectItem key={c.id} value={`session:${c.id}`}>
                       {c.name}
                     </SelectItem>
                   ))}
@@ -271,6 +269,14 @@ function TaskForm({
           </Select>
         </Row>
         {task.assignee_session_id && <DispatchRow project={project} task={task} onChanged={onChanged} />}
+        {!task.assignee_session_id && !task.assignee_person_id && task.ended_session && (
+          <Row className="text-sm text-muted-foreground">
+            <AlertCircle className="h-4 w-4 shrink-0 text-[var(--sys-orange)]" aria-hidden />
+            <span data-testid="ended-session" className="flex-1">
+              It was given to {task.ended_session}, which has ended. Give it to someone else.
+            </span>
+          </Row>
+        )}
       </Group>
 
       <TeamJobs project={project} task={task} onChanged={onChanged} />
@@ -436,7 +442,7 @@ function when(iso: string): string {
 
 /**
  * Whether the session has the task, and the Dispatch button: hands it to the
- * session now, on its machine (typed in, or the session reopened there). The
+ * session now, on its machine (in its window, or when it's next opened). The
  * outcome of the latest Dispatch shows under it, for everyone, live.
  */
 function DispatchRow({ project, task, onChanged }: { project: ProjectData; task: Task; onChanged: () => void }) {
@@ -446,8 +452,7 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
   const session = project.sessions.find((s) => s.id === task.assignee_session_id);
   const latest = task.dispatches[0];
   const working = asking || latest?.state === "pending" || latest?.state === "claimed";
-  const gone = session?.state === "gone";
-  const asleep = !gone && !!session && awake !== null && !awake.has(session.machine_id);
+  const asleep = !!session && awake !== null && !awake.has(session.machine_id);
 
   async function dispatch() {
     if (!session) return;
@@ -472,11 +477,7 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
       <Row className="text-sm text-muted-foreground">
         <Terminal className="h-4 w-4 shrink-0" aria-hidden />
         <span data-testid="pickup" className="flex-1">
-          {gone && session.gone_why === STOPPED
-            ? `${session.name} stopped without saying (a crash or a restart). Dispatch can reopen it.`
-            : gone
-              ? `${session.name} stopped: ${session.gone_why}. Give the task to someone else.`
-            : task.picked_up_at
+          {task.picked_up_at
               ? "Picked up by the session."
               : "Waiting until the session is told to get its tasks, or it's dispatched."}
         </span>
@@ -485,7 +486,7 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
           variant="outline"
           size="sm"
           className="shrink-0"
-          disabled={!session || working || asleep || (gone && session.gone_why !== STOPPED)}
+          disabled={!session || working || asleep}
           onClick={dispatch}
           title={asleep ? `${session?.machine} is asleep` : `Hand it to ${session?.name} now, on ${session?.machine}`}
         >

@@ -251,7 +251,9 @@ export function ProjectPage({ id }: { id: string }) {
     act(() => moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position })).then(reload);
   };
   return (
-    <main className="flex min-h-0 flex-1 flex-col">
+    // By status, the board fills the screen and each column scrolls on its
+    // own; by topic, the page scrolls through the rows.
+    <main className={cn("flex min-h-0 flex-col", groupBy === "status" ? "h-dvh flex-none" : "flex-1")}>
       <NavBar
         title={project.name}
         left={
@@ -372,7 +374,7 @@ export function ProjectPage({ id }: { id: string }) {
         }}
       >
       {groupBy === "status" ? (
-        <div className={boardRow}>
+        <div className={cn(boardRow, "min-h-0")}>
           {project.statuses.map((s, i) => (
             <Column
               key={s.id}
@@ -592,7 +594,7 @@ function Column({
   return (
     <section
       aria-label={label}
-      className="flex w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
+      className="flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
         <ColorDot color={statusColor(status)} />
@@ -605,7 +607,11 @@ function Column({
         )}
       </h2>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <ul ref={setNodeRef} className={cn("flex min-h-2 flex-col gap-2 rounded-lg transition-colors", isOver && "bg-accent/60")}>
+        <ul
+          ref={setNodeRef}
+          // Scrolls on its own when the column is taller than the screen.
+          className={cn("-m-0.5 flex min-h-2 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-lg p-0.5 transition-colors", isOver && "bg-accent/60")}
+        >
           {tasks.map((t) => (
             <SortableTask key={t.id} project={project} task={t} column={column} onOpen={() => onOpen(t)} />
           ))}

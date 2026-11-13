@@ -95,5 +95,5 @@ fn a_hosted_session_keeps_running_and_can_be_joined_typed_into_and_resized() {
 fn names_and_missing_sessions_are_checked() {
     let home = new_home();
     assert!(omicron(&home, &["sessions", "host", "../x", "--", "true"]).1.contains("a session name is"));
-    assert!(omicron(&home, &["sessions", "send", "nope", "x"]).1.contains("no session called nope is running"));
+    assert!(omicron(&home, &["sessions", "attach", "nope"]).1.contains("no session called nope is running"));
 }

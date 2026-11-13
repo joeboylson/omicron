@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run the Rust tests against Omicron's hosted Supabase, then clean up
-# everything the run made (scripts/lib/clean.py). Tests make their own
+# Run the Rust tests against the test Supabase (scripts/test.conf: the
+# tests' own one on this Mac by default), then clean up everything the run
+# made (scripts/lib/clean.py). Tests make their own
 # throwaway people, machines and Projects (people log in as
 # <name>-<random>@example.com), so the Omicron Project is never touched.
 #   bash scripts/test.sh                    every Rust test
