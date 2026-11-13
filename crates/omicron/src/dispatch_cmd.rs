@@ -182,15 +182,10 @@ pub fn carry_out(supabase: &Supabase, key: &MachineKey, machine: &str, row: &Val
     }
     let board = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
     let Some(d) = board.claim_dispatch(id)? else { return Ok(()) };
-    // Work handed over from elsewhere: only while this computer's gate is
-    // open. One this machine asked for itself is fine.
-    let here = row["requested_by"].as_str() == Some(board.session.user.id.to_string().as_str());
-    if !here && omicron::gate::open_until().is_none() {
-        return board.finish_dispatch(
-            &d.id,
-            false,
-            &format!("{machine}'s gate is closed, so it takes no work from elsewhere. Open it on {machine} with `omicron gate open --until 17:00`."),
-        );
+    // Work handed over from elsewhere: only from this machine's owner, while
+    // its gate is open. One this machine asked for itself is fine.
+    if let Some(why) = omicron::gate::refusal(&board, machine, row["requested_by"].as_str())? {
+        return board.finish_dispatch(&d.id, false, &why);
     }
     let (ok, message) = match hand_over(&board, machine, &d) {
         Ok(m) => (true, m),

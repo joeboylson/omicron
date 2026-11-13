@@ -306,8 +306,9 @@ impl Supabase {
     }
 
     /// Register a machine and make its API key. The key is shown once and
-    /// never stored anywhere but on the machine.
-    pub fn register_machine(&self, name: &str, all_projects: bool) -> Result<MachineKey> {
+    /// never stored anywhere but on the machine. Its owner is the person
+    /// making the key: only they can send it orders (ref/BRAINSTORM.md, "The gate").
+    pub fn register_machine(&self, name: &str, all_projects: bool, owner: Option<Uuid>) -> Result<MachineKey> {
         let id = Uuid::new_v4();
         let key = MachineKey::new(id)?;
         self.admin(
@@ -316,7 +317,7 @@ impl Supabase {
             Some(json!({ "id": id, "email": machine_email(id), "password": key.secret, "email_confirm": true, "user_metadata": { "kind": "machine" } })),
             None,
         )?;
-        if let Err(e) = self.admin("POST", "/rest/v1/machines", Some(json!({ "id": id, "name": name, "all_projects": all_projects })), None) {
+        if let Err(e) = self.admin("POST", "/rest/v1/machines", Some(json!({ "id": id, "name": name, "all_projects": all_projects, "owner": owner })), None) {
             let _ = self.admin("DELETE", &format!("/auth/v1/admin/users/{id}"), None, None);
             if is_conflict(&e) {
                 bail!("there's already a machine called {name}");

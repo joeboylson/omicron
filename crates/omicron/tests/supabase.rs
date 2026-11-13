@@ -79,7 +79,7 @@ fn starting_a_project_makes_you_a_member() {
 #[test]
 fn machines_cant_start_projects() {
     let s = supabase_or_skip!();
-    let key = s.register_machine(&format!("nope-{}", Uuid::new_v4().simple()), true).unwrap();
+    let key = s.register_machine(&format!("nope-{}", Uuid::new_v4().simple()), true, None).unwrap();
     let machine = s.sign_in_machine(&key).unwrap();
     assert!(s.request_as(&machine, "POST", "/rest/v1/rpc/start_project", Some(json!({ "name": "x" }))).is_err());
     assert!(s.request_as(&machine, "POST", "/rest/v1/projects", Some(json!({ "name": "x" }))).is_err());
@@ -134,7 +134,7 @@ fn machines_see_only_the_projects_they_were_added_to() {
     let mine = new_project(&s, &me, "Work");
     let _other = new_project(&s, &me, "Other");
 
-    let key = s.register_machine(&format!("laptop-{}", Uuid::new_v4().simple()), false).unwrap();
+    let key = s.register_machine(&format!("laptop-{}", Uuid::new_v4().simple()), false, None).unwrap();
     let machine = s.sign_in_machine(&key.to_string().parse::<MachineKey>().unwrap()).unwrap();
     assert!(projects(&s, &machine).is_empty());
 
@@ -154,7 +154,7 @@ fn machines_see_only_the_projects_they_were_added_to() {
 #[test]
 fn machines_with_every_project_see_new_ones_too() {
     let s = supabase_or_skip!();
-    let key = s.register_machine(&format!("mini-{}", Uuid::new_v4().simple()), true).unwrap();
+    let key = s.register_machine(&format!("mini-{}", Uuid::new_v4().simple()), true, None).unwrap();
     let machine = s.sign_in_machine(&key).unwrap();
     let me = s.sign_in_person(&someone("kim")).unwrap();
     let project = new_project(&s, &me, "Later");
@@ -164,7 +164,7 @@ fn machines_with_every_project_see_new_ones_too() {
 #[test]
 fn machines_can_check_in() {
     let s = supabase_or_skip!();
-    let key = s.register_machine(&format!("spark-{}", Uuid::new_v4().simple()), false).unwrap();
+    let key = s.register_machine(&format!("spark-{}", Uuid::new_v4().simple()), false, None).unwrap();
     let machine = s.sign_in_machine(&key).unwrap();
     s.request_as(&machine, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({}))).unwrap();
     let row = s.request_as(&machine, "GET", &format!("/rest/v1/machines?id=eq.{}&select=last_seen", key.machine_id), None).unwrap();
@@ -175,15 +175,15 @@ fn machines_can_check_in() {
 fn machine_names_are_unique() {
     let s = supabase_or_skip!();
     let name = format!("dup-{}", Uuid::new_v4().simple());
-    s.register_machine(&name, false).unwrap();
-    let err = s.register_machine(&name, false).unwrap_err().to_string();
+    s.register_machine(&name, false, None).unwrap();
+    let err = s.register_machine(&name, false, None).unwrap_err().to_string();
     assert!(err.contains("already a machine"), "{err}");
 }
 
 #[test]
 fn a_wrong_machine_key_is_refused() {
     let s = supabase_or_skip!();
-    let key = s.register_machine(&format!("box-{}", Uuid::new_v4().simple()), false).unwrap();
+    let key = s.register_machine(&format!("box-{}", Uuid::new_v4().simple()), false, None).unwrap();
     let wrong = format!("omk_{}_{}", key.machine_id.simple(), "0".repeat(64)).parse::<MachineKey>().unwrap();
     let err = s.sign_in_machine(&wrong).unwrap_err().to_string();
     assert!(err.contains("doesn't work"), "{err}");

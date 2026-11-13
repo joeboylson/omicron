@@ -40,7 +40,7 @@ fn unique(name: &str) -> String {
 fn registered_machine(s: &Supabase, name: &str) -> (PathBuf, Uuid) {
     let home = std::env::temp_dir().join(format!("omicron-test-{}", Uuid::new_v4().simple()));
     std::fs::create_dir_all(&home).unwrap();
-    let key = s.register_machine(name, false).unwrap();
+    let key = s.register_machine(name, false, None).unwrap();
     std::fs::write(
         home.join("config.json"),
         json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string(),

@@ -29,7 +29,7 @@ fn person(s: &Supabase, name: &str) -> Session {
 }
 
 fn machine(s: &Supabase) -> (Session, Uuid) {
-    let key = s.register_machine(&unique("box"), false).unwrap();
+    let key = s.register_machine(&unique("box"), false, None).unwrap();
     (s.sign_in_machine(&key).unwrap(), key.machine_id)
 }
 
@@ -265,7 +265,7 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
         // The person and machine themselves: seen maybe, changed never.
         for (table, filter, change) in [
             ("people", format!("id=eq.{pat_id}"), json!({ "display_name": "Hacked" })),
-            ("machines", format!("id=eq.{mac_id}"), json!({ "name": "hacked", "active": false })),
+            ("machines", format!("id=eq.{mac_id}"), json!({ "name": "hacked", "active": false, "owner": null })),
             ("tailscale_identities", format!("person_id=eq.{pat_id}"), json!({ "display_name": "Hacked" })),
         ] {
             let r = attempt(&s, who, "PATCH", &format!("/rest/v1/{table}?{filter}"), Some(change));

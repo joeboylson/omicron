@@ -47,7 +47,7 @@ pub fn persons_computer(s: &Supabase, name: &str) -> Computer {
 /// A registered machine without the secret key (how a Claude session acts).
 pub fn machine(s: &Supabase) -> Computer {
     let home = new_home();
-    let key = s.register_machine(&unique("box"), false).unwrap();
+    let key = s.register_machine(&unique("box"), false, None).unwrap();
     std::fs::write(home.join("config.json"), json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string()).unwrap();
     Computer { home, tailscale: None, machine_id: Some(key.machine_id) }
 }

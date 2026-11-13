@@ -66,7 +66,7 @@ fn persons_computer(s: &Supabase, name: &str) -> Computer {
 /// A registered machine without the secret key (how a Claude session acts).
 fn machine(s: &Supabase) -> (Computer, Uuid) {
     let home = new_home();
-    let key = s.register_machine(&unique("box"), false).unwrap();
+    let key = s.register_machine(&unique("box"), false, None).unwrap();
     std::fs::write(
         home.join("config.json"),
         json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string(),
@@ -230,7 +230,7 @@ fn other_people_cant_see_your_project() {
 fn as_machine_acts_as_the_machine_even_on_a_persons_computer() {
     let s = supabase_or_skip!();
     let (mut me, project) = person_with_project(&s, "Pat");
-    let key = s.register_machine(&unique("laptop"), false).unwrap();
+    let key = s.register_machine(&unique("laptop"), false, None).unwrap();
     let mut config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(me.home.join("config.json")).unwrap()).unwrap();
     config["machine_key"] = json!(key.to_string());
     std::fs::write(me.home.join("config.json"), config.to_string()).unwrap();
@@ -275,7 +275,7 @@ fn machines_are_added_to_projects_from_the_terminal() {
     let s = supabase_or_skip!();
     let (me, project) = person_with_project(&s, "Pat");
     let name = unique("mini");
-    s.register_machine(&name, false).unwrap();
+    s.register_machine(&name, false, None).unwrap();
 
     assert_eq!(ok(&me, &["machines", "add", &name, &project]).trim(), format!("Added {name} to {project}."));
     assert!(ok(&me, &["machines", "list"]).lines().any(|l| l == format!("{name}  {project}")));

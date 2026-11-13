@@ -207,7 +207,7 @@ impl WebMachine {
                 if seen.as_array().map_or(0, |a| a.len()) != projects.len() {
                     return fail(403, "you can only add a machine to Projects you're in");
                 }
-                let key = match self.supabase.register_machine(&name, false) {
+                let key = match self.supabase.register_machine(&name, false, Some(login.user.id)) {
                     Ok(k) => k,
                     Err(e) => return fail(409, &format!("{e:#}")),
                 };

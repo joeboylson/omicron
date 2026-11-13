@@ -118,6 +118,8 @@ fn machine(s: &Supabase, key: &MachineKey) -> (Check, Option<String>) {
         Check::Ok(format!("{}, can use every Project", me.name))
     } else if me.projects.is_empty() {
         Check::Fix(format!("{} can't use any Project yet. Run `omicron machines add {} <Project>`.", me.name, me.name))
+    } else if board.machine_owner().ok().flatten().is_none() {
+        Check::Fix(format!("{} has no owner, so it takes orders only from itself. Run `omicron machines owner` here.", me.name))
     } else {
         Check::Ok(format!("{}, can use {}", me.name, me.projects.join(", ")))
     };

@@ -67,7 +67,7 @@ fn person(s: &Supabase, name: &str) -> Computer {
 fn machine(s: &Supabase) -> (Computer, String) {
     let home = new_home();
     let name = unique("box");
-    let key = s.register_machine(&name, false).unwrap();
+    let key = s.register_machine(&name, false, None).unwrap();
     std::fs::write(
         home.join("config.json"),
         json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string(),
@@ -341,7 +341,7 @@ fn a_session_gets_its_tasks_only_when_told() {
     assert!(!run(&mac, None, &["tasks", "mine"]).status.success());
 
     // With the gate open, work given from elsewhere comes in too.
-    open_gate(&mac);
+    open_gate(&mac, &pat);
 
     // Given to another session and back: new again.
     let (other, other_name) = machine(&s);
@@ -730,11 +730,17 @@ fn dispatch_reaches_the_session_and_fails_when_it_ended_or_its_machine_is_asleep
     let mut d = daemon(&mac, &path);
     let told = format!("Omicron dispatched task #1 \"Fix the parser\" ({project}) to you. Run `omicron tasks mine` to get it, then work on it and report as it says.");
 
-    // Its gate is closed to start with: refused, plainly.
+    // Pat doesn't own it: refused, plainly, gate or no gate.
+    let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
+    let said = String::from_utf8_lossy(&o.stderr);
+    assert!(!o.status.success() && said.contains("only takes orders from its owner") && said.contains("no owner yet"), "{said}");
+    // Pat owns it, but its gate is closed: refused, plainly.
+    open_gate(&mac, &pat);
+    ok(&mac, None, &["gate", "close"]);
     let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("gate is closed"), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(typed_lines(&mac).is_empty());
-    open_gate(&mac);
+    open_gate(&mac, &pat);
 
     // It reaches the session's window, whole.
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
@@ -818,7 +824,7 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     // Its window doesn't follow its inbox (no add-on): the task waits for
     // the next time it's opened, and Dispatch says so.
     let mut d = daemon(&mac, &path);
-    open_gate(&mac);
+    open_gate(&mac, &pat);
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(said.starts_with("parser isn't open"), "{said}");
     d.kill().unwrap();
@@ -904,7 +910,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     assert!(String::from_utf8_lossy(&o.stderr).contains("at most once a minute"));
 
     // Started from elsewhere: it only runs while the gate is open.
-    open_gate(&mac);
+    open_gate(&mac, &pat);
     let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--session", "parser", "--project", &project]);
     assert!(started.starts_with("Started a loop for parser: every 10m, 0 of 2 runs done."), "{started}");
     let o = run(&pat, None, &["loops", "start", "again", "--every", "10m", "--session", "parser", "--project", &project]);
@@ -1323,7 +1329,7 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
     let w = open_window(&mac, &path, &["parser", "--project", &project]);
     // Started from elsewhere: it only runs while the gate is open.
-    open_gate(&mac);
+    open_gate(&mac, &pat);
     ok(&pat, None, &["loops", "start", "Next task please", "--every", "10m", "--session", "parser", "--project", &project]);
     let loop_id = s
         .admin_request("GET", "/rest/v1/loops?prompt=eq.Next task please&state=eq.running&select=id,sessions!inner(projects!inner(name))", None)
@@ -1386,8 +1392,13 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
     close_window(&mac, w);
 }
 
-/// Open a machine's gate for two hours (ref/BRAINSTORM.md, "The gate").
-fn open_gate(mac: &Computer) {
+/// Make a person a machine's owner and open its gate for two hours: then
+/// it takes their orders (ref/BRAINSTORM.md, "The gate").
+fn open_gate(mac: &Computer, owner: &Computer) {
+    let status: Value = serde_json::from_str(&std::fs::read_to_string(owner.tailscale.as_ref().unwrap()).unwrap()).unwrap();
+    let login = status["User"]["1"]["LoginName"].as_str().unwrap();
+    let said = ok(mac, None, &["machines", "owner", login]);
+    assert!(said.contains("owns this machine now"), "{said}");
     let later = std::process::Command::new("date").args(["-v+2H", "+%H:%M"]).output().unwrap();
     ok(mac, None, &["gate", "open", "--until", String::from_utf8_lossy(&later.stdout).trim()]);
 }

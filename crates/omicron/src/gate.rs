@@ -75,6 +75,27 @@ fn parse_time(text: &str) -> Result<NaiveTime> {
     bail!("couldn't read {text:?} as a time: use one like 17:00 or 5pm")
 }
 
+/// Why this machine (signed in as `board`) won't take an order from `who`
+/// (the login that gave it), if it won't. Its own orders always go
+/// through; otherwise only its owner's, and only while the gate is open.
+pub fn refusal(board: &crate::board::Board, machine: &str, who: Option<&str>) -> Result<Option<String>> {
+    let me = board.session.user.id.to_string();
+    if who == Some(me.as_str()) {
+        return Ok(None);
+    }
+    let owner = board.machine_owner()?;
+    if owner.is_none() || who != owner.as_deref() {
+        let owner = if owner.is_none() { "it has no owner yet (`omicron machines owner` on it)" } else { "this came from someone else" };
+        return Ok(Some(format!("{machine} only takes orders from its owner, and {owner}.")));
+    }
+    if open_until().is_none() {
+        return Ok(Some(format!(
+            "{machine}'s gate is closed, so it takes no work from elsewhere. Open it on {machine} with `omicron gate open --until 17:00`."
+        )));
+    }
+    Ok(None)
+}
+
 /// Words for whether the gate is open.
 pub fn status() -> String {
     match open_until() {

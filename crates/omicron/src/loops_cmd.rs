@@ -322,10 +322,10 @@ impl Runner {
             }
             return Ok(());
         }
-        // Started from elsewhere: only while this computer's gate is open.
-        let here = l.started_by.as_deref() == Some(board.session.user.id.to_string().as_str());
-        if !here && omicron::gate::open_until().is_none() {
-            let note = "waiting: it was started from elsewhere, and this computer's gate is closed (`omicron gate open --until 17:00`)".to_string();
+        // Started from elsewhere: only by this machine's owner, while its
+        // gate is open.
+        if let Some(why) = omicron::gate::refusal(&board, &session.machine, l.started_by.as_deref())? {
+            let note = format!("waiting: it was started from elsewhere. {why}");
             if l.note.as_deref() != Some(note.as_str()) {
                 board.loop_note(&l.id, Some(&note))?;
                 if let Some(x) = self.loops.lock().unwrap().get_mut(&l.id) {

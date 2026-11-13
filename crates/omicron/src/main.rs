@@ -185,6 +185,10 @@ enum Machines {
     UseKey {
         key: String,
     },
+    /// Set who owns this machine: the only person who can send it orders
+    /// (dispatches, loops), while its gate is open. Run on the machine
+    /// itself; without a login, it's you (your Tailscale login).
+    Owner { login: Option<String> },
     /// Sign in with this machine's key and record when it was last seen
     CheckIn,
     /// List the machines that are awake right now
@@ -361,7 +365,16 @@ fn machines(m: Machines) -> Result<()> {
             if !print && config.machine_key.is_some() {
                 bail!("this machine is already registered. Use --print to make a key for another machine.");
             }
-            let key = config.supabase()?.register_machine(&name, all_projects)?;
+            // Its owner: the person making the key, if they've signed in to Omicron.
+            let supabase = config.supabase()?;
+            let owner = match omicron::identity::local_person() {
+                Ok(me) => supabase.person_for_login(&me.login)?,
+                Err(_) => None,
+            };
+            let key = supabase.register_machine(&name, all_projects, owner)?;
+            if owner.is_none() {
+                eprintln!("It has no owner yet, so it takes orders only from itself. On it, run `omicron machines owner <your Tailscale login>`.");
+            }
             if print {
                 println!("{key}");
                 eprintln!("Machine {name} registered. On that machine, run: omicron machines use-key <the key above>");
@@ -379,6 +392,17 @@ fn machines(m: Machines) -> Result<()> {
             config.machine_key = Some(parsed.to_string());
             config.save()?;
             println!("Saved this machine's key.");
+            Ok(())
+        }
+        Machines::Owner { login } => {
+            let supabase = config.supabase()?;
+            let session = supabase.sign_in_machine(&config.machine_key()?)?;
+            let login = match login {
+                Some(l) => l,
+                None => omicron::identity::local_person().context("couldn't tell who you are: give a Tailscale login")?.login,
+            };
+            let name = supabase.request_as(&session, "POST", "/rest/v1/rpc/set_machine_owner", Some(json!({ "login": login })))?;
+            println!("{} owns this machine now: only they can send it orders, while its gate is open.", name.as_str().unwrap_or(&login));
             Ok(())
         }
         Machines::CheckIn => {

@@ -815,6 +815,12 @@ impl Board {
     }
 
     /// Put the Needs review mark on (`true`, machines only) or take it off.
+    /// Who owns the machine signed in (only they can send it orders), if anyone.
+    pub fn machine_owner(&self) -> Result<Option<String>> {
+        let rows = self.get(&format!("/rest/v1/machines?id=eq.{}&select=owner", self.session.user.id))?;
+        Ok(rows.get(0).and_then(|r| r["owner"].as_str()).map(String::from))
+    }
+
     /// Give a task to a Claude session in the same Project. The session gets
     /// it when told to get its tasks (`omicron tasks mine`) or by Dispatch.
     /// Giving it again makes it new again, given by whoever gave it last

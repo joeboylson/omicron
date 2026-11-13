@@ -18,7 +18,7 @@ fn person(s: &Supabase, name: &str) -> Session {
 }
 
 fn machine(s: &Supabase) -> (Session, Uuid) {
-    let key = s.register_machine(&format!("box-{}", &Uuid::new_v4().simple().to_string()[..8]), false).unwrap();
+    let key = s.register_machine(&format!("box-{}", &Uuid::new_v4().simple().to_string()[..8]), false, None).unwrap();
     (s.sign_in_machine(&key).unwrap(), key.machine_id)
 }
 
@@ -106,7 +106,7 @@ fn a_folder_is_set_up_its_team_started_and_given_jobs() {
     // A machine with its own settings, in the Project.
     let home = std::env::temp_dir().join(format!("omicron-teams-{}", Uuid::new_v4().simple()));
     std::fs::create_dir_all(&home).unwrap();
-    let key = s.register_machine(&format!("box-{}", &Uuid::new_v4().simple().to_string()[..8]), false).unwrap();
+    let key = s.register_machine(&format!("box-{}", &Uuid::new_v4().simple().to_string()[..8]), false, None).unwrap();
     std::fs::write(home.join("config.json"), json!({ "supabase_url": s.url, "supabase_key": s.key, "machine_key": key.to_string() }).to_string()).unwrap();
     call(&s, &pat, "POST", "/rest/v1/project_machines", json!({ "project_id": project["id"], "machine_id": key.machine_id })).unwrap();
     let folder = home.join("webapp");
