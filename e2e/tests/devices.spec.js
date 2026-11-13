@@ -27,7 +27,7 @@ async function fits(page, where) {
     for (const el of document.querySelectorAll("body *")) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0 || inScroller(el)) continue;
-      if (r.right > w + 1 || r.left < -1) out.push(`${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""} "${(el.textContent || "").trim().slice(0, 30)}" ${Math.round(r.left)}–${Math.round(r.right)} of ${w}`);
+      if (r.right > w + 1 || r.left < -1) out.push(`${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""} "${(el.textContent || "").trim().slice(0, 30)}" ${Math.round(r.left)}–${Math.round(r.right)} of ${w} ${el.className}`);
     }
     return { scroll: document.documentElement.scrollWidth > w + 1, out: out.slice(0, 5) };
   });

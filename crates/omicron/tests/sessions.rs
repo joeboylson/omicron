@@ -586,7 +586,8 @@ fn machine_with_claude(s: &Supabase) -> (Computer, String, String) {
 }
 
 fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    // Generous: every request goes over the internet to the hosted Supabase.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while !done() {
         assert!(std::time::Instant::now() < deadline, "timed out waiting: {what}");
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -677,11 +678,13 @@ fn dispatch_types_the_task_in_or_reopens_the_session_and_fails_when_asleep() {
     d.kill().unwrap();
     d.wait().unwrap();
     ok(&mac, None, &["sessions", "send", "parser", "\u{4}", "--no-enter"]);
+    // The hosted Supabase takes a moment to notice the daemon went away.
+    wait_for("the machine to show as asleep", || !ok(&mac, None, &["machines", "awake"]).lines().any(|l| l == mac_name));
     let started = std::time::Instant::now();
     let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(!o.status.success());
     assert!(String::from_utf8_lossy(&o.stderr).contains(&format!("{mac_name} is asleep")), "{}", String::from_utf8_lossy(&o.stderr));
-    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    assert!(started.elapsed() < std::time::Duration::from_secs(15));
 }
 
 #[test]

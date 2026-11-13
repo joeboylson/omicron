@@ -61,7 +61,8 @@ export function TaskDialog({
   /** Delete it (the page keeps an Undo for a few seconds). */
   onDelete: (task: Task) => void;
   /** Show a change at once, before it's saved. */
-  onPatch: (taskId: string, change: Partial<Task>) => void;
+  /** Show a change at once; returns what to call once its save is done. */
+  onPatch: (taskId: string, change: Partial<Task>) => () => void;
 }) {
   return (
     <Dialog open={task !== null} onOpenChange={(open) => !open && onClose()}>
@@ -90,7 +91,8 @@ function TaskForm({
   task: Task;
   onChanged: () => void;
   onDelete: (task: Task) => void;
-  onPatch: (taskId: string, change: Partial<Task>) => void;
+  /** Show a change at once; returns what to call once its save is done. */
+  onPatch: (taskId: string, change: Partial<Task>) => () => void;
 }) {
   const { db, act } = useApp();
   const [title, setTitle] = useState(task.title);
@@ -127,8 +129,11 @@ function TaskForm({
   // Shows at once (the page updates its copy), then saves; a failure says
   // so and the reload puts it back.
   const save = (c: Parameters<typeof updateTask>[3]) => {
-    onPatch(task.id, c);
-    return act(() => updateTask(db, project, task, c)).finally(onChanged);
+    const done = onPatch(task.id, c);
+    return act(() => updateTask(db, project, task, c)).finally(() => {
+      done();
+      onChanged();
+    });
   };
 
   const done = project.statuses.find((s) => s.is_done);

@@ -87,8 +87,17 @@ export function ProjectPage({ id }: { id: string }) {
     }),
   );
 
+  // Changes made on this page that are still being saved: kept applied on
+  // top of whatever a reload brings, so the board never jumps back to how
+  // things were before the save lands.
+  const saving = useRef(new Map<string, { change: Partial<Task>; count: number }>());
+  const withSaving = (p: ProjectData | null) =>
+    p && saving.current.size > 0
+      ? { ...p, tasks: p.tasks.map((t) => (saving.current.has(t.id) ? { ...t, ...saving.current.get(t.id)!.change } : t)) }
+      : p;
   const reload = useCallback(() => {
-    act(async () => setProject(await loadProject(db, id)));
+    act(async () => setProject(withSaving(await loadProject(db, id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, act, id]);
   useEffect(reload, [reload]);
   useChanges(db, id, reload);
@@ -414,9 +423,16 @@ export function ProjectPage({ id }: { id: string }) {
         }}
         onChanged={reload}
         onDelete={removeTask}
-        onPatch={(taskId, change) =>
-          setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p))
-        }
+        onPatch={(taskId, change) => {
+          const now = saving.current.get(taskId);
+          saving.current.set(taskId, { change: { ...now?.change, ...change }, count: (now?.count ?? 0) + 1 });
+          setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p));
+          // Called when the save is done (saved or not): stop holding it.
+          return () => {
+            const held = saving.current.get(taskId);
+            if (held && --held.count <= 0) saving.current.delete(taskId);
+          };
+        }}
       />
       <Chat project={project} open={chatOpen && project.chatEnabled} onOpenChange={setChatOpen} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />

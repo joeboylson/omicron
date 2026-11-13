@@ -351,7 +351,25 @@ impl Supabase {
     }
 
     /// Sign a machine in with its API key. Only needs the publishable key.
+    /// Sign in as a machine. A program that signs in again and again (the
+    /// daemon, for each change it handles) reuses its login until shortly
+    /// before it runs out: Supabase limits how many logins can be made.
     pub fn sign_in_machine(&self, key: &MachineKey) -> Result<Session> {
+        use std::sync::Mutex;
+        static KEPT: Mutex<Option<(String, std::time::Instant, Session)>> = Mutex::new(None);
+        let who = format!("{} {}", self.url, key.machine_id);
+        if let Some((w, until, session)) = KEPT.lock().unwrap().as_ref() {
+            if *w == who && std::time::Instant::now() < *until {
+                return Ok(session.clone());
+            }
+        }
+        let session = self.sign_in_machine_now(key)?;
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(session.expires_in.saturating_sub(120));
+        *KEPT.lock().unwrap() = Some((who, until, session.clone()));
+        Ok(session)
+    }
+
+    fn sign_in_machine_now(&self, key: &MachineKey) -> Result<Session> {
         let reply = self
             .call(
                 "POST",

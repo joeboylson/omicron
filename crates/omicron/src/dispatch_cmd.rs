@@ -53,6 +53,10 @@ pub fn dispatch(project: &str, number: i64, as_machine: bool) -> Result<()> {
     }
 }
 
+/// How long a machine that looks asleep gets to show up before a hand-off
+/// gives up on it.
+const ASLEEP_GRACE: Duration = Duration::from_secs(5);
+
 /// Add the request once the machine is known to be awake and we're
 /// listening (so its answer can't be missed), then wait for the answer.
 fn request_and_wait(board: &Board, task: &Task, session: &SessionRecord) -> Result<Dispatch> {
@@ -66,6 +70,10 @@ fn request_and_wait(board: &Board, task: &Task, session: &SessionRecord) -> Resu
     let mut answer: Option<Dispatch> = None;
 
     let mut timer: Option<std::thread::JoinHandle<()>> = None;
+    // A machine whose daemon has only just started can take a moment to show
+    // as connected: give it a few seconds before calling it asleep.
+    let still_asleep = Arc::new(AtomicBool::new(false));
+    let mut grace: Option<std::thread::JoinHandle<()>> = None;
     let listen = Listen { tables: &["changes"], announce: None };
     let started = Instant::now();
     realtime::listen(&board.supabase, &listen, || Ok(board.session.clone()), &stop, |event| {
@@ -97,8 +105,26 @@ fn request_and_wait(board: &Board, task: &Task, session: &SessionRecord) -> Resu
         }
         if request.is_none() && listening {
             match awake {
-                Some(false) => bail!("{} is asleep (its daemon isn't running), so {} can't be opened there", session.machine, session.name),
+                Some(false) => {
+                    still_asleep.store(true, Ordering::Relaxed);
+                    if grace.is_none() {
+                        let (stop, still_asleep) = (stop.clone(), still_asleep.clone());
+                        grace = Some(std::thread::spawn(move || {
+                            let since = Instant::now();
+                            while since.elapsed() < ASLEEP_GRACE {
+                                if !still_asleep.load(Ordering::Relaxed) || stop.load(Ordering::Relaxed) {
+                                    return;
+                                }
+                                std::thread::sleep(Duration::from_millis(100));
+                            }
+                            if still_asleep.load(Ordering::Relaxed) {
+                                stop.store(true, Ordering::Relaxed);
+                            }
+                        }));
+                    }
+                }
                 Some(true) => {
+                    still_asleep.store(false, Ordering::Relaxed);
                     request = Some(board.request_dispatch(task)?);
                     let asked_at = Instant::now();
                     let (stop, phase) = (stop.clone(), phase.clone());
@@ -120,6 +146,12 @@ fn request_and_wait(board: &Board, task: &Task, session: &SessionRecord) -> Resu
     stop.store(true, Ordering::Relaxed);
     if let Some(t) = timer {
         let _ = t.join();
+    }
+    if let Some(g) = grace {
+        let _ = g.join();
+    }
+    if request.is_none() && still_asleep.load(Ordering::Relaxed) {
+        bail!("{} is asleep (its daemon isn't running), so {} can't be opened there", session.machine, session.name);
     }
     if let Some(a) = answer {
         return Ok(a);

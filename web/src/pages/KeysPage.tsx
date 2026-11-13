@@ -179,15 +179,23 @@ function NewKey({
   const [copied, setCopied] = useState(false);
   // Fresh each time it opens (not when the list reloads, which live
   // updates do while you're typing).
+  // Whether the Projects were ticked or unticked by hand since it opened.
+  const [touched, setTouched] = useState(false);
   useEffect(() => {
     if (open) {
       setName("");
       setPicked(projects.length === 1 ? [projects[0]!.id] : []);
+      setTouched(false);
       setKey(null);
       setCopied(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  // The list can arrive after it opens: one Project is still ticked for you.
+  useEffect(() => {
+    if (open && !touched && projects.length === 1 && picked.length === 0) setPicked([projects[0]!.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
   const make = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,7 +247,10 @@ function NewKey({
                     <Checkbox
                       id={`key-p-${p.id}`}
                       checked={picked.includes(p.id)}
-                      onCheckedChange={(on) => setPicked((all) => (on ? [...all, p.id] : all.filter((x) => x !== p.id)))}
+                      onCheckedChange={(on) => {
+                        setTouched(true);
+                        setPicked((all) => (on ? [...all, p.id] : all.filter((x) => x !== p.id)));
+                      }}
                     />
                     <Label htmlFor={`key-p-${p.id}`} className="font-normal">
                       {p.name}

@@ -2,8 +2,11 @@
 # hosted Supabase (the keys in ~/.omicron/config.json) and clean up what
 # they made afterwards (scripts/lib/clean.py). Source it.
 
+# This folder, so clean-up works wherever the script has moved to since.
+test_run_lib=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 clean() {
-  python3 scripts/lib/clean.py "$1"
+  python3 "$test_run_lib/clean.py" "$1"
 }
 
 # Point a test run at the hosted Supabase, start the clock for clean-up, and

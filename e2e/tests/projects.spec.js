@@ -55,7 +55,12 @@ async function addTaskIn(page, status, title) {
 
 async function pick(page, field, option) {
   await page.getByLabel(field, { exact: true }).click();
+  // The list opens with a short animation; a click before it's done is lost.
+  await expect(page.getByRole("option", { name: option, exact: true })).toBeVisible();
+  await settled(page);
   await page.getByRole("option", { name: option, exact: true }).click();
+  // Taken: the list closes.
+  await expect(page.getByRole("option", { name: option, exact: true })).toHaveCount(0);
 }
 
 test("start a Project and add a task to it", async ({ page, request }) => {
@@ -962,7 +967,11 @@ test("a change in a task shows at once, before it's saved", async ({ page, reque
   // Already in Done, while the save is still held back (it's only let go
   // below, so any wait here is still before it's saved).
   await expect(column(page, "Done")).toContainText("Fix the gate", { timeout: 5000 });
+  // Let the save go, and wait for it to land before reloading (a reload
+  // would cancel it on the way).
+  const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
   release();
+  await saved;
   await page.reload();
   await expect(column(page, "Done")).toContainText("Fix the gate");
 });

@@ -3,7 +3,9 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests",
-  timeout: 30_000,
+  // Generous: every request goes over the internet to the hosted Supabase.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   reporter: [["list"]],
   use: { browserName: "chromium", trace: "retain-on-failure" },
   // The accessibility check (axe) is heavy: it runs after the rest, not
