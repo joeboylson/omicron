@@ -31,6 +31,19 @@ export async function devApi(db: SupabaseClient, path = "", body?: unknown): Pro
   return json?.dev ? (json as Dev) : null;
 }
 
+/** An action on this computer (open, end, hand off): its answer as sent. */
+export async function devAction(db: SupabaseClient, path: string, body: unknown): Promise<any> {
+  const { data } = await db.auth.getSession();
+  const res = await fetch(`/api/dev${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error ?? res.statusText);
+  return json;
+}
+
 let known: Promise<Dev | null> | null = null;
 const listeners = new Set<(d: Dev | null) => void>();
 

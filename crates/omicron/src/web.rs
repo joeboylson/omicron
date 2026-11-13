@@ -351,6 +351,47 @@ impl WebMachine {
                     }
                 }
             }
+            "open" => {
+                // A new session in one of this computer's folders, in the
+                // background (the page opens its terminal).
+                let folder = input["folder_id"].as_str().unwrap_or("");
+                let me = visit.board.session.user.id.to_string();
+                let Some(f) = visit.board.folders(None)?.into_iter().find(|f| f.id == folder && f.machine_id == me) else {
+                    return answer(404, json!({ "error": "that folder isn't on this computer" }));
+                };
+                let mut cmd = std::process::Command::new(std::env::current_exe()?);
+                cmd.args(["open", "--project", &f.project, "--folder", &f.path]);
+                if let Some(n) = input["name"].as_str().map(str::trim).filter(|n| !n.is_empty()) {
+                    cmd.arg(n);
+                }
+                let o = cmd.stdin(std::process::Stdio::null()).output()?;
+                let said = String::from_utf8_lossy(&o.stdout).to_string();
+                if !o.status.success() {
+                    return answer(409, json!({ "error": String::from_utf8_lossy(&o.stderr).trim().to_string() }));
+                }
+                let name = said.split(" is running.").next().unwrap_or("").trim().to_string();
+                return answer(200, json!({ "session": name }));
+            }
+            "end" | "handoff" => {
+                let name = input["session"].as_str().unwrap_or("").to_string();
+                if !crate::host::hosted()?.iter().any(|h| *h == name) {
+                    return answer(404, json!({ "error": format!("{name} isn't running on this computer") }));
+                }
+                if what == "end" {
+                    // Quits Claude, which ends the session.
+                    crate::host::say(&name, "/exit")?;
+                    return answer(200, json!({ "said": format!("Asked {name} to quit.") }));
+                }
+                let me = visit.board.session.user.id.to_string();
+                let Some(s) = visit.board.sessions(None)?.into_iter().find(|s| s.name == name && s.machine_id == me) else {
+                    return answer(404, json!({ "error": format!("{name} isn't a session here") }));
+                };
+                hand_off(self.supabase.clone(), visit.board.clone(), s)?;
+                return answer(
+                    202,
+                    json!({ "said": format!("Asked {name} for its handoff note. Once it's saved, the conversation is cleared and the fresh one starts from the note.") }),
+                );
+            }
             "give" => {
                 // A task dragged onto one of this computer's sessions in the
                 // Dev view: given by this computer, so the session takes it
@@ -551,6 +592,68 @@ fn page_error(request: &mut Request) -> (u16, &'static str, Vec<u8>) {
         field("stack", 1500)
     );
     (204, "application/json", Vec::new())
+}
+
+/// Hand a session off to a fresh conversation (ref/BRAINSTORM.md, "Session
+/// buttons"): ask it for its handoff note, wait (in the background) until
+/// the note is saved, then /clear; the start hook gives the fresh
+/// conversation the note. Gives up after 20 minutes without a note.
+fn hand_off(supabase: Supabase, board: crate::board::Board, session: crate::board::SessionRecord) -> Result<()> {
+    use crate::realtime::{self, Event, Listen, Next};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let before = board.waiting_handoff(&session.id)?.map(|h| h.id);
+    std::thread::spawn(move || {
+        let stop = Arc::new(AtomicBool::new(false));
+        {
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(20 * 60));
+                stop.store(true, Ordering::Relaxed);
+            });
+        }
+        let listen = Listen { tables: &["changes"], announce: None };
+        let mut asked = false;
+        let mut saved = false;
+        let _ = realtime::listen(&supabase, &listen, || Ok(board.session.clone()), &stop, |event| {
+            match event {
+                // Listening first, so the note can't be missed.
+                Event::Listening if !asked => {
+                    asked = true;
+                    crate::host::say(
+                        &session.name,
+                        "Omicron: write your handoff note now (the /omicron-handoff skill, or `omicron handoff write`), then stop. This conversation is cleared once it's saved, and the fresh one starts from the note.",
+                    )?;
+                }
+                Event::Change(c) if c.table == "changes" && c.record["table_name"] == "handoffs" => {
+                    let note = &c.record["record"];
+                    if note["session_id"].as_str() == Some(session.id.as_str())
+                        && note["state"] == "waiting"
+                        && note["id"].as_str() != before.as_deref()
+                    {
+                        saved = true;
+                        return Ok(Next::Stop);
+                    }
+                }
+                _ => {}
+            }
+            Ok(Next::Continue)
+        });
+        if saved {
+            // Let its turn finish before clearing (the Stop hook marks it free).
+            let since = std::time::Instant::now();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            while crate::windows::is_busy(&session.id) && since.elapsed() < std::time::Duration::from_secs(120) {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            if let Err(e) = crate::host::say(&session.name, "/clear") {
+                eprintln!("omicron serve: couldn't clear {}: {e:#}", session.name);
+            }
+        } else {
+            eprintln!("omicron serve: {} didn't save a handoff note; left as it was", session.name);
+        }
+    });
+    Ok(())
 }
 
 /// Pass a frame to a hosted session, over one connection per session kept

@@ -342,6 +342,48 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
   }
 });
 
+test("the Dev view's session buttons: open in a folder, hand off, end", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  const dir = require("node:fs").realpathSync(omicron.folder());
+  const folderName = require("node:path").basename(dir);
+  omicron.cli("folders", "add", dir, "--project", name);
+  omicron.cli("machines", "owner", robin.login);
+  await page.goto(`${page.url().split("?")[0]}?view=dev`);
+
+  // Open: a new session in the folder, named after it, in a new tab.
+  await page.getByRole("button", { name: `Open a new session in ${dir}` }).click();
+  await expect(page.getByRole("tab", { name: folderName })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("list", { name: "Sessions" })).toContainText(folderName);
+  const pid = Number(require("node:fs").readFileSync(require("node:path").join(omicron.home, `pid-${folderName}`), "utf8").trim());
+  const term = page.getByTestId(`terminal-${folderName}`);
+  // The stand-in claude runs no hooks: say it started, as Claude Code would.
+  const [row] = await rest(request, robin.session, "GET", `/rest/v1/sessions?name=eq.${folderName}&select=claude_session_id`);
+  omicron.hook(pid, "session-start", { session_id: row.claude_session_id, cwd: dir, source: "startup" });
+  try {
+    // Hand off: it's asked for its note; once the note is saved, /clear.
+    await page.getByRole("button", { name: "Hand off" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Asked" })).toContainText(`Asked ${folderName} for its handoff note`);
+    await expect(term.locator(".xterm-rows")).toContainText("Omicron: write your handoff note now");
+    omicron.cliIn(pid, "handoff", "write", "# Where I stopped\nParser half done.");
+    await expect(term.locator(".xterm-rows")).toContainText("/clear", { timeout: 15_000 });
+    // Its past notes are under it.
+    await page.getByText("1 handoff note").click();
+    await expect(page.getByRole("list", { name: "Sessions" })).toContainText("#1");
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-buttons.png` });
+
+    // End: asks once more, then quits Claude.
+    await page.getByRole("button", { name: "End", exact: true }).click();
+    await page.getByRole("button", { name: `End ${folderName}: quit Claude` }).click();
+    await expect(page.getByRole("status").filter({ hasText: "quit" })).toHaveText(`Asked ${folderName} to quit.`);
+  } finally {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

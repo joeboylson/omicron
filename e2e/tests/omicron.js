@@ -46,8 +46,13 @@ async function startOmicron() {
       supabase_secret_key: need("OMICRON_SUPABASE_SECRET_KEY"),
     }),
   );
+  // Sessions the page itself opens (the Dev view) get a stand-in for claude
+  // that only waits, never the real one.
+  const quiet = path.join(home, "quiet-bin");
+  fs.mkdirSync(quiet, { recursive: true });
+  fs.writeFileSync(path.join(quiet, "claude"), '#!/bin/sh\necho $$ > "$OMICRON_HOME/pid-$OMICRON_SESSION"\nexec sleep 600\n', { mode: 0o755 });
   const env = {
-    PATH: process.env.PATH,
+    PATH: `${quiet}:${process.env.PATH}`,
     HOME: process.env.HOME,
     OMICRON_HOME: home,
     // Claude Code's own folder (transcripts), just for this test machine.
@@ -74,6 +79,8 @@ async function startOmicron() {
   return {
     url,
     me,
+    /** This test machine's settings folder (OMICRON_HOME). */
+    home,
     /** What `omicron serve` has printed to its error output so far. */
     log: () => stderr,
     cli: (...args) => execFileSync(need("OMICRON_BIN"), args, { env, encoding: "utf8" }),

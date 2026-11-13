@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Folder as FolderIcon, Terminal as TerminalIcon, X } from "lucide-react";
+import { Folder as FolderIcon, LogOut, Plus, Terminal as TerminalIcon, Undo2, X } from "lucide-react";
 import { useApp } from "@/lib/app";
-import { devApi, type Dev } from "@/lib/dev";
+import { devAction, type Dev } from "@/lib/dev";
 import type { ProjectData, Task } from "@/lib/data";
 import { Terminal } from "@/components/Terminal";
 import { cn } from "@/lib/utils";
@@ -33,10 +33,31 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
   };
   const give = (task: Task, sessionId: string) =>
     act(async () => {
-      await devApi(db, "/give", { task_id: task.id, session_id: sessionId });
+      await devAction(db, "/give", { task_id: task.id, session_id: sessionId });
       onChanged();
     });
   const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
+  const [said, setSaid] = useState<string | null>(null);
+  const [ending, setEnding] = useState<string | null>(null);
+  const openIn = (folderId: string) =>
+    act(async () => {
+      const r = await devAction(db, "/open", { folder_id: folderId });
+      onChanged();
+      if (r?.session) open(r.session);
+    });
+  const end = (name: string) =>
+    act(async () => {
+      setEnding(null);
+      const r = await devAction(db, "/end", { session: name });
+      setSaid(r?.said ?? null);
+      close(name);
+      onChanged();
+    });
+  const handOff = (name: string) =>
+    act(async () => {
+      const r = await devAction(db, "/handoff", { session: name });
+      setSaid(r?.said ?? null);
+    });
   const sessionName = (id: string | null) => project.sessions.find((s) => s.id === id)?.name;
 
   return (
@@ -50,9 +71,18 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
         ) : (
           <ul className="pb-3">
             {folders.map((f) => (
-              <li key={f.id} className="flex items-center gap-2 rounded px-1 py-1" title={f.path}>
+              <li key={f.id} className="group flex items-center gap-2 rounded px-1 py-1" title={f.path}>
                 <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="truncate font-mono text-xs">{f.path}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{f.path}</span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={`Open a new session in ${f.path}`}
+                  title="Open a new session here"
+                  onClick={() => openIn(f.id)}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </li>
             ))}
           </ul>
@@ -94,6 +124,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
                     {project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id)).length || ""}
                   </span>
                 </button>
+                <Notes notes={project.handoffs.filter((h) => h.session_id === s.id)} />
               </li>
             ))}
           </ul>
@@ -114,6 +145,37 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
             </div>
           ))}
         </div>
+        {active && (
+          <div className="flex shrink-0 items-center gap-1 border-b border-white/10 bg-[#161619] px-2 py-1 text-xs text-white/70">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-white/10 hover:text-white"
+              onClick={() => handOff(active)}
+              title="Ask it for its handoff note, then clear: a fresh conversation picks up from the note"
+            >
+              <Undo2 className="h-3.5 w-3.5" aria-hidden /> Hand off
+            </button>
+            {ending === active ? (
+              <button type="button" className="flex items-center gap-1 rounded bg-red-600/80 px-2 py-1 text-white" onClick={() => end(active)}>
+                <LogOut className="h-3.5 w-3.5" aria-hidden /> End {active}: quit Claude
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded px-2 py-1 hover:bg-white/10 hover:text-white"
+                onClick={() => setEnding(active)}
+                title="Quit Claude, which ends the session"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden /> End
+              </button>
+            )}
+          </div>
+        )}
+        {said && (
+          <p role="status" className="shrink-0 truncate border-b border-white/10 bg-[#161619] px-3 py-1 text-xs text-white/70">
+            {said}
+          </p>
+        )}
         {tabs.length === 0 && (
           <p className="m-auto max-w-xs p-6 text-center text-sm text-white/60">Pick a session on the left to open its terminal here. Closing a tab leaves it running.</p>
         )}
@@ -169,5 +231,29 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
         })}
       </aside>
     </div>
+  );
+}
+
+/** A session's past handoff notes, newest first, to read back. */
+function Notes({ notes }: { notes: ProjectData["handoffs"] }) {
+  if (notes.length === 0) return null;
+  return (
+    <details className="pb-1 pl-5 text-xs text-muted-foreground">
+      <summary className="cursor-pointer py-0.5">
+        {notes.length} handoff {notes.length === 1 ? "note" : "notes"}
+      </summary>
+      <ul>
+        {notes.map((n) => (
+          <li key={n.id}>
+            <details>
+              <summary className="cursor-pointer py-0.5">
+                <span className="font-mono">#{n.number}</span> {new Date(n.written_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} · {n.state.replace("_", " ")}
+              </summary>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] text-foreground">{n.body}</pre>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
