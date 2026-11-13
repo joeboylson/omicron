@@ -1,6 +1,7 @@
 # Omicron brainstorm
 
 ## The link to a Claude session should be right there (13 Nov 2026)
+Tasks: #80 (linking).
 Problem: connecting this chat to Omicron meant quitting it and running `omicron open --resume <long id>` by hand. Too many steps to remember. The link should be right there, no thinking needed. Ideas, not decided:
 - **Link in place.** A command run inside the chat (`! omicron link`, or a `/omicron` slash command) that makes the chat an Omicron session without quitting it. Omicron's hooks already know the chat's id.
 - **Every chat is linked to start with.** When Claude starts in a Project's folder, a start-up hook links it on its own. Nothing to do at all.
@@ -9,6 +10,7 @@ Problem: connecting this chat to Omicron meant quitting it and running `omicron 
 - **Spot the strays.** `omicron doctor` and the Sessions page list Claude chats on this machine that aren't linked yet, each with a one-step way to link it.
 
 ## Security risk: the web page can make a computer run things (13 Nov 2026)
+Tasks: #77 (the gate), #78.
 - The web page can type messages into running Claude sessions (`omicron sessions send`, from any machine).
 - A message to Claude is basically a command on that computer: Claude can run anything in its folder, and sessions Omicron starts don't stop to ask.
 - Today that's only safe because the page is behind Joe's Tailscale login and the home lab's gate.
@@ -16,6 +18,7 @@ Problem: connecting this chat to Omicron meant quitting it and running `omicron 
 - Rule from Joe: the web page never starts a session, types into one, or shows its screen. Only the Tauri app can, on the computer it runs on. No remote session control. (Later exceptions, both in "The gate": a computer whose gate is open, and Joe on the serving computer's own page.)
 
 ## Two parts: safe and machine-only (13 Nov 2026)
+Tasks: #79 (Folders), #81 (desktop app).
 The test for any feature: if it can make a computer do something, it's **machine-only**. If it only reads or changes shared records, it's **safe**.
 - **Safe (the web page):** tasks, Projects, people, and seeing sessions, folders, and team jobs and their status. Fine to host anywhere, even publicly.
 - **Machine-only (a Tauri desktop app):** starting and showing sessions, folders, the terminal, accounts, and starting teams and their workers. It only acts on the computer it runs on.
@@ -24,6 +27,7 @@ The test for any feature: if it can make a computer do something, it's **machine
 - **Folders:** a Folder is one path, on one machine, for one Project. "Open a new session" starts Claude in one. It's added from the computer it's on: "Add folder" in the desktop app (the computer's own folder picker), or `omicron folders add` in the folder. Maybe `omicron open` remembers the folder it runs in.
 
 ## Two views of a Project: Tasks and Dev (13 Nov 2026)
+Tasks: #82.
 - **Tasks view:** the board as it is today. On the web page and in the desktop app.
 - **Dev view:** desktop app only; the web page doesn't even show the switch (one exception: Joe on the serving computer's own page, see "The gate").
   - Left: the Project's folders and its sessions (running and past), with "open a new session".
@@ -32,6 +36,7 @@ The test for any feature: if it can make a computer do something, it's **machine
 - Drag a task from the list onto a session to hand that task to it.
 
 ## Session buttons in the desktop app (13 Nov 2026)
+Tasks: #83.
 Each is a button that does what the `omicron` commands do today.
 - **Open:** pick a folder, Claude starts there in a new tab.
 - **Close a tab:** only lets go (like Ctrl-\). Claude keeps running and the session stays in the list.
@@ -44,6 +49,7 @@ Each is a button that does what the `omicron` commands do today.
 - Past handoff notes show under each session in the left list, to read back.
 
 ## The rest of the Dev view: teams, loops, accounts (13 Nov 2026)
+Tasks: #84.
 All machine-only, because each one makes the computer do something.
 - **Teams:** set a folder up, start a team (it starts its own Claude workers), give it jobs. Seeing a team's jobs and status stays safe, on the web page too.
 - **Loops:** a loop types a prompt into a session every so often, so setting one up, changing or stopping it happens on the dev side. The list of loops can be seen anywhere.
@@ -52,17 +58,20 @@ All machine-only, because each one makes the computer do something.
 - **The `omicron` command** does everything the web page and the desktop app do. The desktop app is buttons on the same program, and like it, the command only acts on the computer it runs on.
 
 ## Drop chat (13 Nov 2026)
+Tasks: #76 (done, in Review; the migration waits in supabase/pending/).
 Decided: Omicron loses the Project chat.
 - Task comments already cover talking about the work: sessions post their reports there, and Joe answers in them.
 - Chat was the easiest way for someone to give Claude orders (the same risk as typing into a session from the web page).
 - The morning summary, the only thing that uses chat today, becomes a task comment or a note instead.
 
 ## Linking, what keeps sessions running, and tasks (13 Nov 2026)
+Tasks: #80 (linking), #81 (background program), #78 (tasks).
 - **Linking:** any Claude started in a known Folder links itself when it starts. Any other Claude chat on the computer shows up in the desktop app with a "Link" button.
 - **What keeps sessions running:** a separate background program, like today. The desktop app only connects to it, so quitting the app leaves sessions running. The app starts the program if it's off.
 - **Tasks carry the same risk chat did.** If a session acted on tasks or comments given to it from the web page, anyone who can add a task could give Claude orders. So a session only works on a task handed to it on that computer: dragged onto it in the desktop app, or given with the `omicron` command. Tasks and comments from the web page are only things to read.
 
 ## The gate: letting a computer take orders for a while (13 Nov 2026)
+Tasks: #77 (the gate: command, dispatches and loops done; owner-only, teams, serving computer to do), #85 (Dev view on the serving computer's page).
 By default a computer takes no orders from anywhere else. The gate is the one exception.
 - Each computer opens its own gate, only from itself: a **toggle in the desktop app**, or a closing time typed into the `omicron` command (like `omicron gate open --until 17:00`).
 - While it's open, the computer takes messages and handed-over work from other machines and the web page. When it closes, it stops.
