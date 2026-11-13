@@ -147,6 +147,7 @@ impl WebMachine {
             )),
             (Method::Post, "/api/session") => self.session(request),
             (Method::Post, "/api/page-error") => Ok(page_error(request)),
+            (Method::Post, "/api/dispatch") => self.dispatch_api(request),
             (Method::Post, "/api/machines") => self.machines_api(request, None),
             (Method::Post, p) if p.starts_with("/api/machines/") => {
                 let rest = p.trim_start_matches("/api/machines/").to_string();
@@ -236,6 +237,63 @@ impl WebMachine {
                 }
             }
         }
+    }
+
+    /// POST /api/dispatch {task_id}: the serving computer's owner hands a
+    /// task to a session on this computer, straight from its own page. The
+    /// computer itself makes the request, so its gate doesn't stop it
+    /// (ref/BRAINSTORM.md, "The gate"). It only counts when this computer
+    /// sees the owner's Tailscale login on the visit (through the home lab's
+    /// gate) and the page's login is the same person. Anything else answers
+    /// `{"elsewhere": true}`, and the page asks through the database, where
+    /// the gate applies.
+    fn dispatch_api(&self, request: &mut Request) -> Result<(u16, &'static str, Vec<u8>)> {
+        let answer = |code: u16, v: serde_json::Value| Ok((code, "application/json", v.to_string().into_bytes()));
+        let elsewhere = |why: &str| answer(409, json!({ "elsewhere": true, "error": why }));
+        let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
+            return answer(401, json!({ "error": "sign in first" }));
+        };
+        let Ok(login) = self.supabase.session_for_token(&token) else {
+            return answer(401, json!({ "error": "that login doesn't work any more; reload the page" }));
+        };
+        let peer: IpAddr = request.remote_addr().map(|a| a.ip()).context("no address for this visit")?;
+        let Ok(visit) = identity::visitor(peer, |name| request_header(request, name), identity::gate_secret().as_deref(), identity::local_person) else {
+            return elsewhere("this visit's Tailscale login couldn't be checked");
+        };
+        if self.supabase.person_for_login(&visit.person().login)? != Some(login.user.id) {
+            return elsewhere("the page's login isn't the Tailscale login of this visit");
+        }
+        let mut body = Vec::new();
+        {
+            use std::io::Read;
+            let _ = request.as_reader().take(4096).read_to_end(&mut body);
+        }
+        let input: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+        let Some(task_id) = input["task_id"].as_str().and_then(|t| t.parse::<uuid::Uuid>().ok()) else {
+            return answer(400, json!({ "error": "which task?" }));
+        };
+        let Ok(key) = crate::config::Config::load().and_then(|c| c.machine_key()) else {
+            return elsewhere("this computer has no machine key");
+        };
+        let board = crate::board::Board { supabase: self.supabase.clone(), session: self.supabase.sign_in_machine(&key)? };
+        if board.machine_owner()?.as_deref() != Some(login.user.id.to_string().as_str()) {
+            return elsewhere("you don't own the computer serving this page");
+        }
+        // The person must see the task too (the rules say what they may see).
+        let seen = self.supabase.request_as(&login, "GET", &format!("/rest/v1/tasks?id=eq.{task_id}&select=id"), None)?;
+        if seen.as_array().is_none_or(|a| a.is_empty()) {
+            return answer(404, json!({ "error": "no such task" }));
+        }
+        let rows = self.supabase.request_as(&board.session, "GET", &format!("/rest/v1/tasks?id=eq.{task_id}&select=id,session:sessions(machine_id)"), None)?;
+        if rows.get(0).and_then(|r| r["session"]["machine_id"].as_str()) != Some(key.machine_id.to_string().as_str()) {
+            return elsewhere("its session isn't on the computer serving this page");
+        }
+        // Given again, by this computer: the session takes it as its own.
+        self.supabase.request_as(&board.session, "PATCH", &format!("/rest/v1/tasks?id=eq.{task_id}"), Some(json!({ "given_by": null })))?;
+        let made = self.supabase.request_as(&board.session, "POST", "/rest/v1/dispatches?select=id", Some(json!({ "task_id": task_id })))?;
+        let id = made.get(0).and_then(|r| r["id"].as_str()).context("the dispatch wasn't saved")?.to_string();
+        eprintln!("omicron serve: {} dispatched a task from this computer's own page", login.user.id);
+        answer(200, json!({ "id": id }))
     }
 
     fn session(&self, request: &Request) -> Result<(u16, &'static str, Vec<u8>)> {

@@ -444,8 +444,26 @@ export async function listMachineAccounts(db: SupabaseClient): Promise<MachineSu
 /** How long a machine has to take a Dispatch before it fails (the database agrees). */
 export const DISPATCH_CLAIM_SECONDS = 20;
 
-/** Ask for a task to be handed to its session. Returns the request's id. */
+/**
+ * Ask for a task to be handed to its session. Returns the request's id.
+ * First straight to the computer serving this page: it takes its owner's
+ * orders for its own sessions without its gate open. Otherwise through the
+ * database, where the session's computer takes it only with its gate open.
+ */
 export async function requestDispatch(db: SupabaseClient, task: Task): Promise<string> {
+  try {
+    const { data } = await db.auth.getSession();
+    const res = await fetch("/api/dispatch", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: task.id }),
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.id) return json.id as string;
+    if (!json?.elsewhere && res.status !== 404) throw new Error(json?.error ?? res.statusText);
+  } catch (e) {
+    if (!(e instanceof TypeError)) throw e; // TypeError: the page's computer couldn't be reached
+  }
   const row = must(await db.from("dispatches").insert({ task_id: task.id }).select("id").single()) as { id: string };
   return row.id;
 }

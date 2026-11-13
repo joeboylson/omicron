@@ -613,11 +613,15 @@ pub fn tasks_mine() -> Result<()> {
     let board = sign_in(true)?;
     let gate_open = omicron::gate::open_until().is_some();
     let new: Vec<String> = board.pick_up_tasks(&session_id, gate_open)?.into_iter().map(|(_, t)| t.id).collect();
-    // Only tasks given on this computer are handed over, unless the gate is
-    // open; the rest are only to read (ref/BRAINSTORM.md, "The gate").
+    // Only tasks given on this computer are handed over, or, while the gate
+    // is open, ones from this machine's owner; the rest are only to read
+    // (ref/BRAINSTORM.md, "The gate").
     let me = board.session.user.id.to_string();
-    let (tasks, to_read): (Vec<_>, Vec<_>) =
-        board.session_tasks(&session_id)?.into_iter().partition(|(_, t)| gate_open || t.given_by.as_deref() == Some(me.as_str()));
+    let owner = if gate_open { board.machine_owner()? } else { None };
+    let (tasks, to_read): (Vec<_>, Vec<_>) = board.session_tasks(&session_id)?.into_iter().partition(|(_, t)| {
+        let by = t.given_by.as_deref();
+        by == Some(me.as_str()) || (owner.is_some() && by == owner.as_deref())
+    });
     if tasks.is_empty() && to_read.is_empty() {
         println!("Nothing is given to this session right now.");
         return Ok(());
@@ -634,12 +638,12 @@ pub fn tasks_mine() -> Result<()> {
     Ok(())
 }
 
-/// Tasks given to a session from elsewhere while its computer's gate is
-/// closed: titles only, to read, not to work on.
+/// Tasks given to a session from elsewhere that it may not work on (not
+/// from its machine's owner, or the gate is closed): titles only, to read.
 pub fn to_read_message(tasks: &[(String, omicron::board::Task)]) -> String {
     let it = if tasks.len() == 1 { "it" } else { "them" };
     let mut text = format!(
-        "Given to this session from elsewhere, only to read: don't work on {it}. This computer's gate is closed, so it takes no work from elsewhere. Hand {it} over on this computer (`omicron tasks send`), or open the gate (`omicron gate open --until 17:00`).\n"
+        "Given to this session from elsewhere, only to read: don't work on {it}. This computer takes work from elsewhere only from its owner, while its gate is open. Hand {it} over on this computer (`omicron tasks send`), or have its owner give {it} with the gate open (`omicron gate open --until 17:00`).\n"
     );
     for (project, t) in tasks {
         text.push_str(&format!("#{} in {project}: {}\n", t.number, t.title));

@@ -270,7 +270,7 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
 });
 
 test("a task sent to a Claude session from the page is picked up by it", async ({ page, request }) => {
-  await newPerson(page, request);
+  const robin = await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Write the parser");
@@ -291,8 +291,16 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     // The end of the session's turn doesn't hand it over...
     expect(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false })).toBe("");
     await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    // Given from the page, so from elsewhere: only to read until the
+    // machine's owner gives it with its gate open (ref/BRAINSTORM.md, "The gate").
+    let mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
+    expect(mine).toContain("Given to this session from elsewhere, only to read");
+    await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    omicron.cli("machines", "owner", robin.login);
+    const later = new Date(Date.now() + 2 * 3600 * 1000);
+    omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
     // ...the session gets it when told to get its tasks.
-    const mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
+    mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
     expect(mine).toContain(`#1 in ${name}: Write the parser (new)`);
     await expect(page.getByTestId("pickup")).toHaveText("Picked up by the session.");
 
@@ -318,7 +326,7 @@ test("a task sent to a Claude session from the page is picked up by it", async (
 });
 
 test("Dispatch hands a task to its session on its machine, and says how it went", async ({ page, request }) => {
-  await newPerson(page, request);
+  const robin = await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Write the parser");
@@ -343,11 +351,14 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     await expect(button).toBeEnabled();
     await expect(page.getByTestId("dispatch-asleep")).toHaveCount(0);
 
-    // Its gate is closed to start with: refused, plainly.
+    // Robin doesn't own the machine: refused, plainly.
     await button.click();
-    await expect(outcome).toContainText(`${machineName}'s gate is closed, so it takes no work from elsewhere.`);
-    const later = new Date(Date.now() + 2 * 3600 * 1000);
-    omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
+    await expect(outcome).toContainText(`${machineName} only takes orders from its owner`);
+
+    // Robin owns it, and this page is served by that machine: it takes
+    // Robin's orders from here with its gate closed (ref/BRAINSTORM.md, "The gate").
+    omicron.cli("machines", "owner", robin.login);
+    omicron.cli("gate", "close");
 
     // Its window has no add-on following the inbox: the task waits for the
     // next time the session is opened.
