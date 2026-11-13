@@ -97,3 +97,39 @@ fn names_and_missing_sessions_are_checked() {
     assert!(omicron(&home, &["sessions", "host", "../x", "--", "true"]).1.contains("a session name is"));
     assert!(omicron(&home, &["sessions", "attach", "nope"]).1.contains("no session called nope is running"));
 }
+
+/// Someone jumped in who stops reading (a paused terminal) mustn't hold up
+/// the session: others can still jump in and type, it still counts as
+/// running, and a busy host is never taken for a dead one (#94).
+#[test]
+fn a_client_that_stops_reading_doesnt_hold_up_the_session() {
+    let home = new_home();
+    // Lots of output, all the time.
+    let (ok, out) = omicron(&home, &["sessions", "host", "busy", "--", "sh", "-c", "while :; do echo lots of output lots of output lots of output; done"]);
+    assert!(ok, "{out}");
+    // Jumps in, never reads.
+    let _stuck = socket(&home, "busy");
+    std::thread::sleep(Duration::from_secs(8));
+    // Others still get in, and it's still running.
+    let mut a = socket(&home, "busy");
+    let mut seen = String::new();
+    read_until(&mut a, &mut seen, "lots of output");
+    assert_eq!(omicron(&home, &["sessions", "hosted"]).1.trim(), "busy");
+    let (ok, out) = omicron(&home, &["sessions", "send", "busy", "x"]);
+    assert!(ok, "{out}");
+
+    // A host that's alive but doesn't answer is still listed, socket kept.
+    let pid: u32 = std::fs::read_to_string(home.join("run/busy.pid")).unwrap().trim().parse().unwrap();
+    Command::new("kill").args(["-STOP", &pid.to_string()]).status().unwrap();
+    // Fill its queue of people waiting to get in.
+    let waiting: Vec<_> = (0..300).filter_map(|_| UnixStream::connect(home.join("run/busy.sock")).ok()).collect();
+    assert_eq!(omicron(&home, &["sessions", "hosted"]).1.trim(), "busy");
+    assert!(home.join("run/busy.sock").exists());
+    drop(waiting);
+    Command::new("kill").args(["-CONT", &pid.to_string()]).status().unwrap();
+
+    // Gone for real: no longer listed.
+    Command::new("kill").args(["-9", &pid.to_string()]).status().unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(omicron(&home, &["sessions", "hosted"]).1.contains("No hosted sessions"));
+}

@@ -57,7 +57,7 @@ pub fn socket_path(name: &str) -> Result<PathBuf> {
 
 /// Is a host for `name` running and answering?
 pub fn is_running(name: &str) -> bool {
-    socket_path(name).ok().is_some_and(|p| UnixStream::connect(p).is_ok())
+    socket_path(name).ok().is_some_and(|p| UnixStream::connect(&p).is_ok() || host_alive(&p))
 }
 
 /// The hosted sessions on this machine that are running. Sockets left by a
@@ -68,14 +68,34 @@ pub fn hosted() -> Result<Vec<String>> {
     for e in entries.flatten() {
         let path = e.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".sock")) else { continue };
-        if UnixStream::connect(&path).is_ok() {
+        if UnixStream::connect(&path).is_ok() || host_alive(&path) {
             names.push(name.to_string());
         } else {
             let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(path.with_extension("pid"));
         }
     }
     names.sort();
     Ok(names)
+}
+
+/// Is the process that hosts this socket still running? A host can be too
+/// busy to answer for a moment; only a gone one counts as dead. (A host
+/// from before hosts wrote their pid has none: it's taken as gone, as before.)
+fn host_alive(socket: &std::path::Path) -> bool {
+    let Some(pid) = std::fs::read_to_string(socket.with_extension("pid")).ok().and_then(|p| p.trim().parse::<u32>().ok()) else {
+        return false;
+    };
+    let name = socket.file_stem().and_then(|n| n.to_str()).unwrap_or("");
+    // Still this session's host, not another program given the same number.
+    Command::new("ps")
+        .args(["-o", "command=", "-p", &pid.to_string()])
+        .output()
+        .map(|o| {
+            let cmd = String::from_utf8_lossy(&o.stdout);
+            cmd.contains("host-run") && cmd.split_whitespace().any(|w| w == name)
+        })
+        .unwrap_or(false)
 }
 
 /// Start `command` in a new detached host called `name`, in `folder`.
@@ -135,6 +155,9 @@ pub fn host(name: &str, command: &[String]) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
     }
+    // Which process hosts it: a host busy for a moment isn't taken for dead.
+    let pid_file = socket.with_extension("pid");
+    std::fs::write(&pid_file, std::process::id().to_string())?;
 
     let size = nix::pty::Winsize { ws_row: 40, ws_col: 120, ws_xpixel: 0, ws_ypixel: 0 };
     let pty = nix::pty::openpty(Some(&size), None).context("couldn't make a terminal")?;
@@ -193,6 +216,10 @@ pub fn host(name: &str, command: &[String]) -> Result<()> {
                     Ok(s) => s,
                     Err(_) => continue,
                 };
+                // Someone jumped in who stops reading (a paused terminal)
+                // is let go, instead of holding up the session's output and
+                // everyone else jumping in.
+                let _ = out.set_write_timeout(Some(std::time::Duration::from_secs(5)));
                 // Kept output first, while holding the list so nothing is
                 // sent twice or missed.
                 {
@@ -209,6 +236,7 @@ pub fn host(name: &str, command: &[String]) -> Result<()> {
 
     let status = child.wait()?;
     let _ = std::fs::remove_file(&socket);
+    let _ = std::fs::remove_file(&pid_file);
     std::process::exit(status.code().unwrap_or(0));
 }
 
