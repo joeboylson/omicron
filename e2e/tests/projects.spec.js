@@ -458,6 +458,41 @@ test("run rules are set in Project settings", async ({ page, request }) => {
   await expect(page.getByLabel("Run rules")).toHaveValue("Run the tests.\nCommit and push.");
 });
 
+test("a run: started from the page, followed, paused after its task", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  omicron.cli("tasks", "add", name, "Write the tests", "--as-machine");
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
+  let daemon;
+  try {
+    omicron.cli("machines", "owner", robin.login);
+    daemon = await omicron.daemon();
+    await page.reload();
+    await page.getByRole("button", { name: "Start a run" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
+    const bar = page.getByTestId("run");
+    await expect(bar).toContainText("Run in parser: on #1: Write the parser");
+    await expect(bar).toContainText("0 done");
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/run-bar.png` });
+
+    // Paused: it stops once the task it's on is finished.
+    await page.getByRole("button", { name: "Pause" }).click();
+    await expect(bar).toContainText("Run, pausing");
+    omicron.cli("tasks", "done", name, "1", "--as-machine");
+    await expect(bar).toContainText("Last run in parser: paused after #1");
+    await expect(bar).toContainText("1 done");
+    await bar.click();
+    await expect(page.getByRole("dialog")).toContainText("The last run");
+    await expect(page.getByRole("dialog").getByRole("region", { name: "Diary" })).toContainText("No notes yet.");
+  } finally {
+    daemon?.stop();
+    win.kill();
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

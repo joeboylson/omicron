@@ -96,6 +96,21 @@ export type ProjectData = {
   loops: SessionLoop[];
   /** Where its sessions start: one path on one machine each. Added only on that machine. */
   folders: Folder[];
+  /** Its runs, newest first (the last few). */
+  runs: Run[];
+};
+/** A session working down To do on its own (see `omicron runs`). */
+export type Run = {
+  id: string;
+  machine_id: string;
+  session_id: string | null;
+  label_id: string | null;
+  state: "running" | "pausing" | "stopped" | "finished";
+  task_id: string | null;
+  done: number;
+  note: string | null;
+  started_at: string;
+  updated_at: string;
 };
 export type Folder = { id: string; path: string; machine_id: string; machine: string };
 /** A prompt Omicron types into a session every so often. */
@@ -149,7 +164,7 @@ async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders, runs] = await Promise.all([
     db.from("projects").select("id,name,run_rules").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -182,6 +197,12 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .eq("project_id", id)
       .eq("state", "running"),
     db.from("folders").select("id,path,machine_id,machines(name)").eq("project_id", id).order("path"),
+    db
+      .from("runs")
+      .select("id,machine_id,session_id,label_id,state,task_id,done,note,started_at,updated_at")
+      .eq("project_id", id)
+      .order("started_at", { ascending: false })
+      .limit(5),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -239,6 +260,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     })),
     handoffs: must(handoffs) as HandoffNote[],
     loops: must(loops) as SessionLoop[],
+    runs: must(runs) as Run[],
     folders: (must(folders) as any[])
       .map((f) => ({ id: f.id, path: f.path, machine_id: f.machine_id, machine: f.machines?.name ?? "" }))
       .sort((a, b) => a.machine.localeCompare(b.machine) || a.path.localeCompare(b.path)),
@@ -498,6 +520,17 @@ export async function giveSessionTasks(db: SupabaseClient, project: ProjectData,
       .update({ assignee_person_id: to.person ?? null, assignee_session_id: to.session ?? null })
       .in("id", ids),
   );
+}
+
+/** Start a run in a session, through the database: its computer takes it
+ * only from its owner, with its gate open. */
+export async function startRun(db: SupabaseClient, project: ProjectData, session: ClaudeSession, labelId: string | null) {
+  must(await db.from("runs").insert({ project_id: project.id, machine_id: session.machine_id, session_id: session.id, label_id: labelId }));
+}
+
+/** Pause (after the task it's on) or stop a run. Anyone in the Project can. */
+export async function setRunState(db: SupabaseClient, run: Run, state: "pausing" | "stopped") {
+  must(await db.from("runs").update({ state }).eq("id", run.id));
 }
 
 export async function stopLoop(db: SupabaseClient, loop: SessionLoop) {

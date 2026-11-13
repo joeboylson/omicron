@@ -95,7 +95,7 @@ impl FromStr for MachineKey {
 }
 
 /// Encode a value for use in a URL query.
-fn enc(s: &str) -> String {
+pub fn enc(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),

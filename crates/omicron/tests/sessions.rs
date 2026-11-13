@@ -1506,3 +1506,72 @@ fn a_chat_in_a_folder_links_itself_and_any_other_links_in_place() {
     w3.kill().unwrap();
     assert!(!ok(&pat, None, &["sessions", "list"]).contains("notes"));
 }
+
+/// A run (ref/BRAINSTORM.md, "Runs"): the daemon gives the session the top
+/// To do task, and when it's finished has it hand off and clear, then gives
+/// it the next; paused, it stops after the task it's on.
+#[test]
+fn a_run_works_down_to_do_one_task_at_a_time() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    let short = PathBuf::from(format!("/tmp/or-{}", &Uuid::new_v4().simple().to_string()[..8]));
+    std::fs::rename(&mac.home, &short).unwrap();
+    let mac = Computer { home: short, tailscale: None };
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+
+    // A stand-in for Claude: runs the start hook, then writes down what's typed in.
+    let bin = mac.home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let o = env!("CARGO_BIN_EXE_omicron");
+    std::fs::write(
+        bin.join("claude"),
+        format!(
+            "#!/bin/sh\nd=\"$OMICRON_HOME/claude\"; mkdir -p \"$d\"\nid=\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; esac; shift; done\necho $$ > \"$d/run.pid\"\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"startup\"}}' \"$id\" \"$PWD\" | {o} hook session-start > /dev/null\nwhile read -r line; do echo \"$line\" >> \"$d/run.typed\"; done\n"
+        ),
+    )
+    .unwrap();
+    Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let folder = mac.home.join("app");
+    std::fs::create_dir_all(&folder).unwrap();
+    let o = command(&mac, None, &["open", "runner", "--project", &project]).env("PATH", &path).current_dir(&folder).stdin(Stdio::null()).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    wait_for("claude started", || read(&mac, "run.pid").trim().parse::<u32>().is_ok());
+    let pid: u32 = read(&mac, "run.pid").trim().parse().unwrap();
+
+    ok(&pat, None, &["tasks", "add", &project, "First thing"]);
+    ok(&pat, None, &["tasks", "add", &project, "Second thing"]);
+    let mut d = daemon(&mac, &path);
+
+    // Started on the machine: it gives the session the top task.
+    let said = ok(&mac, None, &["runs", "start", &project, "--session", "runner"]);
+    assert!(said.starts_with("Started a run in runner"), "{said}");
+    wait_for("the first task typed in", || read(&mac, "run.typed").contains("Omicron run: your next task is #1 \"First thing\""));
+    let mine = ok(&mac, Some(pid), &["tasks", "mine"]);
+    assert!(mine.contains(&format!("#1 in {project}: First thing (new)")), "handed over here: {mine}");
+    assert!(ok(&pat, None, &["runs", "list", &project]).contains("running\t0 done\ton #1: First thing"));
+
+    // Done with it: it's asked for its handoff note, cleared once it's
+    // saved, then given the next.
+    ok(&pat, None, &["tasks", "done", &project, "1"]);
+    wait_for("asked for its note", || read(&mac, "run.typed").contains("Omicron: write your handoff note now"));
+    ok(&mac, Some(pid), &["handoff", "write", "# First thing done\nOn to the next."]);
+    wait_for("cleared", || read(&mac, "run.typed").contains("/clear"));
+    wait_for("the second task typed in", || read(&mac, "run.typed").contains("your next task is #2 \"Second thing\""));
+
+    // Paused: it stops after the task it's on, with nothing more typed in.
+    ok(&pat, None, &["runs", "pause", &project]);
+    ok(&pat, None, &["tasks", "done", &project, "2"]);
+    wait_for("stopped after #2", || ok(&pat, None, &["runs", "list", &project]).contains("stopped\t2 done\tpaused after #2"));
+    assert!(!read(&mac, "run.typed").contains("write your handoff note now\nOmicron: write"), "no second handoff");
+
+    // A new run with nothing left in To do finishes at once.
+    ok(&mac, None, &["runs", "start", &project, "--session", "runner"]);
+    wait_for("finished", || ok(&pat, None, &["runs", "list", &project]).lines().next().unwrap_or("").contains("finished\t0 done\tfinished: To do is empty (0 done)"));
+    d.kill().unwrap();
+    ok(&mac, None, &["sessions", "send", "runner", "\u{4}", "--no-enter"]);
+    let _ = Command::new("kill").arg(pid.to_string()).status();
+}

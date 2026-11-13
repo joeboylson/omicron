@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod board;
 pub mod config;
 pub mod gate;
+pub mod handover;
 pub mod host;
 pub mod identity;
 pub mod inbox;

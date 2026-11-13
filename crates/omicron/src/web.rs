@@ -383,6 +383,13 @@ impl WebMachine {
                         }
                         a
                     }
+                    "runs-start" => {
+                        let mut a = vec!["runs".into(), "start".into(), s("project"), "--session".into(), s("session")];
+                        if !s("label").is_empty() {
+                            a.extend(["--label".into(), s("label")]);
+                        }
+                        a
+                    }
                     "loops-stop" => vec!["loops".into(), "stop".into(), "--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()],
                     _ => return answer(400, json!({ "error": "that can't be run from the page" })),
                 };
@@ -649,64 +656,13 @@ fn run_omicron(args: &[&str]) -> (bool, String, String) {
     }
 }
 
-/// Hand a session off to a fresh conversation (ref/BRAINSTORM.md, "Session
-/// buttons"): ask it for its handoff note, wait (in the background) until
-/// the note is saved, then /clear; the start hook gives the fresh
-/// conversation the note. Gives up after 20 minutes without a note.
+/// Hand a session off to a fresh conversation, in the background (see
+/// `handover`).
 fn hand_off(supabase: Supabase, board: crate::board::Board, session: crate::board::SessionRecord) -> Result<()> {
-    use crate::realtime::{self, Event, Listen, Next};
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-    let before = board.waiting_handoff(&session.id)?.map(|h| h.id);
-    std::thread::spawn(move || {
-        let stop = Arc::new(AtomicBool::new(false));
-        {
-            let stop = stop.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(20 * 60));
-                stop.store(true, Ordering::Relaxed);
-            });
-        }
-        let listen = Listen { tables: &["changes"], announce: None };
-        let mut asked = false;
-        let mut saved = false;
-        let _ = realtime::listen(&supabase, &listen, || Ok(board.session.clone()), &stop, |event| {
-            match event {
-                // Listening first, so the note can't be missed.
-                Event::Listening if !asked => {
-                    asked = true;
-                    crate::host::say(
-                        &session.name,
-                        "Omicron: write your handoff note now (the /omicron-handoff skill, or `omicron handoff write`), then stop. This conversation is cleared once it's saved, and the fresh one starts from the note.",
-                    )?;
-                }
-                Event::Change(c) if c.table == "changes" && c.record["table_name"] == "handoffs" => {
-                    let note = &c.record["record"];
-                    if note["session_id"].as_str() == Some(session.id.as_str())
-                        && note["state"] == "waiting"
-                        && note["id"].as_str() != before.as_deref()
-                    {
-                        saved = true;
-                        return Ok(Next::Stop);
-                    }
-                }
-                _ => {}
-            }
-            Ok(Next::Continue)
-        });
-        if saved {
-            // Let its turn finish before clearing (the Stop hook marks it free).
-            let since = std::time::Instant::now();
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            while crate::windows::is_busy(&session.id) && since.elapsed() < std::time::Duration::from_secs(120) {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-            if let Err(e) = crate::host::say(&session.name, "/clear") {
-                eprintln!("omicron serve: couldn't clear {}: {e:#}", session.name);
-            }
-        } else {
-            eprintln!("omicron serve: {} didn't save a handoff note; left as it was", session.name);
-        }
+    std::thread::spawn(move || match crate::handover::hand_off_and_clear(&supabase, &board, &session) {
+        Ok(true) => {}
+        Ok(false) => eprintln!("omicron serve: {} didn't save a handoff note; left as it was", session.name),
+        Err(e) => eprintln!("omicron serve: handing {} off: {e:#}", session.name),
     });
     Ok(())
 }

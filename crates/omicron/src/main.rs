@@ -14,6 +14,7 @@ mod guide;
 mod handoff_cmd;
 mod loops_cmd;
 mod picker;
+mod runs_cmd;
 mod teams_cmd;
 mod teams_run;
 mod teams_view;
@@ -157,6 +158,9 @@ enum Command {
     /// Folders on this machine where a Project's sessions start: add, list, remove
     #[command(subcommand)]
     Folders(folders_cmd::FoldersCmd),
+    /// Runs: a session works down a Project's To do column on its own
+    #[command(subcommand)]
+    Runs(runs_cmd::RunsCmd),
     /// Claude accounts on this machine: save, switch (rewrite of janus)
     #[command(subcommand)]
     Accounts(accounts_cmd::Accounts),
@@ -317,6 +321,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Folders(cmd) => folders_cmd::folders(cmd, cli.as_machine),
+        Command::Runs(cmd) => runs_cmd::runs(cmd, cli.as_machine),
         Command::Link { name, project } => sessions_cmd::link(name, project),
         Command::Accounts(cmd) => accounts_cmd::accounts(cmd),
         Command::Daemon { action: None } => daemon(),
@@ -641,6 +646,9 @@ fn daemon() -> Result<()> {
     let runner = loops_cmd::Runner::start(supabase.clone(), key.clone());
     let react = |row: &serde_json::Value| {
         runner.heard(row);
+        if matches!(row["table_name"].as_str(), Some("runs" | "tasks")) {
+            runs_cmd::heard(&supabase, &key, row);
+        }
         if matches!(row["table_name"].as_str(), Some("teams" | "jobs" | "comments")) {
             let (supabase, key, row) = (supabase.clone(), key.clone(), row.clone());
             std::thread::spawn(move || {
@@ -665,6 +673,15 @@ fn daemon() -> Result<()> {
                 catch_up(&supabase, &session, &mut state, &react)?;
                 // Loops changed while this wasn't listening are read afresh.
                 runner.reload()?;
+                // Runs going here carry on (after a restart).
+                {
+                    let (supabase, key) = (supabase.clone(), key.clone());
+                    std::thread::spawn(move || {
+                        if let Err(e) = runs_cmd::bring_back(&supabase, &key) {
+                            eprintln!("omicron daemon: runs: {e:#}");
+                        }
+                    });
+                }
                 // Running teams here get their lead back (after a restart).
                 {
                     let (supabase, key) = (supabase.clone(), key.clone());

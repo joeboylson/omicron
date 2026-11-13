@@ -47,6 +47,12 @@ export async function devAction(db: SupabaseClient, path: string, body: unknown)
 let known: Promise<Dev | null> | null = null;
 const listeners = new Set<(d: Dev | null) => void>();
 
+/** Whether this visit gets the Dev side, waiting for the answer if it's still coming. */
+export function whenDev(db: SupabaseClient): Promise<Dev | null> {
+  known ??= devApi(db).catch(() => null);
+  return known;
+}
+
 /** Whether this visit gets the Dev side, asked once and shared. */
 export function useDev(db: SupabaseClient): [Dev | null, (d: Dev | null) => void] {
   const [dev, setDev] = useState<Dev | null>(null);

@@ -30,6 +30,7 @@ import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
 import { GateButton } from "@/components/GateButton";
 import { DevView } from "@/components/DevView";
+import { RunBar } from "@/components/RunBar";
 import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
@@ -297,6 +298,7 @@ export function ProjectPage({ id }: { id: string }) {
     return (
       <main className="flex h-dvh min-h-0 flex-col">
         {nav}
+        <RunBar project={project} onChanged={reload} />
         <DevView project={project} dev={dev} onChanged={reload} />
       </main>
     );
@@ -307,6 +309,7 @@ export function ProjectPage({ id }: { id: string }) {
     <main className={cn("flex min-h-0 flex-col", groupBy === "status" ? "h-dvh flex-none" : "flex-1")}>
       {nav}
       <Sessions project={project} onChanged={reload} />
+      <RunBar project={project} onChanged={reload} />
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative w-full sm:w-56">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />

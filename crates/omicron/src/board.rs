@@ -229,6 +229,31 @@ fn folder_from(v: &Value) -> Folder {
     }
 }
 
+/// A run: one computer working down a Project's To do column in one
+/// session (see `runs`).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Run {
+    pub id: String,
+    pub project_id: String,
+    pub machine_id: String,
+    pub session_id: Option<String>,
+    pub label_id: Option<String>,
+    /// running, pausing, stopped or finished.
+    pub state: String,
+    pub task_id: Option<String>,
+    pub done: i64,
+    pub note: Option<String>,
+    pub started_by: String,
+    pub started_at: String,
+}
+
+impl Run {
+    /// Running, or finishing its task before it stops.
+    pub fn active(&self) -> bool {
+        matches!(self.state.as_str(), "running" | "pausing")
+    }
+}
+
 /// A team's job.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Job {
@@ -868,6 +893,97 @@ impl Board {
     }
 
     /// Put the Needs review mark on (`true`, machines only) or take it off.
+    /// A Project's runs, newest first.
+    pub fn runs(&self, project: &Project) -> Result<Vec<Run>> {
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/runs?project_id=eq.{}&order=started_at.desc&limit=50", project.id))?)?)
+    }
+
+    pub fn run(&self, id: &str) -> Result<Option<Run>> {
+        let rows: Vec<Run> = serde_json::from_value(self.get(&format!("/rest/v1/runs?id=eq.{id}"))?)?;
+        Ok(rows.into_iter().next())
+    }
+
+    /// Active runs on the machine signed in.
+    pub fn my_active_runs(&self) -> Result<Vec<Run>> {
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/runs?machine_id=eq.{}&state=in.(running,pausing)", self.session.user.id))?)?)
+    }
+
+    /// Start a run in a session, optionally only tasks with a label.
+    pub fn start_run(&self, project: &Project, session: &SessionRecord, label: Option<&str>) -> Result<Run> {
+        let label_id = match label {
+            Some(name) => {
+                let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&name=ilike.{}&select=id", project.id, crate::supa::enc(name)))?;
+                Some(rows.get(0).and_then(|r| r["id"].as_str()).map(String::from).with_context(|| format!("{} has no label {name}", project.name))?)
+            }
+            None => None,
+        };
+        let rows = self.send(
+            "POST",
+            "/rest/v1/runs",
+            json!({ "project_id": project.id, "machine_id": session.machine_id, "session_id": session.id, "label_id": label_id }),
+        );
+        let rows = match rows {
+            Err(e) if format!("{e:#}").contains("runs_one_per_session") => bail!("{} is already on a run", session.name),
+            r => r?,
+        };
+        Ok(serde_json::from_value(rows.get(0).context("the run wasn't saved")?.clone())?)
+    }
+
+    /// Change a run (its machine: anything; anyone else: pausing or stopped).
+    pub fn set_run(&self, id: &str, fields: Value) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/runs?id=eq.{id}"), fields)?;
+        Ok(())
+    }
+
+    /// A task by id, with its status id, assignees and labels (ids).
+    pub fn task_row(&self, id: &str) -> Result<Option<Value>> {
+        let rows = self.get(&format!(
+            "/rest/v1/tasks?id=eq.{id}&select=id,number,title,status_id,position,assignee_person_id,assignee_session_id,task_labels(label_id),task_jobs(job_id)"
+        ))?;
+        Ok(rows.get(0).cloned())
+    }
+
+    /// Give a task to a session as the one signed in (for a run, its machine).
+    pub fn give_task(&self, task_id: &str, session_id: &str) -> Result<()> {
+        self.send(
+            "PATCH",
+            &format!("/rest/v1/tasks?id=eq.{task_id}"),
+            json!({ "assignee_session_id": session_id, "assignee_person_id": null, "given_by": null }),
+        )?;
+        Ok(())
+    }
+
+    /// A Project's tasks in a status, in their order, as rows (see `task_row`).
+    pub fn task_rows_in(&self, project_id: &str, status_id: &str) -> Result<Vec<Value>> {
+        let rows = self.get(&format!(
+            "/rest/v1/tasks?project_id=eq.{project_id}&status_id=eq.{status_id}&select=id,number,title,status_id,position,assignee_person_id,assignee_session_id,task_labels(label_id),task_jobs(job_id)&order=position,number"
+        ))?;
+        Ok(rows.as_array().cloned().unwrap_or_default())
+    }
+
+    /// A Project's tasks linked to jobs of teams on the machine signed in:
+    /// (task row, job number, job state, team name).
+    pub fn team_tasks_here(&self, project_id: &str) -> Result<Vec<(Value, i64, String, String)>> {
+        let rows = self.get(&format!(
+            "/rest/v1/task_jobs?select=tasks!inner(id,number,title,status_id,project_id,assignee_session_id),jobs!inner(number,state,teams!inner(name,machine_id))&tasks.project_id=eq.{project_id}&jobs.teams.machine_id=eq.{}",
+            self.session.user.id
+        ))?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|r| r["jobs"]["teams"].is_object())
+            .map(|r| {
+                (
+                    r["tasks"].clone(),
+                    r["jobs"]["number"].as_i64().unwrap_or(0),
+                    r["jobs"]["state"].as_str().unwrap_or("").to_string(),
+                    r["jobs"]["teams"]["name"].as_str().unwrap_or("").to_string(),
+                )
+            })
+            .collect())
+    }
+
     /// A Project's run rules (empty if it has none).
     pub fn run_rules(&self, project: &Project) -> Result<String> {
         let rows = self.get(&format!("/rest/v1/projects?id=eq.{}&select=run_rules", project.id))?;
