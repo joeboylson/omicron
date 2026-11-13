@@ -384,6 +384,37 @@ test("the Dev view's session buttons: open in a folder, hand off, end", async ({
   }
 });
 
+test("This computer, in the Dev view: setup checks, loops, accounts and teams", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
+  try {
+    omicron.cli("machines", "owner", robin.login);
+    await page.goto(`${page.url().split("?")[0]}?view=dev`);
+    await page.getByRole("button", { name: "This computer" }).click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByRole("heading", { name: machineName })).toBeVisible();
+    await expect(sheet.getByRole("region", { name: "Setup checks" })).toContainText(`Machine: ${machineName}`);
+    await expect(sheet.getByRole("region", { name: "Claude accounts" })).toContainText("No saved accounts yet");
+    await expect(sheet.getByRole("region", { name: "Teams" })).toBeVisible();
+
+    // A loop for a session here: started and stopped from the page.
+    await sheet.getByLabel("Loop prompt for parser").fill("Keep going with the next task");
+    await sheet.getByLabel("How often, for parser").fill("15m");
+    await sheet.getByRole("button", { name: "Start loop" }).click();
+    const loops = sheet.getByRole("region", { name: "Loops here" });
+    await expect(loops).toContainText("“Keep going with the next task” every 15m");
+    expect(omicron.cli("loops", "list", "--as-machine")).toContain("Keep going with the next task");
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/this-computer.png` });
+    await loops.getByRole("button", { name: "Stop" }).click();
+    await expect(loops.getByRole("button", { name: "Start loop" })).toBeVisible();
+  } finally {
+    win.kill();
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

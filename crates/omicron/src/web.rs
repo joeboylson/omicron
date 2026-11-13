@@ -351,6 +351,48 @@ impl WebMachine {
                     }
                 }
             }
+            "computer" => {
+                // The rest of the Dev view: setup checks, Claude accounts
+                // and teams on this computer, as the `omicron` command says.
+                let lines = |args: &[&str]| -> Vec<String> {
+                    let (_, out, err) = run_omicron(args);
+                    let text = if out.trim().is_empty() { err } else { out };
+                    text.lines().map(str::trim_end).filter(|l| !l.is_empty()).map(String::from).collect()
+                };
+                return answer(
+                    200,
+                    json!({
+                        "setup": lines(&["doctor"]),
+                        "accounts": lines(&["accounts", "list"]),
+                        "teams": lines(&["teams", "list", "--as-machine"]),
+                    }),
+                );
+            }
+            "run" => {
+                // A few actions on this computer, as the `omicron` command
+                // does them, as this machine. Nothing else can be run.
+                let s = |k: &str| input[k].as_str().unwrap_or("").trim().to_string();
+                let args: Vec<String> = match s("action").as_str() {
+                    "accounts-use" => vec!["accounts".into(), "use".into(), s("name")],
+                    "teams-stop" => vec!["teams".into(), "stop".into(), s("team"), "--as-machine".into()],
+                    "loops-start" => {
+                        let mut a = vec!["loops".into(), "start".into(), s("prompt"), "--every".into(), s("every")];
+                        a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
+                        if !s("times").is_empty() {
+                            a.extend(["--times".into(), s("times")]);
+                        }
+                        a
+                    }
+                    "loops-stop" => vec!["loops".into(), "stop".into(), "--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()],
+                    _ => return answer(400, json!({ "error": "that can't be run from the page" })),
+                };
+                if args.iter().any(|a| a.is_empty()) {
+                    return answer(400, json!({ "error": "something it needs is missing" }));
+                }
+                let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                let (ok, out, err) = run_omicron(&refs);
+                return if ok { answer(200, json!({ "said": out.trim() })) } else { answer(409, json!({ "error": err.trim() })) };
+            }
             "open" => {
                 // A new session in one of this computer's folders, in the
                 // background (the page opens its terminal).
@@ -592,6 +634,19 @@ fn page_error(request: &mut Request) -> (u16, &'static str, Vec<u8>) {
         field("stack", 1500)
     );
     (204, "application/json", Vec::new())
+}
+
+/// Run this `omicron` program with these arguments (never through a shell):
+/// whether it worked, and what it printed.
+fn run_omicron(args: &[&str]) -> (bool, String, String) {
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => return (false, String::new(), e.to_string()),
+    };
+    match std::process::Command::new(exe).args(args).stdin(std::process::Stdio::null()).output() {
+        Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stdout).into_owned(), String::from_utf8_lossy(&o.stderr).into_owned()),
+        Err(e) => (false, String::new(), e.to_string()),
+    }
 }
 
 /// Hand a session off to a fresh conversation (ref/BRAINSTORM.md, "Session

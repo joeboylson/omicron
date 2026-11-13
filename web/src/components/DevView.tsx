@@ -4,6 +4,7 @@ import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
 import type { ProjectData, Task } from "@/lib/data";
 import { Terminal } from "@/components/Terminal";
+import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn } from "@/lib/utils";
 
 const TASK = "application/x-omicron-task";
@@ -129,6 +130,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
             ))}
           </ul>
         )}
+        <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
       </aside>
 
       <section aria-label="Terminals" className="flex min-h-0 flex-col bg-[#111113]">
