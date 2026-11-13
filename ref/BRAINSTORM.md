@@ -58,7 +58,7 @@ All machine-only, because each one makes the computer do something.
 - **The `omicron` command** does everything the web page and the desktop app do. The desktop app is buttons on the same program, and like it, the command only acts on the computer it runs on.
 
 ## Drop chat (13 Nov 2026)
-Tasks: #76 (done, in Review; the migration waits in supabase/pending/).
+Tasks: #76 (in Review), #89 (the migration, once atlas is updated).
 Decided: Omicron loses the Project chat.
 - Task comments already cover talking about the work: sessions post their reports there, and Joe answers in them.
 - Chat was the easiest way for someone to give Claude orders (the same risk as typing into a session from the web page).
@@ -71,7 +71,7 @@ Tasks: #80 (linking), #81 (background program), #78 (tasks).
 - **Tasks carry the same risk chat did.** If a session acted on tasks or comments given to it from the web page, anyone who can add a task could give Claude orders. So a session only works on a task handed to it on that computer: dragged onto it in the desktop app, or given with the `omicron` command. Tasks and comments from the web page are only things to read.
 
 ## The gate: letting a computer take orders for a while (13 Nov 2026)
-Tasks: #77 (the gate: command, dispatches and loops done; owner-only, teams, serving computer to do), #85 (Dev view on the serving computer's page).
+Tasks: #77 (the gate: command, dispatches and loops done), #86 (owner-only), #87 (team answers), #88 (serving computer), #85 (Dev view on the serving computer's page).
 By default a computer takes no orders from anywhere else. The gate is the one exception.
 - Each computer opens its own gate, only from itself: a **toggle in the desktop app**, or a closing time typed into the `omicron` command (like `omicron gate open --until 17:00`).
 - While it's open, the computer takes messages and handed-over work from other machines and the web page. When it closes, it stops.
@@ -89,3 +89,14 @@ By default a computer takes no orders from anywhere else. The gate is the one ex
 - **The same rule covers the Dev view.** Seeing and typing into a terminal is no more dangerous than giving orders. So on the serving computer's own page, signed in as Joe, the page shows that computer's Dev view, terminal included, for that computer's sessions only. Everyone else, and every other computer, gets only the Tasks view.
 
 Not hosting publicly: the web page stays behind Tailscale and the home lab's gate (no Vercel), so sign-in stays as it is.
+
+## Runs: give a computer a pile of work and walk away (13 Nov 2026)
+Tasks: #90 (Run rules), #91 (the run), #92 (teams), #93 (on the phone). The goal: hand one computer a Project's work, go to bed, and follow along from the phone. Omicron as the one place for all tasks, dev work and runs.
+- **A run** works down a Project's To do column on its own: start the top task, do it, test, commit, report on the task, move it to Review, hand off and clear, take the next. It stops when the list is empty, the gate closes, or it's told to.
+- **A run and a loop are different.** A loop types the same prompt on a timer, done or not. A run knows what's next and when it's finished. A run may use a loop underneath to nudge its session.
+- **What it runs:** the To do column in its order (drag to reorder), optionally only one label.
+- **The rules:** a "Run rules" note in the Project's settings (like TODO.md's "Current work": test, screenshots, commit, push, report, ask in Waiting on Joe), plus the folder's CLAUDE.md. Given to the session with every task (this is #58 too).
+- **Control:** start, pause (finish the current task, then stop) and stop, from the Project. Each is an order, so it goes through the gate.
+- **One session per run**, cleared between tasks with a handoff note: each task starts fresh, but there's one thing to watch and jump into, and its notes read as a diary of the night. A new session only if it crashes, picking up from the last note.
+- **Teams:** a task labelled "team" (or that the rules call big) goes to a team as a job, linked to the task. The run carries on with smaller tasks meanwhile; when the job finishes, the session checks it, reports, and moves the task to Review.
+- **Safe overnight:** the computer's gate is open until morning (it closes by itself), only Joe can give it orders, it works only in the Project's Folders, and anything it needs from Joe becomes a task in Waiting on Joe, answered from the phone.
