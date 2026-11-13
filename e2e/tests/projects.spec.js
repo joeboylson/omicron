@@ -443,6 +443,21 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
   }
 });
 
+test("run rules are set in Project settings", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await page.getByRole("button", { name: "Project settings" }).click();
+  const rules = page.getByLabel("Run rules");
+  await rules.fill("Run the tests.\nCommit and push.");
+  await rules.blur();
+  await expect.poll(() => omicron.cli("projects", "rules", name, "--as-machine")).toContain("Run the tests.\nCommit and push.");
+  await escape(page);
+  await page.reload();
+  await page.getByRole("button", { name: "Project settings" }).click();
+  await expect(page.getByLabel("Run rules")).toHaveValue("Run the tests.\nCommit and push.");
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

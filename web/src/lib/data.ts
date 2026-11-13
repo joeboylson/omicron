@@ -83,6 +83,8 @@ export type ClaudeSession = {
 export type ProjectData = {
   id: string;
   name: string;
+  /** How its Claude sessions work: given to a session with every task. */
+  run_rules: string;
   statuses: Status[];
   labels: Label[];
   topics: Topic[];
@@ -148,7 +150,7 @@ async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
   const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders] = await Promise.all([
-    db.from("projects").select("id,name").eq("id", id).maybeSingle(),
+    db.from("projects").select("id,name,run_rules").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
     db.from("project_members").select("people(id,display_name)").eq("project_id", id),
@@ -186,6 +188,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
   return {
     id: p.id,
     name: p.name,
+    run_rules: p.run_rules ?? "",
     statuses: must(statuses) as Status[],
     labels: must(labels) as Label[],
     topics: must(topics) as Topic[],
@@ -248,6 +251,10 @@ const after = (xs: { position: number }[]) => xs.reduce((m, x) => Math.max(m, x.
 export async function deleteProject(db: SupabaseClient, id: string) {
   const gone = must(await db.from("projects").delete().eq("id", id).select("id")) as unknown[];
   if (gone.length === 0) throw new Error("That Project couldn't be deleted (are you a member?).");
+}
+
+export async function setRunRules(db: SupabaseClient, id: string, run_rules: string) {
+  must(await db.from("projects").update({ run_rules }).eq("id", id));
 }
 
 export async function renameProject(db: SupabaseClient, id: string, name: string) {

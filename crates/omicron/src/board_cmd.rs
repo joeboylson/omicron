@@ -12,6 +12,10 @@ pub enum Projects {
     List,
     /// Start a Project (you become its first member)
     New { name: String },
+    /// A Project's run rules: how its Claude sessions work, given to a
+    /// session with every task. Shows them, or sets them (`-` reads stdin;
+    /// "" clears them)
+    Rules { project: String, rules: Option<String> },
 }
 
 #[derive(Subcommand)]
@@ -293,6 +297,30 @@ pub fn projects(cmd: Projects, as_machine: bool) -> Result<()> {
         Projects::New { name } => {
             let p = board.start_project(&name)?;
             println!("Started {}.", p.name);
+        }
+        Projects::Rules { project, rules } => {
+            let p = board.project(&project)?;
+            match rules {
+                None => {
+                    let r = board.run_rules(&p)?;
+                    if r.trim().is_empty() {
+                        println!("{} has no run rules yet. Set them with `omicron projects rules '{}' \"<rules>\"`.", p.name, p.name);
+                    } else {
+                        println!("{}", r.trim_end());
+                    }
+                }
+                Some(text) => {
+                    let text = if text == "-" {
+                        let mut s = String::new();
+                        std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)?;
+                        s
+                    } else {
+                        text
+                    };
+                    board.set_run_rules(&p, text.trim())?;
+                    println!("{} {}.", if text.trim().is_empty() { "Cleared the run rules of" } else { "Saved the run rules of" }, p.name);
+                }
+            }
         }
     }
     Ok(())

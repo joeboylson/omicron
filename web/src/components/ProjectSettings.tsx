@@ -16,6 +16,7 @@ import {
   removeMember,
   removeProjectMachine,
   renameProject,
+  setRunRules,
   renameStatus,
   deleteLabel,
   renameLabel,
@@ -31,6 +32,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,8 @@ export function ProjectSettings({
 }) {
   const { db, act, me } = useApp();
   const [name, setName] = useState(project.name);
+  const [rules, setRules] = useState(project.run_rules);
+  useEffect(() => setRules(project.run_rules), [project.run_rules]);
   const [newStatus, setNewStatus] = useState("");
   const [newTopic, setNewTopic] = useState("");
   const [people, setPeople] = useState<Person[]>([]);
@@ -107,6 +111,25 @@ export function ProjectSettings({
                 else if (n !== project.name) change(() => renameProject(db, project.id, n));
               }}
               className={cn(bare, "px-0")}
+            />
+          </Row>
+        </Group>
+
+        <Group
+          title={<label htmlFor="run-rules">Run rules</label>}
+          note="How this Project's Claude sessions work: given to a session with every task, beside its folder's CLAUDE.md. Like: test, take screenshots of page changes, commit and push, report on the task, ask in Waiting on Joe."
+        >
+          <Row className="py-2">
+            <Textarea
+              id="run-rules"
+              value={rules}
+              onChange={(e) => setRules(e.target.value)}
+              onBlur={() => {
+                if (rules.trim() !== project.run_rules.trim()) change(() => setRunRules(db, project.id, rules.trim()));
+              }}
+              placeholder="Run the tests the change touches. Commit and push. Report on the task in plain words, then move it to Review."
+              rows={5}
+              className={cn(bare, "min-h-24 px-0 py-1")}
             />
           </Row>
         </Group>

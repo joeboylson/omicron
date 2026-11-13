@@ -294,6 +294,15 @@ pub fn tasks_message(tasks: &[(String, omicron::board::Task)], new: &[String]) -
     text
 }
 
+/// A Project's run rules, said with its tasks: how to work on them, beside
+/// the folder's CLAUDE.md.
+pub fn rules_message(project: &str, rules: &str) -> String {
+    if rules.trim().is_empty() {
+        return format!("\n{project} has no run rules; follow this folder's CLAUDE.md.\n");
+    }
+    format!("\nRun rules for {project} (how to work on its tasks; this folder's CLAUDE.md applies too):\n{}\n", rules.trim())
+}
+
 /// How a session writes its report, said with every task handed over.
 pub const REPORT_RULES: &str = "\nHow to write the report: short and plain, like a /s answer. No jargon and no made-up terms; say what changed and what's left in everyday words. At most 500 words (longer reports are refused).\n";
 
@@ -743,6 +752,16 @@ pub fn tasks_mine() -> Result<()> {
     }
     if !tasks.is_empty() {
         print!("{}", tasks_message(&tasks, &new));
+        // Each Project's run rules, once.
+        let mut seen: Vec<&str> = Vec::new();
+        for (project, _) in &tasks {
+            if seen.contains(&project.as_str()) {
+                continue;
+            }
+            seen.push(project);
+            let rules = board.run_rules(&board.project(project)?)?;
+            print!("{}", rules_message(project, &rules));
+        }
     }
     if !to_read.is_empty() {
         if !tasks.is_empty() {

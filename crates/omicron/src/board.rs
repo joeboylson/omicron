@@ -868,6 +868,17 @@ impl Board {
     }
 
     /// Put the Needs review mark on (`true`, machines only) or take it off.
+    /// A Project's run rules (empty if it has none).
+    pub fn run_rules(&self, project: &Project) -> Result<String> {
+        let rows = self.get(&format!("/rest/v1/projects?id=eq.{}&select=run_rules", project.id))?;
+        Ok(rows.get(0).and_then(|r| r["run_rules"].as_str()).unwrap_or("").to_string())
+    }
+
+    pub fn set_run_rules(&self, project: &Project, rules: &str) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/projects?id=eq.{}", project.id), json!({ "run_rules": rules }))?;
+        Ok(())
+    }
+
     /// Who owns the machine signed in (only they can send it orders), if anyone.
     pub fn machine_owner(&self) -> Result<Option<String>> {
         let rows = self.get(&format!("/rest/v1/machines?id=eq.{}&select=owner", self.session.user.id))?;
