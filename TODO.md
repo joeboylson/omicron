@@ -211,8 +211,7 @@ Built in this order. Each part replaces an old tool only once it's ready.
 
 ## Current work: tracked in Omicron itself (from 11 Nov 2026)
 The work list now lives in the **Omicron** Project in the real database
-(https://atlas.taileedd95.ts.net:8451, or `omicron tasks list Omicron`), built
-from `ref/BRAINSTORM.md`. It runs overnight and on into the next days.
+(https://atlas.taileedd95.ts.net:8451, or `omicron tasks list Omicron`). It runs overnight and on into the next days.
 
 - Columns: To do (in working order), Doing, Waiting on Joe, Review, Done.
 - Each task: moved to Doing when started, its checklist ticked as it goes,
@@ -222,7 +221,8 @@ from `ref/BRAINSTORM.md`. It runs overnight and on into the next days.
 - Anything that needs Joe becomes a task given to him in **Waiting on Joe**;
   he answers in its comments.
 - A morning summary goes in the Omicron Project's chat.
-- Every new piece of UI is built to the product bar in `ref/BRAINSTORM.md`.
+- Every new piece of UI should feel like a finished product, as easy as Trello,
+  Linear or Things from the first minute.
 
 ## Questions for Joe
 Moved: these are now tasks in the Omicron Project's "Waiting on Joe" column.

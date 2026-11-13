@@ -119,8 +119,8 @@ test("everything can be reached and seen with the keyboard, and a whole flow nee
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await focused(page), "focus isn't lost after the command menu").not.toBeNull();
 
-  // Settings, People and API keys: everything reachable shows a ring.
-  for (const path of ["/settings", "/people", "/keys"]) {
+  // Settings, People and Machines: everything reachable shows a ring.
+  for (const path of ["/settings", "/people", "/machines"]) {
     await page.goto(omicron.url + path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await tabThrough(page, path);

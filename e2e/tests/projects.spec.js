@@ -77,7 +77,7 @@ test("start a Project and add a task to it", async ({ page, request }) => {
 
   // Back on the Projects list, it shows with its task count.
   await page.getByRole("button", { name: "Back to Projects" }).click();
-  await expect(page.getByRole("link", { name: new RegExp(name) })).toContainText("1 task");
+  await expect(page.getByRole("row", { name: new RegExp(name) }).getByRole("cell").nth(1)).toHaveText("1");
 });
 
 test("a task can be filled in and finished", async ({ page, request }) => {
@@ -221,7 +221,9 @@ test("statuses and members are set in Project settings", async ({ page, request 
   await page.getByRole("button", { name: "Project settings" }).click();
   const dialog = page.getByRole("dialog");
   // Add a member, who can then be given tasks.
-  await pick(page, "Add a member", friend);
+  await dialog.getByRole("combobox", { name: "Members" }).click();
+  await page.getByRole("option", { name: friend }).click();
+  await page.keyboard.press("Escape");
   await expect(dialog.getByRole("region", { name: "Members" })).toContainText(friend);
   await escape(page);
   await addTaskIn(page, "To do", "Plant bulbs");
@@ -612,31 +614,33 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await startProjectIn(page, garden);
   await startProjectIn(page, house);
   // Someone who has signed in but isn't in any Project yet.
-  const sam = await sessionFor(request, omicron, `${unique("sam")}@example.com`, "Sam Example");
-  void sam;
+  const sam = unique("Sam");
+  await sessionFor(request, omicron, `${unique("sam")}@example.com`, sam);
 
   await page.goto(omicron.url);
-  await page.getByRole("button", { name: "People" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "People" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
-  await page.getByLabel("Search people").fill("sam example");
-  const row = page.getByRole("list", { name: "People" }).getByRole("listitem", { name: "Sam Example" }).first();
-  await expect(row).toContainText("No Projects you're in.");
+  await page.getByLabel("Search people").fill(sam);
+  const row = page.getByRole("table", { name: "People" }).getByRole("row", { name: sam });
+  const projects = row.getByRole("combobox", { name: `${sam}'s Projects` });
+  await expect(projects).toHaveText("No Projects you're in");
 
   // Added to a Project: it shows at once.
-  await row.getByLabel("Add Sam Example to a Project").click();
+  await projects.click();
   await page.getByRole("option", { name: garden }).click();
-  const projects = row.getByRole("group", { name: "Sam Example's Projects" });
-  await expect(projects).toContainText(garden);
-  await expect(projects).not.toContainText(house);
+  await page.keyboard.press("Escape");
+  await expect(projects).toHaveText(garden);
 
   // Taken out again.
-  await row.getByRole("button", { name: `Take Sam Example out of ${garden}` }).click();
-  await expect(row).toContainText("No Projects you're in.");
+  await projects.click();
+  await page.getByRole("option", { name: garden }).click();
+  await page.keyboard.press("Escape");
+  await expect(projects).toHaveText("No Projects you're in");
 
-  // Search narrows the list; back goes to Projects.
+  // Search narrows the table; the top menu goes back to Projects.
   await page.getByLabel("Search people").fill("nobody-like-this");
-  await expect(page.getByText("Nobody matches")).toBeVisible();
-  await page.getByRole("button", { name: "Back to Projects" }).click();
+  await expect(page.getByText(/Nothing matches/)).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Projects" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
 });
 
@@ -742,6 +746,62 @@ test("a new Project starts in a modal, and Cancel or Escape leaves nothing behin
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 });
 
+test("a new Project can start with people and machines, its machines change in settings, and it can be deleted", async ({ page, request }) => {
+  await newPerson(page, request);
+  // In a Project already: people in none yet see only themselves.
+  await startProjectIn(page, unique("First"));
+  const sam = unique("Sam");
+  await sessionFor(request, omicron, `${unique("p")}@example.com`, sam);
+  const [box, other] = [unique("box"), unique("box")];
+  omicron.cli("machines", "register", box, "--print");
+  omicron.cli("machines", "register", other, "--print");
+
+  // People and machines are dropdowns, with nothing picked at first.
+  await page.goto(omicron.url);
+  await page.getByRole("button", { name: "New Project" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "New Project" });
+  await expect(dialog.getByRole("combobox", { name: "People" })).toHaveText("Just you");
+  await expect(dialog.getByRole("combobox", { name: "Machines" })).toHaveText("No machines");
+  await dialog.getByRole("combobox", { name: "People" }).click();
+  await page.getByRole("option", { name: sam }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog.getByRole("combobox", { name: "People" })).toHaveText(sam);
+  await dialog.getByRole("combobox", { name: "Machines" }).click();
+  await page.getByRole("option", { name: box }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog.getByRole("combobox", { name: "Machines" })).toHaveText(box);
+  const name = unique("Garden");
+  await dialog.getByLabel("New Project name").fill(name);
+  await dialog.getByRole("button", { name: "Start Project" }).click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+
+  // It started with them.
+  await page.getByRole("button", { name: "Project settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Project settings" });
+  await expect(settings).toContainText(sam);
+  const machines = settings.getByRole("combobox", { name: "Machines" });
+  await expect(machines).toHaveText(box);
+
+  // A machine added, and one taken out, with the same dropdown.
+  await machines.click();
+  await page.getByRole("option", { name: other }).click();
+  await expect(page.getByRole("option", { name: other })).toHaveAttribute("data-checked", "true");
+  await page.getByRole("option", { name: box }).click();
+  await expect(page.getByRole("option", { name: box })).toHaveAttribute("data-checked", "false");
+  await page.keyboard.press("Escape");
+  await expect(machines).toHaveText(other);
+
+  // Deleting asks for its name, typed, first.
+  const del = settings.getByRole("button", { name: "Delete" });
+  await expect(del).toBeDisabled();
+  await settings.getByLabel("Delete Project").fill("garden");
+  await expect(del).toBeDisabled();
+  await settings.getByLabel("Delete Project").fill(name);
+  await del.click();
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Projects" })).not.toContainText(name);
+});
+
 test("appearance: Light, Dark or the system, saved with you and on every device", async ({ page, request, browser }) => {
   const me = await newPerson(page, request);
   await page.goto(omicron.url);
@@ -778,14 +838,14 @@ test("appearance: Light, Dark or the system, saved with you and on every device"
   await other.close();
 });
 
-test("API keys: make one for a new machine, see it, switch it off, remove it", async ({ page, request }) => {
+test("Machines: make a key for a new machine, see it, change its Projects, switch it off, remove it", async ({ page, request }) => {
   const me = await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
   await page.goto(omicron.url);
   await page.getByTestId("me").click();
-  await page.getByRole("button", { name: "API keys" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "API keys" })).toBeVisible();
+  await page.getByRole("button", { name: "Machines and API keys" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Machines" })).toBeVisible();
 
   const box = unique("box");
   await page.getByRole("button", { name: "New key" }).first().click();
@@ -811,9 +871,19 @@ test("API keys: make one for a new machine, see it, switch it off, remove it", a
   const projects = await rest(request, login, "GET", "/rest/v1/projects?select=name");
   expect(projects.map((p) => p.name)).toEqual([name]);
 
-  const row = page.getByRole("list", { name: "Machines" }).getByRole("listitem", { name: box });
+  const row = page.getByRole("table", { name: "Machines" }).getByRole("row", { name: box });
   await expect(row).toContainText("asleep · never seen");
-  await expect(row).toContainText(name);
+  const its = row.getByRole("combobox", { name: `${box}'s Projects` });
+  await expect(its).toHaveText(name);
+  // Its Projects change in place.
+  await its.click();
+  await page.getByRole("option", { name }).click();
+  await page.keyboard.press("Escape");
+  await expect(its).toHaveText("No Projects");
+  await its.click();
+  await page.getByRole("option", { name }).click();
+  await page.keyboard.press("Escape");
+  await expect(its).toHaveText(name);
   await row.getByRole("button", { name: "Switch off" }).click();
   await expect(row).toContainText("switched off");
   // Switched off, the key gets nothing.
@@ -822,11 +892,12 @@ test("API keys: make one for a new machine, see it, switch it off, remove it", a
   await expect(row).toContainText("asleep");
   // Removing asks first; Cancel keeps it.
   await row.getByRole("button", { name: `Remove ${box}…` }).click();
-  await expect(row.getByRole("alert")).toContainText("This can't be undone.");
-  await row.getByRole("button", { name: "Cancel" }).click();
-  await expect(row.getByRole("alert")).toHaveCount(0);
+  const ask = page.getByRole("dialog", { name: `Remove ${box}?` });
+  await expect(ask).toContainText("This can't be undone.");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(ask).toHaveCount(0);
   await row.getByRole("button", { name: `Remove ${box}…` }).click();
-  await row.getByRole("button", { name: `Remove ${box}`, exact: true }).click();
+  await ask.getByRole("button", { name: `Remove ${box}`, exact: true }).click();
   await expect(row).toHaveCount(0);
 
   // Machines outside your Projects can't be touched.

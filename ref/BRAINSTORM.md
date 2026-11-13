@@ -1,230 +1,79 @@
-# BRAINSTORM
+# Omicron brainstorm
 
-## Words
-- **Project**: the one name for a board or project. Don't use "board" anymore.
+## The link to a Claude session should be right there (13 Nov 2026)
+Problem: connecting this chat to Omicron meant quitting it and running `omicron open --resume <long id>` by hand. Too many steps to remember. The link should be right there, no thinking needed. Ideas, not decided:
+- **Link in place.** A command run inside the chat (`! omicron link`, or a `/omicron` slash command) that makes the chat an Omicron session without quitting it. Omicron's hooks already know the chat's id.
+- **Every chat is linked to start with.** When Claude starts in a Project's folder, a start-up hook links it on its own. Nothing to do at all.
+- **`claude` just means `omicron open`.** A shell shortcut, so the usual way of starting Claude goes through Omicron.
+- **Always visible.** The status line under the chat shows the session's name and whether it's linked, so it's never a question.
+- **Spot the strays.** `omicron doctor` and the Sessions page list Claude chats on this machine that aren't linked yet, each with a one-step way to link it.
 
-## Decided
+## Security risk: the web page can make a computer run things (13 Nov 2026)
+- The web page can type messages into running Claude sessions (`omicron sessions send`, from any machine).
+- A message to Claude is basically a command on that computer: Claude can run anything in its folder, and sessions Omicron starts don't stop to ask.
+- Today that's only safe because the page is behind Joe's Tailscale login and the home lab's gate.
+- If the page is ever hosted publicly (like Vercel), anyone who signs in, or gets past the database's access rules, could make a computer run things.
+- Rule from Joe: the web page never starts a session, types into one, or shows its screen. Only the Tauri app can, on the computer it runs on. No remote session control. (Later exceptions, both in "The gate": a computer whose gate is open, and Joe on the serving computer's own page.)
 
-### Starting point
-- Omicron is a new tool built from scratch, not a wrapper around the existing tools. All the code lives in one place.
-- It runs in two places: the terminal and a phone/web app you can install (PWA).
-- It should fit into the homelab setup.
+## Two parts: safe and machine-only (13 Nov 2026)
+The test for any feature: if it can make a computer do something, it's **machine-only**. If it only reads or changes shared records, it's **safe**.
+- **Safe (the web page):** tasks, Projects, people, and seeing sessions, folders, and team jobs and their status. Fine to host anywhere, even publicly.
+- **Machine-only (a Tauri desktop app):** starting and showing sessions, folders, the terminal, accounts, and starting teams and their workers. It only acts on the computer it runs on.
+- The desktop app can show the safe pages too, so the web page is really the safe part of it.
+- **Desktop app ideas:** tabs of sessions, each with a simple terminal (like v2-mercury: xterm.js on the page, a shell behind it), and a list of sessions with "open a new session". Omicron keeps track of past sessions too, not only Claude.
+- **Folders:** a Folder is one path, on one machine, for one Project. "Open a new session" starts Claude in one. It's added from the computer it's on: "Add folder" in the desktop app (the computer's own folder picker), or `omicron folders add` in the folder. Maybe `omicron open` remembers the folder it runs in.
 
-### No central server
-- Anyone can set up Omicron by making their own Supabase database and connecting to it.
-- There's no main Omicron server. Every computer has its own copy of Omicron and registers itself with the shared Supabase database.
-- I'll only ever run one setup (one database) myself.
-- Everything should react to events as they happen, not check for changes on a timer.
+## Two views of a Project: Tasks and Dev (13 Nov 2026)
+- **Tasks view:** the board as it is today. On the web page and in the desktop app.
+- **Dev view:** desktop app only; the web page doesn't even show the switch (one exception: Joe on the serving computer's own page, see "The gate").
+  - Left: the Project's folders and its sessions (running and past), with "open a new session".
+  - Middle: the sessions as tabs, each a terminal.
+  - Right: the board turned into a list, grouped by column, to refer to while working.
+- Drag a task from the list onto a session to hand that task to it.
 
-### Tasks
-- A task works the same way whether it goes to a person or to a Claude session. The only difference is who it's given to.
-- A task has a title, who it's given to, a status, a date (when it'll get done), labels, and checklists.
-- ~~Tasks don't link to legion missions.~~ **Changed 11 Nov 2026:** a task can link to one or more team jobs. The session handles the task; the team handles the job. A task still isn't a job.
+## Session buttons in the desktop app (13 Nov 2026)
+Each is a button that does what the `omicron` commands do today.
+- **Open:** pick a folder, Claude starts there in a new tab.
+- **Close a tab:** only lets go (like Ctrl-\). Claude keeps running and the session stays in the list.
+- **End:** quits Claude, which ends the session.
+- **Hand off:** one session carries on after clearing, with an empty memory but knowing where it was:
+  1. The app asks the session to write its handoff note.
+  2. It waits until the note is saved (it sees the change come in).
+  3. It sends `/clear`.
+  4. The fresh chat, in the same tab and the same session, starts with the note (the start-up hook already does this).
+- Past handoff notes show under each session in the left list, to read back.
 
-- Each Project has its own labels.
+## The rest of the Dev view: teams, loops, accounts (13 Nov 2026)
+All machine-only, because each one makes the computer do something.
+- **Teams:** set a folder up, start a team (it starts its own Claude workers), give it jobs. Seeing a team's jobs and status stays safe, on the web page too.
+- **Loops:** a loop types a prompt into a session every so often, so setting one up, changing or stopping it happens on the dev side. The list of loops can be seen anywhere.
+- **Accounts:** save and switch the Claude accounts on this computer.
+- **Setup checks:** what `omicron doctor` says this computer still needs.
+- **The `omicron` command** does everything the web page and the desktop app do. The desktop app is buttons on the same program, and like it, the command only acts on the computer it runs on.
 
-### Statuses
-- Each Project makes its own list of statuses. For example, our family Trello only has **To do** and **Done**.
-- Each Project marks one of its statuses as its **Done** status.
-- **Needs review** is separate from the Project's statuses. It's a mark on the task, not a column, and the task stays in whatever status it was in.
-- Only a Claude session can put the Needs review mark on a task.
-- The mark goes away only when I press **Reviewed** on the task.
+## Drop chat (13 Nov 2026)
+Decided: Omicron loses the Project chat.
+- Task comments already cover talking about the work: sessions post their reports there, and Joe answers in them.
+- Chat was the easiest way for someone to give Claude orders (the same risk as typing into a session from the web page).
+- The morning summary, the only thing that uses chat today, becomes a task comment or a note instead.
 
-### Permissions
-- For now, every member of a Project can do everything in it.
-- If a Project has no machines added, nobody can do Claude things in it (like Dispatch).
+## Linking, what keeps sessions running, and tasks (13 Nov 2026)
+- **Linking:** any Claude started in a known Folder links itself when it starts. Any other Claude chat on the computer shows up in the desktop app with a "Link" button.
+- **What keeps sessions running:** a separate background program, like today. The desktop app only connects to it, so quitting the app leaves sessions running. The app starts the program if it's off.
+- **Tasks carry the same risk chat did.** If a session acted on tasks or comments given to it from the web page, anyone who can add a task could give Claude orders. So a session only works on a task handed to it on that computer: dragged onto it in the desktop app, or given with the `omicron` command. Tasks and comments from the web page are only things to read.
 
-### Adding people
-- A person can sign in on their own, or I can add them first.
-- Either way, they see nothing until they're added to a Project.
-- There's one table of people that shows the Projects each person is in. Any member can open it and add people to Projects or remove them.
+## The gate: letting a computer take orders for a while (13 Nov 2026)
+By default a computer takes no orders from anywhere else. The gate is the one exception.
+- Each computer opens its own gate, only from itself: a **toggle in the desktop app**, or a closing time typed into the `omicron` command (like `omicron gate open --until 17:00`).
+- While it's open, the computer takes messages and handed-over work from other machines and the web page. When it closes, it stops.
+- It closes at the time you choose, and never more than **24 hours** after it opened.
+- The computer itself checks the gate, not the database, so nobody can open it from outside by changing a row.
+- The desktop app always shows whether the gate is open and when it closes.
+- This is how working across machines stays manageable (a hard part of what legion and the board did): before handing work to another computer, open its gate until, say, 5 PM.
 
-### Projects and members
-- Each Project has its own members.
-- People only see the Projects they belong to. Family can't see work Projects unless they're added.
-- A member is anyone I invite: me, family, and Claude sessions. No coworkers for now.
-- Each Claude session is a real member with its own name, but it only sees the tasks given to it.
-- With no Claude sessions in a Project, it works like a plain Trello replacement.
+- **Only the computer's owner can send it orders**, even while the gate is open. Other people in the Project can't, ever.
+- **The computer serving the web page always takes orders from Joe**, with no gate to open, so he can work from his phone without logging in to unlock it each day. It only counts when the order comes straight into that computer's own page and that computer sees Joe's Tailscale login itself (through the home lab's gate), not from a row in the database. Everything else still needs the gate.
+- Risk Joe accepts: anyone holding his unlocked phone (or his Tailscale login) can give orders to that computer.
+- **The same rule covers the Dev view.** Seeing and typing into a terminal is no more dangerous than giving orders. So on the serving computer's own page, signed in as Joe, the page shows that computer's Dev view, terminal included, for that computer's sessions only. Everyone else, and every other computer, gets only the Tasks view.
 
-### Signing in
-- The database is the source of truth, and it holds the logins. No central server holds them.
-- People sign in with their Tailscale identity, if that's possible.
-- API keys are only for machines, never for people.
-- I'm on two Tailscale networks, personal and work, so I show up as two different Tailscale users. One person in Omicron can have more than one Tailscale identity linked to them.
-- Goal: my wife opens the homelab dashboard, clicks the Omicron button, and is signed in automatically.
-- How: a machine on each Tailscale network (for example the homelab on the personal one) serves the app. That machine checks who's connecting with Tailscale, looks up which person it belongs to, and signs them into Supabase. Only these machines need Supabase's secret key.
-- No backup sign-in (like an email code) for now. Maybe later.
-
-### Language
-- Rule: use Rust if Tailscale sign-in works from Rust. If it doesn't, try Go. Pure TypeScript is also an option.
-- Tailscale sign-in doesn't need Go's `tsnet`. When the Tailscale app is running on a computer, any program in any language can ask it who's on the other end of a connection. The `tailscale whois` command does this, and `tailscale serve` can add the person's login to each request it passes along. So Rust or TypeScript both work.
-- Leaning TypeScript: the phone app is TypeScript anyway, Supabase's JavaScript library has the most complete live-update support, and the terminal tool can be built into one program file with Bun.
-- **Decided:** all of Omicron is one Rust program: the `omicron` command and the background program. Only the web page is TypeScript and React, using plain shadcn components (no slag styling).
-
-### Machines, API keys and Claude sessions (proposed, simpler version)
-- **People**: members of Projects. Nothing else to it.
-- **Machine**: a computer that's been registered with Omicron. It can be active or inactive. When it's registered, it gets its own API key, and that key belongs only to that machine.
-- **Project access**: set on the machine, either to certain Projects or to all of them, the same way it works for people. Adding a machine to a Project and setting the machine's Project access are the same thing, set in one place.
-- **Claude session**: belongs to one machine and one Project. It uses its machine's key through `omicron` commands, so it has no key of its own. Its Project has to be one its machine is allowed into. It can optionally manage a legion squad.
-- Dropped: one key shared across several machines. With one key per machine you always know which machine did something, and you can shut off one machine without touching the others.
-- I agreed to this simpler version.
-
-### Computers and sessions
-- Omicron can be installed on any of the 4 computers: the Mac, spark, the Mac mini, and the personal laptop.
-- On any of those computers, a Claude session can be registered to the Omicron setup and to a specific Project.
-- Omicron keeps track of each session and whether its computer is awake.
-
-### Sending a task to a Claude session
-- Sessions don't start tasks on their own.
-- Two ways a task reaches a session:
-  - I tell the session to go get its tasks.
-  - I press a **Dispatch** button on the task. That opens the session on its computer and hands it the task.
-- If the computer is asleep, Dispatch comes back with an error. The simplest rule: if no computer picks up the request within a set time, it fails.
-
-### Reports
-- A session's report shows up as a comment on the task.
-- A report doesn't close the task. It puts the **Needs review** mark on it for me to check.
-
-### Message board
-- Each Project can turn its message board on or off at any time.
-- When it's on, every member can read the chat and post in it.
-- When it's off, nobody sees it at all.
-
-### Tracking Claude sessions
-- Omicron keeps a list of all my Claude sessions.
-- From Omicron I can see every session, pick one, and jump straight into it.
-- In the terminal, Omicron only shows the sessions on the machine I'm on. Picking one works like the `claude-sessions` picker: a full-screen list in the terminal that drops me into the session.
-- From the terminal I can start a new session: pick a Project, then give it a name, like the Claude naming tool does today. The Claude session gets that same name.
-- I can also add a session that's already open, instead of starting a new one.
-- If I rename the session with `/rename` inside Claude, the name in Omicron changes too.
-  - How it could work: `/rename` writes a `custom-title` line into the session's transcript file (`~/.claude/projects/.../<id>.jsonl`). `claude-sessions` already reads that line. Omicron can watch the file and update the name as soon as the line shows up.
-
-- Only sessions started or added through Omicron show up. Other Claude sessions on the machine are ignored.
-
-### Terminal vs. web page
-- The `omicron` terminal tool can do everything the web page can do.
-- The web page can't create new sessions. Only the terminal can.
-- Exception: if a task's session is closed and its machine is awake, Dispatch can reopen it (`claude --resume`) on that machine.
-- A session that Dispatch reopens runs in the background, the way seraph's "headless" sessions work. I can jump into it later from the `omicron` picker.
-
-### The other tools
-- The terminal machine picker, janus, board / board-tui, and `legion-instances` all become parts of Omicron and keep doing what they do today.
-- They aren't closely tied to tasks and Projects. The point is to have one codebase to look after instead of several.
-- Each one is part of the one `omicron` program, not a separate repo.
-- Each one gets rewritten. No old code gets copied in.
-- Each one plugs into what Omicron already has (Supabase, machines, sessions, Projects) instead of keeping its own copy of the same thing.
-- Names can change so everything fits together.
-
-#### What each one does today, and how it could fit (proposal)
-| Today | What it does | In Omicron | Proposed command |
-| --- | --- | --- | --- |
-| `machine-pick` | Picks a machine for a new Ghostty/kitty tab and prints its ssh address. Machines come from `~/.config/machine-pick/machines.zsh`. | Uses Omicron's machine list, which already knows which machines are awake. | `omicron machines` |
-| `janus` | Switches Claude Code between accounts without closing sessions, and can switch on its own when usage runs low. | Logins stay on each machine and never go into Supabase. Omicron shows which account each session is on. | `omicron accounts` |
-| `board` / `board-tui` | Short messages between the Claude sessions on the Mac and spark, through a small server on spark (`BOARD_URL`, a shared secret). | Becomes the Project message board in Supabase, so the spark server goes away. Sessions post with their machine's key. | `omicron chat` |
-| `legion-instances` | One folder per legion, plus `legion.sh place / diff / save` to copy a legion between this repo and the folder it runs from. | A legion squad is tied to a machine and folder, and a Claude session can manage it. Omicron also covers "open a legion folder in VS Code". | `omicron teams` (was `omicron squads`) |
-| `claude-sessions` + the naming tool | Pick a past session and resume it. Name new sessions. | Already covered in "Tracking Claude sessions". | `omicron sessions` |
-| `lethe` | Handoff notes across `/clear`. | Already covered in "Handoffs". | `omicron handoff` |
-
-- I agreed to the command names in the table.
-- Board / board-tui becomes one chat per Project. Sessions don't need to message each other outside a Project.
-
-### Legion
-- All of legion moves into Omicron and gets rewritten, not just `legion-instances`. This is probably the biggest part of the whole thing.
-- Omicron keeps the list of squads (which machine, which folder, which session manages each one), so `machines.txt` goes away.
-- The web page doesn't need to handle legion. It's all done from the `omicron` terminal tool and through the Claude session that manages the squad.
-- No terminal view on the web.
-- In the terminal, `omicron teams` lets me pick a worker and jump into its live terminal, the same way the session picker works.
-- Legion is its own workflow and barely knows about the rest of Omicron. A task is **not** a legion mission. A Claude session can manage a legion team if I want it to, but the two stay separate.
-- Legion's data mostly stays on the machine running it. Supabase only gets the important parts: deployments, missions and their status, and operators.
-
-#### New words for legion (agreed)
-Plain words most people know, no military terms. Each one is chosen so it doesn't clash with Omicron's **task**, **Project**, **member**, or **session**.
-
-| Legion today | Proposed | What it means |
-| --- | --- | --- |
-| legion (the feature) | **teams** (`omicron teams`) | The part of Omicron that runs teams of Claude sessions |
-| deployment | **team** | One lead and its workers, in one folder, following one workflow |
-| commander | **lead** | The main session of a team. It hands out work and is the only one that starts or stops workers |
-| operator | **worker** | Any other session in the team |
-| operator's job (`planner`, `builder`) | **role** | What a worker does. Copies of one role are `builder`, `builder-2`, ... |
-| pipeline | **workflow** | Which role a job goes to next |
-| mission | **job** | One piece of work given to a team. Not the same as an Omicron task |
-| part | **part** | A piece of a job's current step, split off so several workers can do it at once |
-| strategist | **advisor** | An optional session that suggests speed-ups to the lead. It never gives orders |
-| escalation | **request** | Anything waiting on me: a question, a permission, a stuck job, a decision |
-| callout | **heads-up** | A one-line warning for the whole team |
-| harness | **runner** | The program a worker runs in (Claude Code, OpenCode) |
-| toolbox | **toolbox** | No change |
-
-- With these words, Supabase gets: teams, jobs and their status, and workers.
-- "Squad" earlier in this doc means the same thing as **team**.
-- What legion is today (from `legion/docs/legion.md`, now in `~/@/1_Projects/tools/legion`):
-  - Written in Rust (`crates/legion`, `legiond`, `legion-client`, `legion-proto`), plus a Tauri app in `app/`.
-  - A background program, `legiond`, runs a team of Claude Code sessions for each folder.
-  - Its words: **commander** (the lead session, the only one that starts or stops sessions), **operator** (any other session, named for its job), **pipeline** (who a mission goes to next), **deployment** (one commander and its operators, in one folder, on one pipeline), **mission** (one task, in a file that never changes), **strategist**, **part**, **escalation**, **callout**.
-  - Each folder's setup lives in `.legion/` in git: `legion.json`, `operators/`, `pipelines/`, `harnesses/`, `tools/`, `callouts.md`.
-
-### Later
-- Maybe build a terminal emulator too. Not now.
-
-### When a session is cleared, closed, or gone
-- I agreed to this plan:
-  - An Omicron session is the named thing I work with, and it stays the same even when Claude's own session ID changes underneath it.
-  - **Cleared (`/clear`)**: Claude starts a new session ID in the same window. A start-up hook (the same kind lethe uses) tells Omicron, which moves the Omicron session onto the new ID. The name, Project, tasks, and handoff notes all stay put.
-  - **Closed (exited)**: an end-of-session hook marks it **closed**. It stays in the list, and picking it runs `claude --resume <id>`.
-  - **Gone (transcript file deleted, or the machine is removed)**: Omicron marks it **gone**. Its tasks and notes are kept, and I can either reassign its tasks or archive it.
-
-### Handoffs (taken from lethe)
-- Each Claude session has its own library of handoff notes. It can write new ones and pick one back up after `/clear`, the way lethe works today. This is for the terminal.
-- How lethe does it now:
-  - The `/lethe` skill writes a note and saves it with `lethe save`. `lethe context` first prints the project, its last note, and the project's own checks from `.lethe.md`.
-  - Notes are stored on the computer, in `~/.lethe/lethe.db` and `~/.lethe/notes`.
-  - Two Claude Code hooks run `lethe hook`: one when a session ends and one when a session starts. When I type `/clear`, the new session gets the saved note automatically.
-  - `/recall` lists notes (`lethe list`) and loads one (`lethe show <n> --pickup`).
-- What changes in Omicron: notes live in Supabase and belong to a Claude session, so I can see a session's notes from any machine or the web page.
-
-### Claude sessions and legion
-- A Claude session can run a legion squad if I want it to.
-- A Claude session is not a legion commander.
-
-### Decided while building (10–11 Nov 2026)
-- Omicron itself runs on the Mac (atlas); tests run in the `omicron-dev` container. The home lab puts the real page (:8451) and a dev page with seed data (:8453) on the tailnet, admin only for now.
-- Two Supabases: real data, and dev/test data with seed data to reset to.
-- Web page: Apple's Human Interface Guidelines, plain shadcn components, Geist and Geist Mono, Apple's system colors used sparingly.
-- `omicron machines pick` opens ssh to the machine's tailnet name.
-- `omicron accounts` is a full rewrite of janus (save, switch, usage, switch at a limit, one session on one account, usage on the web page).
-- Sessions follow this doc (11 Nov): Omicron starts sessions and Dispatch opens them. A sent task waits until I tell the session to get its tasks or press Dispatch; sessions never start tasks on their own.
-- **Where Omicron's sessions run:** not tmux and not Claude's remote-control. Omicron hosts them itself, like `dtach`: a small detached `omicron` host process per session owns its terminal (a pseudo-terminal) and a socket in `~/.omicron/run/`. `omicron sessions attach <name>` (or the picker) connects to it; a key detaches. It survives the daemon restarting. Dispatch reopens a closed session with the task as Claude's first message; for an open one the host types the task in.
-- Reports follow rules: `/s` style, no jargon, no made-up terms, at most 500 words.
-
-### User settings and API keys (11 Nov 2026)
-- Each person has settings. First one: appearance (Light, Dark, or match the system), saved in the database so it follows them between devices.
-- A page to create API keys. Keys are only for machines, so making one registers a machine and shows its key once.
-
-### The web page is a product, not a proof of concept (11 Nov 2026)
-- Make the UI and UX as mature as possible, following what the biggest and most-loved apps do (Trello, Linear, Things, Apple's Reminders, plus Apple's Human Interface Guidelines). It should feel familiar and easy from the first minute.
-- What that means in practice:
-  - Things move the way people expect: drag cards between and within columns, edit in place, Enter saves, Esc cancels.
-  - Changes show at once and save in the background (with a quiet retry or a clear error), never a spinner for a simple edit.
-  - Delete is undoable (an "Undo" toast) instead of a confirm step.
-  - Keyboard shortcuts and a command menu (⌘K) for people who want speed; every action still reachable by tap.
-  - Good empty, loading (skeletons) and error states everywhere; nothing blank.
-  - Search, filters (mine, due soon, needs review, by label) and sensible sorting.
-  - Accessible: labels for everything, focus that lands where it should, works with a keyboard and VoiceOver, respects Reduce Motion and larger text.
-  - Works the same on phone and desktop, with phone-native touches (swipe, sheets, 44pt targets, safe areas).
-
-## Notes from seraph (how computers talk through Supabase)
-Source: `agent_orchestration/seraph`, mainly `src/daemon.rs` and `supabase/migrations/20261018000500_many_machines.sql`.
-
-- Computers never talk to each other directly. They only talk through Supabase.
-- A **`commands` table** works as a to-do list for computers. The page adds a request row that names which computer it's for (`target`), with status `pending`.
-- **Claiming**: a computer changes the row from `pending` to `running`, but only if it's still `pending`. Only one computer can win that change, so two computers never both act on the same request. When the work is done, it saves the result or the error back on the row.
-- **Awake check**: each computer saves a `last_seen` time in a `controllers` table every 10 seconds. The page treats a computer as asleep if it hasn't checked in recently.
-- **Not event-driven**: seraph's background program checks the `commands` table about once a second. It only uses Supabase's live updates (Realtime) to stream the terminal screen.
-- **What Omicron would change**: each computer listens for new rows with Supabase Realtime instead of checking every second. Dispatch fails if the row is still `pending` after the time limit, or right away if the computer's `last_seen` is too old.
-- seraph is written in Rust, so picking Go means Omicron can't reuse its code directly, only its ideas.
-
-## Open questions
-1. What gets built first? One order: (a) Supabase tables, machines, and sign-in; (b) Projects and tasks, so it replaces Trello; (c) Claude sessions, Dispatch, and handoffs; (d) chat; (e) machines and accounts; (f) teams (legion), last because it's the biggest.
-2. Where does the code live: a new git repo in this `omicron` folder, with the Rust program and the web page side by side?
-3. While Omicron is being built, do the old tools (legion, lethe, board, janus, and the rest) keep running alongside it until each part is ready?
+Not hosting publicly: the web page stays behind Tailscale and the home lab's gate (no Vercel), so sign-in stays as it is.

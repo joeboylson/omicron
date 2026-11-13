@@ -1,28 +1,59 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Users } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { listMachineAccounts, listProjects, startProject, type MachineSummary, type ProjectSummary } from "@/lib/data";
-import { Machines } from "@/components/Machines";
-import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { NavBar } from "@/components/NavBar";
+import {
+  addMember,
+  addProjectMachine,
+  listMachines,
+  listPeople,
+  listProjects,
+  startProject,
+  type MachineRow,
+  type Person,
+  type ProjectSummary,
+} from "@/lib/data";
+import { MultiSelect } from "@/components/MultiSelect";
+import { Button } from "@/components/base/button";
+import { cn } from "@/lib/utils";
+import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
+import { TopBar } from "@/components/TopBar";
+import { DeleteProject } from "@/components/DeleteProject";
+import { Input } from "@/components/base/input";
 import { ProjectsSkeleton } from "@/components/Skeleton";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/base/dialog";
 
 export function ProjectsPage() {
   const { db, act, me } = useApp();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  const [machines, setMachines] = useState<MachineSummary[]>([]);
+  const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
   const [name, setName] = useState("");
   const [starting, setStarting] = useState(false);
+  // Who and what the new Project starts with: nobody ticked at first.
+  const [people, setPeople] = useState<Person[]>([]);
+  const [allMachines, setAllMachines] = useState<MachineRow[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!starting) return;
+    setPicked(new Set());
+    act(async () => {
+      const [p, m] = await Promise.all([listPeople(db), listMachines(db)]);
+      setPeople(p.filter((x) => x.id !== me.personId));
+      // Machines on every Project already have it.
+      setAllMachines(m.filter((x) => x.active && !x.all_projects));
+    });
+  }, [starting, db, act, me.personId]);
+  const toggle = (id: string, on: boolean) =>
+    setPicked((now) => {
+      const next = new Set(now);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   const reload = useCallback(() => {
     act(async () => {
-      const [p, m] = await Promise.all([listProjects(db), listMachineAccounts(db)]);
-      setProjects(p);
-      setMachines(m);
+      setProjects(await listProjects(db));
     });
   }, [db, act]);
   useEffect(reload, [reload]);
@@ -33,81 +64,95 @@ export function ProjectsPage() {
     const n = name.trim();
     if (!n) return;
     let id = "";
-    if (await act(async () => (id = await startProject(db, n)))) {
+    const started = await act(async () => {
+      id = await startProject(db, n);
+      await Promise.all([
+        ...people.filter((p) => picked.has(p.id)).map((p) => addMember(db, id, p.id)),
+        ...allMachines.filter((m) => picked.has(m.id)).map((m) => addProjectMachine(db, id, m.id)),
+      ]);
+    });
+    if (started) {
       setName("");
       setStarting(false);
       go(`/p/${id}`);
     }
   };
 
-  return (
-    <>
-    <NavBar
-      title="Projects"
-      titleClassName="mx-auto w-full max-w-3xl"
-      right={
-        <>
-        <Button variant="ghost" size="icon" aria-label="New Project" title="New Project" onClick={() => setStarting(true)}>
-          <Plus />
-        </Button>
-        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => go("/people")}>
-          <Users className="h-4 w-4" aria-hidden /> People
-        </Button>
+  const count = (key: keyof ProjectSummary, label: string, className?: string): ColumnDef<ProjectSummary, number> => ({
+    accessorKey: key,
+    header: ({ column }) => <SortHeader column={column} label={label} />,
+    cell: ({ getValue }) => <span className="font-mono">{getValue()}</span>,
+    meta: { className: cn("text-right", className) },
+  });
+  const columns: ColumnDef<ProjectSummary, any>[] = [
+    {
+      accessorKey: "name",
+      header: ({ column }) => <SortHeader column={column} label="Name" />,
+      cell: ({ row }) => (
+        <a
+          href={`/p/${row.original.id}`}
+          className="inline-flex min-h-8 items-center font-medium hover:underline"
+          onClick={(e) => {
+            e.preventDefault();
+            go(`/p/${row.original.id}`);
+          }}
+        >
+          {row.original.name}
+        </a>
+      ),
+    },
+    count("taskCount", "Tasks"),
+    count("memberCount", "People", "hidden sm:table-cell"),
+    count("machineCount", "Machines", "hidden sm:table-cell"),
+    count("sessionCount", "Sessions", "hidden md:table-cell"),
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => (
         <Button
           variant="ghost"
-          size="sm"
-          className="max-w-40 truncate text-muted-foreground"
-          data-testid="me"
-          data-person-id={me.personId}
-          data-via={me.via}
-          title={me.login}
-          aria-label={`${me.displayName}: Settings`}
-          onClick={() => go("/settings")}
+          size="icon"
+          className="text-muted-foreground hover:text-destructive"
+          aria-label={`Delete ${row.original.name}…`}
+          onClick={() => setDeleting(row.original)}
         >
-          {me.displayName}
+          <Trash2 />
         </Button>
-        </>
+      ),
+      meta: { className: "w-12 py-0 text-right" },
+    },
+  ];
+
+  return (
+    <>
+    <TopBar
+      here="/"
+      title="Projects"
+      actions={
+        <Button onClick={() => setStarting(true)}>
+          <Plus /> New Project
+        </Button>
       }
     />
-    <main className="mx-auto w-full max-w-3xl px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+    <main className="mx-auto grid w-full max-w-5xl gap-3 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       {projects === null ? (
         <ProjectsSkeleton />
       ) : projects.length === 0 ? (
-        <div className="grid justify-items-start gap-3 py-6">
-          <p className="text-muted-foreground">No Projects yet. Start one, or ask someone to add you to theirs.</p>
-          <Button onClick={() => setStarting(true)}>
-            <Plus /> New Project
-          </Button>
-        </div>
+        <p className="py-6 text-muted-foreground">No Projects yet. Start one, or ask someone to add you to theirs.</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2" aria-label="Projects">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <a
-                href={`/p/${p.id}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  go(`/p/${p.id}`);
-                }}
-              >
-                <Card className="transition-colors hover:bg-accent active:bg-accent">
-                  <CardHeader className="p-4">
-                    <CardTitle className="text-[17px] font-semibold tracking-normal sm:text-lg">{p.name}</CardTitle>
-                    <CardDescription>
-                      <span className="font-mono">{p.taskCount}</span> {p.taskCount === 1 ? "task" : "tasks"}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              </a>
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          label="Projects"
+          columns={columns}
+          data={projects}
+          initialSort={[{ id: "name", desc: false }]}
+          search={{ label: "Search Projects", placeholder: "Search Projects", text: (p) => p.name }}
+        />
       )}
+      <DeleteProject project={deleting} onOpenChange={(o) => !o && setDeleting(null)} onDeleted={reload} />
       <Dialog open={starting} onOpenChange={setStarting}>
-        <DialogContent className="gap-4 sm:max-w-md">
+        <DialogContent className="gap-4 sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader className="text-left">
             <DialogTitle>New Project</DialogTitle>
-            <DialogDescription>It starts with To do and Done. You can add statuses, labels and people after.</DialogDescription>
           </DialogHeader>
           <form onSubmit={start} className="grid gap-4">
             <Input
@@ -117,6 +162,26 @@ export function ProjectsPage() {
               placeholder="Name, like Kitchen remodel"
               aria-label="New Project name"
             />
+            {people.length > 0 && (
+              <div className="grid gap-1.5">
+                <span className="text-sm font-medium">People</span>
+                <MultiSelect label="People" none="Just you" choices={people.map((p) => ({ id: p.id, name: p.display_name }))} picked={picked} toggle={toggle} />
+              </div>
+            )}
+            {allMachines.length > 0 && (
+              <div className="grid gap-1.5">
+                <span className="text-sm font-medium">
+                  Machines
+                </span>
+                <MultiSelect
+                  label="Machines"
+                  none="No machines"
+                  choices={allMachines.map((m) => ({ id: m.id, name: m.name, mono: true }))}
+                  picked={picked}
+                  toggle={toggle}
+                />
+              </div>
+            )}
             <DialogFooter className="gap-2 sm:gap-0">
               <Button type="button" variant="ghost" onClick={() => setStarting(false)}>
                 Cancel
@@ -128,10 +193,8 @@ export function ProjectsPage() {
           </form>
         </DialogContent>
       </Dialog>
-      <div className="mt-8">
-        <Machines machines={machines} />
-      </div>
     </main>
     </>
   );
 }
+

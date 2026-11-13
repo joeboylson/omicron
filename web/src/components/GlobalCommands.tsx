@@ -24,7 +24,7 @@ export function GlobalCommands() {
     { id: "go-projects", label: "All Projects", group: "Go to", keywords: "home", run: () => go("/") },
     { id: "go-people", label: "People", group: "Go to", keywords: "members", run: () => go("/people") },
     { id: "go-settings", label: "Settings", group: "Go to", keywords: "preferences", run: () => go("/settings") },
-    { id: "go-keys", label: "API keys", group: "Go to", keywords: "machines", run: () => go("/keys") },
+    { id: "go-machines", label: "Machines", group: "Go to", keywords: "api keys", run: () => go("/machines") },
     { id: "theme-system", label: "Match the system", group: "Appearance", keywords: "theme", run: theme("system") },
     { id: "theme-light", label: "Light", group: "Appearance", keywords: "theme", run: theme("light") },
     { id: "theme-dark", label: "Dark", group: "Appearance", keywords: "theme night", run: theme("dark") },

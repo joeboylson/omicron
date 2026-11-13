@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { errorWords, OFFLINE_WORDS, signIn, type Me } from "@/lib/omicron";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/base/button";
 import { AppContext, go, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { PeoplePage } from "@/pages/PeoplePage";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { KeysPage } from "@/pages/KeysPage";
+import { MachinesPage } from "@/pages/MachinesPage";
 import { applyAppearance, loadAppearance } from "@/lib/theme";
 import { reportError } from "@/lib/report";
 import { BoardSkeleton } from "@/components/Skeleton";
@@ -34,7 +34,9 @@ export default function App() {
   const [signInError, setSignInError] = useState<string | null>(null);
   // Where the error came from: a later action that works clears an
   // action's error, but not one from elsewhere (that stays until dismissed).
-  const [error, setError] = useState<{ message: string; from: "action" | "uncaught" } | null>(null);
+  const [error, setError] = useState<{ message: string; from: "action" | "uncaught"; started?: number } | null>(null);
+  // Each action's place in line: one that started before a failure doesn't clear it by succeeding.
+  const started = useRef(0);
   const path = usePath();
 
   useEffect(() => {
@@ -66,15 +68,16 @@ export default function App() {
   }, []);
 
   const act = useCallback(async (work: () => Promise<unknown>) => {
+    const n = ++started.current;
     try {
       await work();
-      setError((current) => (current?.from === "action" ? null : current));
+      setError((current) => (current?.from === "action" && (current.started ?? 0) < n ? null : current));
       return true;
     } catch (e) {
       // Not reported when it's only the connection: nothing to fix.
       const words = errorWords(e);
       if (words !== OFFLINE_WORDS) reportError("action", e);
-      setError({ message: words, from: "action" });
+      setError({ message: words, from: "action", started: n });
       return false;
     }
   }, []);
@@ -115,8 +118,8 @@ export default function App() {
           <PeoplePage />
         ) : path === "/settings" ? (
           <SettingsPage />
-        ) : path === "/keys" ? (
-          <KeysPage />
+        ) : path === "/machines" || path === "/keys" ? (
+          <MachinesPage />
         ) : path === "/" || path === "/index.html" ? (
           <ProjectsPage />
         ) : (

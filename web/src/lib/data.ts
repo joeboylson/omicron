@@ -4,7 +4,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { must } from "./omicron";
 
-export type ProjectSummary = { id: string; name: string; taskCount: number };
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  taskCount: number;
+  memberCount: number;
+  /** Machines added to it (not counting ones on every Project). */
+  machineCount: number;
+  /** Claude sessions running in it now. */
+  sessionCount: number;
+};
 export type Status = { id: string; name: string; position: number; is_done: boolean; color: string | null };
 export type Label = { id: string; name: string; color: string | null };
 /** A second way to group tasks: rows on the board, like "Joe's to-do". */
@@ -101,8 +110,18 @@ export type SessionLoop = {
 };
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
-  const rows = must(await db.from("projects").select("id,name,tasks(count)").order("name"));
-  return (rows as any[]).map((r) => ({ id: r.id, name: r.name, taskCount: r.tasks?.[0]?.count ?? 0 }));
+  const rows = must(
+    await db.from("projects").select("id,name,tasks(count),project_members(count),project_machines(count),sessions(count)").order("name"),
+  );
+  const count = (r: any, k: string): number => r[k]?.[0]?.count ?? 0;
+  return (rows as any[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    taskCount: count(r, "tasks"),
+    memberCount: count(r, "project_members"),
+    machineCount: count(r, "project_machines"),
+    sessionCount: count(r, "sessions"),
+  }));
 }
 
 export async function startProject(db: SupabaseClient, name: string): Promise<string> {
@@ -221,6 +240,12 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
 
 const after = (xs: { position: number }[]) => xs.reduce((m, x) => Math.max(m, x.position), 0) + 1;
 
+/** Delete a Project and everything in it (tasks, sessions, chat). */
+export async function deleteProject(db: SupabaseClient, id: string) {
+  const gone = must(await db.from("projects").delete().eq("id", id).select("id")) as unknown[];
+  if (gone.length === 0) throw new Error("That Project couldn't be deleted (are you a member?).");
+}
+
 export async function renameProject(db: SupabaseClient, id: string, name: string) {
   must(await db.from("projects").update({ name }).eq("id", id));
 }
@@ -324,6 +349,16 @@ export async function addMember(db: SupabaseClient, projectId: string, personId:
 
 export async function removeMember(db: SupabaseClient, projectId: string, personId: string) {
   must(await db.from("project_members").delete().eq("project_id", projectId).eq("person_id", personId));
+}
+
+/** Let a machine use a Project (its sessions can work in it). */
+export async function addProjectMachine(db: SupabaseClient, projectId: string, machineId: string) {
+  must(await db.from("project_machines").insert({ project_id: projectId, machine_id: machineId }));
+}
+
+/** Take a machine out of a Project: its sessions there end. */
+export async function removeProjectMachine(db: SupabaseClient, projectId: string, machineId: string) {
+  must(await db.from("project_machines").delete().eq("project_id", projectId).eq("machine_id", machineId));
 }
 
 export async function removeSession(db: SupabaseClient, session: ClaudeSession) {

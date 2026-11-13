@@ -17,9 +17,9 @@ import {
   type ProjectData,
   type Task,
 } from "@/lib/data";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/base/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/base/dialog";
 import { Group, Row } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 

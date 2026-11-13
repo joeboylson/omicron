@@ -67,7 +67,7 @@ for (const scheme of ["light", "dark"]) {
     for (const [path, heading] of [
       ["/people", "People"],
       ["/settings", "Settings"],
-      ["/keys", "API keys"],
+      ["/machines", "Machines"],
     ]) {
       const tab = await context.newPage();
       await tab.emulateMedia({ colorScheme: scheme });

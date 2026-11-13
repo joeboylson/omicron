@@ -1,6 +1,6 @@
 # Teams: the plan for rewriting legion in Omicron
 
-Read alongside `DEFINITIONS.txt` (the words) and `ref/BRAINSTORM.md` ("Legion").
+Read alongside `DEFINITIONS.txt` (the words).
 Source read: `~/@/1_Projects/tools/legion` (docs/legion.md, IMPROVEMENTS.md,
 HANDOFF.md), 11 Nov 2026. Nothing is copied from it; this is the shape to
 rewrite.
@@ -60,7 +60,7 @@ team handles the jobs.
 - **Requests** (questions, permissions, decisions) reach you as Omicron
   things: a comment or a task given to you, so they show on the board and the
   phone, not only in a team app.
-- **Teams on the web page:** none at first (BRAINSTORM: terminal and the
+- **Teams on the web page:** none at first (the terminal and the
   managing session only). The board shows linked jobs' status on a task (#28).
 
 ## Lessons legion already learned (build them in from the start)

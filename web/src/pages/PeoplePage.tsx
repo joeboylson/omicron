@@ -3,16 +3,12 @@
 // take them out. Mirrors `omicron people`.
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Plus, Search, X } from "lucide-react";
-import { go, useApp } from "@/lib/app";
+import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addMember, listPeopleTable, listProjects, removeMember, type PersonRow, type ProjectSummary } from "@/lib/data";
-import { NavBar } from "@/components/NavBar";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Group } from "@/components/Grouped";
+import { TopBar } from "@/components/TopBar";
+import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
+import { MultiSelect } from "@/components/MultiSelect";
 import { ListSkeleton } from "@/components/Skeleton";
 
 function initials(name: string): string {
@@ -28,7 +24,6 @@ export function PeoplePage() {
   const { db, act, me } = useApp();
   const [people, setPeople] = useState<PersonRow[] | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [query, setQuery] = useState("");
 
   const reload = useCallback(() => {
     act(async () => {
@@ -41,109 +36,64 @@ export function PeoplePage() {
   useChanges(db, null, reload);
 
   const change = (work: () => Promise<unknown>) => act(work).then((ok) => ok && reload());
-  const name = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = (people ?? []).filter((p) => {
-    const text = `${p.display_name} ${p.logins.join(" ")}`.toLowerCase();
-    return words.every((w) => text.includes(w));
-  });
+  // Only the Projects you're in show (the rest aren't yours to see).
+  const visible = (p: PersonRow) => p.projectIds.filter((id) => projects.some((pr) => pr.id === id));
+  const choices = projects.map((pr) => ({ id: pr.id, name: pr.name }));
+  const columns: ColumnDef<PersonRow, any>[] = [
+    {
+      accessorKey: "display_name",
+      header: ({ column }) => <SortHeader column={column} label="Name" />,
+      cell: ({ row: { original: p } }) => (
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">
+            {initials(p.display_name)}
+          </span>
+          <span className="font-medium">
+            {p.display_name}
+            {p.id === me.personId && <span className="font-normal text-muted-foreground"> (you)</span>}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "login",
+      accessorFn: (p) => p.logins.join(", "),
+      header: ({ column }) => <SortHeader column={column} label="Login" />,
+      cell: ({ getValue }) => <span className="font-mono text-xs text-muted-foreground">{getValue()}</span>,
+      meta: { className: "hidden md:table-cell" },
+    },
+    {
+      id: "projects",
+      accessorFn: (p) => visible(p).length,
+      header: ({ column }) => <SortHeader column={column} label="Projects" />,
+      cell: ({ row: { original: p } }) => (
+        <MultiSelect
+          label={`${p.display_name}'s Projects`}
+          none="No Projects you're in"
+          choices={choices}
+          picked={new Set(visible(p))}
+          toggle={(id, on) => change(() => (on ? addMember(db, id, p.id) : removeMember(db, id, p.id)))}
+        />
+      ),
+      meta: { className: "w-[45%]" },
+    },
+  ];
 
   return (
     <>
-      <NavBar
-        title="People"
-        titleClassName="mx-auto w-full max-w-3xl"
-        left={
-          <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
-            <ChevronLeft /> Projects
-          </Button>
-        }
-      />
-      <main className="mx-auto w-full max-w-3xl px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-        <div className="relative mb-4">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or login"
-            aria-label="Search people"
-            className="pl-9"
-          />
-        </div>
+      <TopBar here="/people" title="People" />
+      <main className="mx-auto grid w-full max-w-5xl gap-3 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         {people === null ? (
-          <Group title="People">
-            <ListSkeleton rows={4} />
-          </Group>
+          <ListSkeleton rows={4} />
         ) : (
-          <Group
-            title={`${shown.length} ${shown.length === 1 ? "person" : "people"}`}
-            note="Projects show here when you're in them too. People sign in with Tailscale; anyone you add sees the Project straight away."
-          >
-            {shown.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-muted-foreground">Nobody matches “{query}”.</p>
-            ) : (
-              <ul aria-label="People" className="divide-y">
-                {shown.map((p) => {
-                  const outside = projects.filter((pr) => !p.projectIds.includes(pr.id));
-                  const inside = p.projectIds.filter((id) => name(id));
-                  return (
-                    <li key={p.id} aria-label={p.display_name} className="flex gap-3 px-4 py-3">
-                      <span
-                        aria-hidden
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium sm:bg-secondary"
-                      >
-                        {initials(p.display_name)}
-                      </span>
-                      <div className="grid min-w-0 flex-1 gap-1.5">
-                        <div className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="text-[15px] font-medium sm:text-sm">
-                            {p.display_name}
-                            {p.id === me.personId && <span className="font-normal text-muted-foreground"> (you)</span>}
-                          </span>
-                          <span className="truncate font-mono text-xs text-muted-foreground">{p.logins.join(", ")}</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`${p.display_name}'s Projects`}>
-                          {inside.length === 0 && <span className="text-sm text-muted-foreground">No Projects you're in.</span>}
-                          {inside.map((id) => (
-                            <Badge key={id} variant="secondary" className="gap-1 pr-1 font-normal">
-                              {name(id)}
-                              <button
-                                type="button"
-                                aria-label={`Take ${p.display_name} out of ${name(id)}`}
-                                className="-my-1.5 -mr-1.5 grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                onClick={() => change(() => removeMember(db, id, p.id))}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </Badge>
-                          ))}
-                          {outside.length > 0 && (
-                            <Select value="" onValueChange={(id) => change(() => addMember(db, id, p.id))}>
-                              <SelectTrigger
-                                aria-label={`Add ${p.display_name} to a Project`}
-                                className="h-8 w-auto gap-1 border-dashed px-2 text-xs text-muted-foreground"
-                              >
-                                <Plus className="h-3 w-3" aria-hidden />
-                                <SelectValue placeholder="Add to…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {outside.map((pr) => (
-                                  <SelectItem key={pr.id} value={pr.id}>
-                                    {pr.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Group>
+          <DataTable
+            label="People"
+            columns={columns}
+            data={people}
+            rowLabel={(p) => p.display_name}
+            initialSort={[{ id: "display_name", desc: false }]}
+            search={{ label: "Search people", placeholder: "Search by name or login", text: (p) => `${p.display_name} ${p.logins.join(" ")}` }}
+          />
         )}
       </main>
     </>

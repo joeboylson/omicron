@@ -10,11 +10,11 @@ import {
   type SessionLoop,
 } from "@/lib/data";
 import { useApp } from "@/lib/app";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/base/select";
 import { Row, bare } from "@/components/Grouped";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
+import { Button } from "@/components/base/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
@@ -98,7 +98,7 @@ function SessionNotes({
           )}
         </DialogDescription>
       </DialogHeader>
-      {loop && <LoopGroup loop={loop} machine={session.machine} onChanged={onChanged} />}
+      {loop && <LoopGroup loop={loop} onChanged={onChanged} />}
       {tasks.length > 0 && (
         <Group title="Open tasks">
           <ul aria-label="Open tasks" className="divide-y">
@@ -146,7 +146,7 @@ function SessionNotes({
           </Row>
         </Group>
       )}
-      <Group title="Handoff notes" note="A waiting note goes to the next conversation in the session's window after /clear.">
+      <Group title="Handoff notes">
         {notes.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted-foreground">
             No notes yet. In the session: <span className="font-mono">omicron handoff write</span>
@@ -215,7 +215,7 @@ function inAbout(iso: string, now: number): string {
 }
 
 /** A session's running loop: what it types in, how often, until when, and Stop. */
-function LoopGroup({ loop, machine, onChanged }: { loop: SessionLoop; machine: string; onChanged: () => void }) {
+function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => void }) {
   const { db, act } = useApp();
   const now = useNow();
   const end =
@@ -225,7 +225,7 @@ function LoopGroup({ loop, machine, onChanged }: { loop: SessionLoop; machine: s
         ? `until ${new Date(loop.until).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${loop.runs} run${loop.runs === 1 ? "" : "s"} so far`
         : `until stopped · ${loop.runs} run${loop.runs === 1 ? "" : "s"} so far`;
   return (
-    <Group title="Loop" note={`${machine} types this in when it's due and the session has finished its turn.`}>
+    <Group title="Loop">
       <div className="grid gap-1.5 px-4 py-3" data-testid="loop">
         <p className="flex items-center gap-2 text-[15px] sm:text-sm">
           <Repeat className="h-4 w-4 shrink-0 text-[var(--sys-blue)]" aria-hidden />

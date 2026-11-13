@@ -29,7 +29,7 @@ test("addresses, Back and Forward, reloading, and addresses that lead nowhere", 
     [`/p/${project.id}`, name],
     ["/people", "People"],
     ["/settings", "Settings"],
-    ["/keys", "API keys"],
+    ["/machines", "Machines"],
   ]) {
     await page.goto(omicron.url + path);
     await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();

@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/base/button";
 import { reportError } from "@/lib/report";
 
 /**

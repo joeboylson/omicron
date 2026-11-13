@@ -52,7 +52,7 @@ test("the page shows the Projects the person is in", async ({ page, request }) =
 
   await visitAs(page, login, "Member");
   await page.goto(omicron.url);
-  await expect(page.getByRole("list", { name: "Projects" }).getByRole("listitem")).toHaveText([`${name}0 tasks`]);
+  await expect(page.getByRole("table", { name: "Projects" }).getByRole("link")).toHaveText([name]);
 });
 
 test("signing in needs POST", async ({ request }) => {
@@ -102,7 +102,7 @@ test("errors the page catches show on screen and reach the server's log", async 
   await expect.poll(() => omicron.log()).toContain("page error [uncaught] boom from a timer");
 });
 
-test("each machine's Claude accounts show on the Projects page, live", async ({ page }) => {
+test("each machine's Claude accounts show on the Machines page, live", async ({ page }) => {
   await page.goto(omicron.url);
   await expect(page.getByTestId("me")).toBeVisible();
   // Only people in a Project see machines.
@@ -131,6 +131,7 @@ test("each machine's Claude accounts show on the Projects page, live", async ({ 
     }),
   });
   expect(res.ok, await res.text()).toBeTruthy();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Machines" }).click();
   const machines = page.getByRole("list", { name: "Machines" });
   await expect(machines).toContainText(name);
   await expect(machines).toContainText("on work");

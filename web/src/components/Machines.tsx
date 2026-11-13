@@ -1,13 +1,13 @@
 import type { MachineSummary, UsageWindow } from "@/lib/data";
 import { Group, Row } from "@/components/Grouped";
-import { Progress } from "@/components/ui/progress";
+import { Progress } from "@/components/base/progress";
 import { Badge } from "@/components/ui/badge";
 
 /** Each machine's Claude account in use, and how much of each account's limits is used. */
 export function Machines({ machines }: { machines: MachineSummary[] }) {
   if (machines.length === 0) return null;
   return (
-    <Group title="Machines" note="Claude accounts each machine has saved (omicron accounts). Updated every 2 minutes.">
+    <Group title="Claude accounts">
       <ul className="divide-y" aria-label="Machines">
         {machines.map((m) => (
           <li key={m.id} className="grid gap-2 px-4 py-3">
@@ -61,7 +61,7 @@ function Meter({ label, w, className }: { label: string; w: UsageWindow; classNa
         value={percent ?? 0}
         aria-label={`${label} use`}
         className="mt-1 h-1.5"
-        indicatorStyle={{ background: `var(--sys-${color})` }}
+        color={`var(--sys-${color})`}
       />
     </div>
   );

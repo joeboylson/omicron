@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
-import { useApp } from "@/lib/app";
+import { Plus, Trash2 } from "lucide-react";
+import { go, useApp } from "@/lib/app";
 import {
   addMember,
+  addProjectMachine,
+  deleteProject,
   addStatus,
   addTopic,
   deleteStatus,
   deleteTopic,
   renameTopic,
+  listMachines,
   listPeople,
   markDoneStatus,
   removeMember,
+  removeProjectMachine,
   renameProject,
   renameStatus,
   deleteLabel,
@@ -18,22 +22,23 @@ import {
   setChat,
   setLabelColor,
   setStatusColor,
+  type MachineRow,
   type Person,
   type ProjectData,
   type Status,
   type Label,
   type Topic,
 } from "@/lib/data";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
+import { Button } from "@/components/base/button";
+import { Input } from "@/components/base/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
 import { ColorSelect } from "@/components/ColorDot";
-import { Switch } from "@/components/ui/switch";
+import { MultiSelect } from "@/components/MultiSelect";
+import { Switch } from "@/components/base/switch";
 
 export function ProjectSettings({
   project,
@@ -51,16 +56,35 @@ export function ProjectSettings({
   const [newStatus, setNewStatus] = useState("");
   const [newTopic, setNewTopic] = useState("");
   const [people, setPeople] = useState<Person[]>([]);
+  const [machines, setMachines] = useState<MachineRow[]>([]);
+  // Deleting asks for the Project's name, typed, first.
+  const [typedName, setTypedName] = useState("");
+  useEffect(() => setTypedName(""), [open]);
 
   useEffect(() => setName(project.name), [project.name]);
   useEffect(() => {
-    if (open) act(async () => setPeople(await listPeople(db)));
+    if (open) {
+      act(async () => {
+        const [p, m] = await Promise.all([listPeople(db), listMachines(db)]);
+        setPeople(p);
+        setMachines(m);
+      });
+    }
   }, [open, db, act]);
 
   const change = async (work: () => Promise<unknown>) => {
     if (await act(work)) onChanged();
   };
-  const outsiders = people.filter((p) => !project.members.some((m) => m.id === p.id));
+  // Machines change here, and the list is read here: read it again after.
+  const changeMachines = async (work: () => Promise<unknown>) => {
+    if (await act(work)) {
+      setMachines(await listMachines(db));
+      onChanged();
+    }
+  };
+  // Machines on every Project are always in it; the rest can be picked
+  // (switched-off ones only while they're still in it).
+  const pickable = machines.filter((m) => !m.all_projects && (m.active || m.projectIds.includes(project.id)));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -91,7 +115,6 @@ export function ProjectSettings({
 
         <Group
           title="Chat"
-          note="When it's off, nobody sees the chat, and Claude sessions aren't told about messages that name them."
         >
           <Row>
             <span id="chat-switch" className="flex-1 text-[15px] sm:text-sm">
@@ -105,7 +128,7 @@ export function ProjectSettings({
           </Row>
         </Group>
 
-        <Group title="Statuses" note="One status is the Done status. A status with tasks in it can't be removed.">
+        <Group title="Statuses">
           <ul className="divide-y">
             {project.statuses.map((s) => (
               <StatusRow key={s.id} status={s} inUse={project.tasks.some((t) => t.status_id === s.id)} change={change} />
@@ -136,7 +159,6 @@ export function ProjectSettings({
 
         <Group
           title="Topics"
-          note="Topics group tasks into rows on the board, like “Joe's to-do”. Removing one keeps its tasks, without a topic."
         >
           {project.topics.length > 0 && (
             <ul className="divide-y" aria-label="Topics">
@@ -169,7 +191,7 @@ export function ProjectSettings({
         </Group>
 
         {project.labels.length > 0 && (
-          <Group title="Labels" note="New labels are made from a task's Labels box. Removing one takes it off every task that has it.">
+          <Group title="Labels">
             <ul className="divide-y" aria-label="Labels">
               {project.labels.map((l) => (
                 <LabelRow key={l.id} label={l} count={project.tasks.filter((t) => t.labelIds.includes(l.id)).length} change={change} />
@@ -179,46 +201,56 @@ export function ProjectSettings({
         )}
 
         <Group title="Members">
-          <ul className="divide-y">
-            {project.members.map((m) => (
-              <li key={m.id}>
-                <Row>
-                  <span className="flex-1 py-2 text-[15px] sm:text-sm">
-                    {m.display_name}
-                    {m.id === me.personId && <span className="text-muted-foreground"> (you)</span>}
-                  </span>
-                  {m.id !== me.personId && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="-mr-2 text-destructive hover:text-destructive"
-                      aria-label={`Remove ${m.display_name}`}
-                      onClick={() => change(() => removeMember(db, project.id, m.id))}
-                    >
-                      <X />
-                    </Button>
-                  )}
-                </Row>
-              </li>
-            ))}
-          </ul>
-          {outsiders.length > 0 && (
-            <Row>
-              <Plus className="h-5 w-5 text-muted-foreground" aria-hidden />
-              <Select value="" onValueChange={(id) => change(() => addMember(db, project.id, id))}>
-                <SelectTrigger aria-label="Add a member" className={cn(bare, "px-0 text-muted-foreground")}>
-                  <SelectValue placeholder="Add a member…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {outsiders.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Row>
-          )}
+          <Row className="py-2">
+            <MultiSelect
+              label="Members"
+              none="Just you"
+              choices={people.filter((p) => p.id !== me.personId).map((p) => ({ id: p.id, name: p.display_name }))}
+              picked={new Set(project.members.map((m) => m.id))}
+              toggle={(id, on) => change(() => (on ? addMember(db, project.id, id) : removeMember(db, project.id, id)))}
+            />
+          </Row>
+        </Group>
+
+        <Group title="Machines">
+          <Row className="py-2">
+            <MultiSelect
+              label="Machines"
+              none="No machines"
+              choices={pickable.map((m) => ({ id: m.id, name: m.name, mono: true }))}
+              picked={new Set(pickable.filter((m) => m.projectIds.includes(project.id)).map((m) => m.id))}
+              toggle={(id, on) => changeMachines(() => (on ? addProjectMachine(db, project.id, id) : removeProjectMachine(db, project.id, id)))}
+            />
+          </Row>
+        </Group>
+
+        <Group
+          title={<label htmlFor="delete-project">Delete Project</label>}
+          note="Deletes it for everyone, with all its tasks, sessions and chat. This can't be undone."
+        >
+          <form
+            className="flex items-center gap-2 py-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (typedName !== project.name) return;
+              if (await act(() => deleteProject(db, project.id))) {
+                onOpenChange(false);
+                go("/");
+              }
+            }}
+          >
+            <Input
+              id="delete-project"
+              value={typedName}
+              onChange={(e) => setTypedName(e.target.value)}
+              placeholder={`Type ${project.name} to delete it`}
+              autoComplete="off"
+              className="flex-1"
+            />
+            <Button type="submit" variant="destructive" size="sm" disabled={typedName !== project.name}>
+              <Trash2 /> Delete
+            </Button>
+          </form>
         </Group>
       </DialogContent>
     </Dialog>

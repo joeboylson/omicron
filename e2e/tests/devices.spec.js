@@ -161,11 +161,11 @@ for (const [kind, device] of [
       await tappable(page, "Chat");
       await page.keyboard.press("Escape");
 
-      // People, Settings and API keys.
+      // People, Settings and Machines.
       for (const [path, heading] of [
         ["/people", "People"],
         ["/settings", "Settings"],
-        ["/keys", "API keys"],
+        ["/machines", "Machines"],
       ]) {
         await page.goto(omicron.url + path);
         await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();

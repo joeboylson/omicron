@@ -1,5 +1,5 @@
 import { COLORS, colorName, sys, type Color } from "@/lib/colors";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/base/select";
 import { cn } from "@/lib/utils";
 
 /** A small dot of a system color. Decoration: names say the same thing. */

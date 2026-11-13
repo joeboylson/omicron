@@ -19,9 +19,9 @@ import {
   type ProjectData,
   type Task,
 } from "@/lib/data";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
+import { Button } from "@/components/base/button";
+import { Input } from "@/components/base/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,7 +34,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/base/select";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
@@ -557,7 +557,7 @@ function TeamJobs({ project, task, onChanged }: { project: ProjectData; task: Ta
   const free = all.filter((j) => !linked.has(j.id) && j.state !== "cancelled");
   const change = (work: () => Promise<unknown>) => act(work).then((ok) => ok && onChanged());
   return (
-    <Group title="Team jobs" note="The session handles the task; the team handles the jobs.">
+    <Group title="Team jobs">
       {task.jobs.length > 0 && (
         <ul aria-label="Linked jobs" className="divide-y">
           {task.jobs.map((j) => (

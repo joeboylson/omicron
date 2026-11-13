@@ -6,7 +6,7 @@ parts I use to run Claude: sessions, handoffs, chat, machines, accounts, and
 teams of Claude sessions (rewritten from legion).
 
 - Words: `DEFINITIONS.txt`. Use those names and no others.
-- Decisions and reasons: `ref/BRAINSTORM.md`; the Teams plan: `ref/TEAMS.md`.
+- Ideas being talked through: `ref/BRAINSTORM.md`; the Teams plan: `ref/TEAMS.md`.
 - Work list: `TODO.md`.
 
 ## What it is
@@ -33,14 +33,31 @@ teams of Claude sessions (rewritten from legion).
 
 - **One Rust program** is both the `omicron` command and the background program.
 - **The web page** is TypeScript and React with plain shadcn components (no
-  slag styling). It can't create new sessions; the `omicron` command can do
+  slag styling). When shadcn has a ready-made component (or a standard
+  pattern, like Popover + Command for picking several things), use it rather
+  than building one. Two layers:
+  - `web/src/components/ui/` is shadcn's files exactly as shadcn ships them.
+    Never edit them; `npx shadcn@2.1.8 add <name> --overwrite` in `web/` may
+    replace them at any time. Pin new packages' exact versions in
+    `package.json` after.
+  - `web/src/components/base/` is ours: a component of the same name built
+    on the shadcn one, with our changes (phone-sized tap targets, the sheet
+    dialog, `focusSheet`). The rest of the app imports a component from
+    `base/` when there's one there, otherwise from `ui/`.
+  - Every table is `components/DataTable` (shadcn's Data Table, on TanStack
+    Table): a page passes it rows and columns; it searches and sorts.
+  - Keep the UI plain and straightforward: no subtitles, explanatory notes or
+    help text under titles, sections or forms. A label, the thing itself, and
+    a warning only where something can't be undone.
+
+  The web page can't create new sessions; the `omicron` command can do
   everything the web page can.
 - Old tools (legion, lethe, seraph, janus, board, machine-pick,
   claude-sessions) are references for ideas only. Rewrite, don't copy code in.
   legion, lethe and claude-code-session-manager are in `~/@/1_Projects/tools/`,
   janus is in `~/@/1_Projects/dev/janus`. The source for seraph, board,
   machine-pick and claude-sessions isn't on this Mac any more (only the
-  `seraph` program in `~/.local/bin`); `ref/BRAINSTORM.md` has the notes on them.
+  `seraph` program in `~/.local/bin`).
 
 ## The hosted Supabase
 
@@ -131,7 +148,10 @@ Repeated steps, in `scripts/` (run on the Mac):
 ## How to work here
 
 - Keep every file for this project in this folder.
-- Run tests on the Mac with `scripts/test.sh` and `scripts/e2e.sh`. Omicron
+- Run tests on the Mac with `scripts/test.sh` and `scripts/e2e.sh`. The
+  browser tests are slow: run them only now and then (before committing a
+  big web change, or when asked), not after every change; keep their files
+  updated to match either way. Omicron
   itself runs for real on this Mac (`dev/mac.sh`). The old tools keep running
   until each Omicron part replaces them.
 - `ref/` is planning notes (the brainstorm, the Teams plan), kept in git.

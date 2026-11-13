@@ -6,7 +6,7 @@ import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { go, useApp } from "@/lib/app";
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from "@/lib/theme";
 import { NavBar } from "@/components/NavBar";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/base/button";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
@@ -51,14 +51,14 @@ export function SettingsPage() {
         <Group title="Machines">
           <button
             type="button"
-            onClick={() => go("/keys")}
+            onClick={() => go("/machines")}
             className="flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
           >
-            <span className="flex-1">API keys</span>
+            <span className="flex-1">Machines and API keys</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
           </button>
         </Group>
-        <Group title="Appearance" note="Saved with you, so it's the same on all your devices.">
+        <Group title="Appearance">
           <div role="radiogroup" aria-label="Appearance" className="divide-y">
             {CHOICES.map((c) => (
               <button

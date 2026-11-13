@@ -93,7 +93,7 @@ for (const scheme of ["light", "dark"]) {
     const tab = await context.newPage();
     await tab.emulateMedia({ colorScheme: scheme });
     await visitAs(tab, omicron, login, "Ada Example");
-    await tab.goto(`${omicron.url}/keys`);
+    await tab.goto(`${omicron.url}/machines`);
     await tab.getByRole("button", { name: "New key" }).first().click();
     await tab.getByLabel("Machine name").fill(unique("box"));
     await tab.getByRole("button", { name: "Make key" }).click();
