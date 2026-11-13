@@ -100,3 +100,12 @@ Tasks: #90 (Run rules), #91 (the run), #92 (teams), #93 (on the phone). The goal
 - **One session per run**, cleared between tasks with a handoff note: each task starts fresh, but there's one thing to watch and jump into, and its notes read as a diary of the night. A new session only if it crashes, picking up from the last note.
 - **Teams:** a task labelled "team" (or that the rules call big) goes to a team as a job, linked to the task. The run carries on with smaller tasks meanwhile; when the job finishes, the session checks it, reports, and moves the task to Review.
 - **Safe overnight:** the computer's gate is open until morning (it closes by itself), only Joe can give it orders, it works only in the Project's Folders, and anything it needs from Joe becomes a task in Waiting on Joe, answered from the phone.
+
+## Remote control with a short-lived token (13 Nov 2026)
+Tasks: #96. Not decided yet. If the board is hosted publicly (like Vercel), a machine could be controlled from one browser for a while:
+- The machine makes a short-lived token (`omicron` on that computer).
+- On another device, signed in to the hosted page, open that machine and choose "Unlock with token", paste it, save.
+- The token is kept in that browser's local storage: only that browser on that device can control the machine, until the token runs out. Nobody else, on any other device, gets in.
+- Joe accepts the gap: anyone with that browser can give the machine orders until then.
+- Showing it: first "shown once, then locked away" (maybe API keys too); then "for now, neither hides it; the short life is the protection". To settle.
+- Open: this is a way back to hosting publicly, which "The gate" set aside. It reads like the gate opened for one browser only; whether the owner rule still applies is to decide.
