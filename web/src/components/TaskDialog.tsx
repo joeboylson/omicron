@@ -51,9 +51,12 @@ export function TaskDialog({
   onChanged,
   onDelete,
   onPatch,
+  focusNotes = false,
 }: {
   project: ProjectData;
   task: Task | null;
+  /** Opened right after adding it: straight into its notes. */
+  focusNotes?: boolean;
   onClose: () => void;
   onChanged: () => void;
   /** Delete it (the page keeps an Undo for a few seconds). */
@@ -68,7 +71,13 @@ export function TaskDialog({
         className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:max-w-xl sm:bg-background"
         // Focus the sheet itself, not the title: on a phone a focused title
         // opens the keyboard. Keyboard and screen-reader users start inside.
-        onOpenAutoFocus={focusSheet}
+        onOpenAutoFocus={(e) => {
+          const notes = focusNotes ? document.getElementById("task-notes") : null;
+          if (notes) {
+            e.preventDefault();
+            notes.focus();
+          } else focusSheet(e);
+        }}
         // The board puts focus back on the task's card itself.
         onCloseAutoFocus={(e) => e.preventDefault()}
       >

@@ -493,6 +493,33 @@ test("a run: started from the page, followed, paused after its task", async ({ p
   }
 });
 
+test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter opens it at its notes", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("Home"));
+  await column(page, "To do").getByRole("button", { name: "Add a task" }).click();
+  const box = page.getByLabel("New task in To do");
+  await box.fill("Buy milk");
+  await page.keyboard.press("Enter");
+  await expect(column(page, "To do").getByRole("button", { name: /Buy milk/ })).toBeVisible();
+  await expect(box).toHaveValue("");
+  await expect(box).toBeFocused();
+
+  // A long title wraps onto more lines instead of scrolling sideways.
+  const before = (await box.boundingBox()).height;
+  await box.fill("Plant the tulips along the fence before the first frost comes, and the daffodils by the gate too");
+  expect((await box.boundingBox()).height).toBeGreaterThan(before);
+  expect(await box.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+  // Shift+Enter adds it and opens it, ready for its notes.
+  await page.keyboard.press("Shift+Enter");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Plant the tulips along the fence");
+  await expect(dialog.getByLabel("Notes")).toBeFocused();
+  await page.keyboard.type("Bulbs are in the shed.");
+  await escape(page);
+  await expect(column(page, "To do").getByRole("button", { name: /Plant the tulips/ })).toBeVisible();
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

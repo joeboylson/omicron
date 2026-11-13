@@ -28,6 +28,7 @@ import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
+import { Textarea } from "@/components/ui/textarea";
 import { GateButton } from "@/components/GateButton";
 import { DevView } from "@/components/DevView";
 import { RunBar } from "@/components/RunBar";
@@ -60,6 +61,7 @@ export function ProjectPage({ id }: { id: string }) {
     [setTaskInAddress],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notesFor, setNotesFor] = useState<number | null>(null);
   // The Dev view, for the owner of the computer serving the page (?view=dev).
   const [dev] = useDev(db);
   const [viewInAddress, setViewInAddress] = useAddressValue("view");
@@ -255,6 +257,16 @@ export function ProjectPage({ id }: { id: string }) {
     });
     act(() => moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position })).then(reload);
   };
+  // Added with Shift+Enter: open it, straight into its notes (#72).
+  const added = (number?: number, open?: boolean) => {
+    if (!open || number === undefined) return reload();
+    // Opened once it's loaded (an open task the page doesn't have is dropped).
+    act(async () => {
+      setProject(withSaving(await loadProject(db, id)));
+      setNotesFor(number);
+      setOpenTask(number);
+    });
+  };
   const nav = (
     <NavBar
       title={project.name}
@@ -421,7 +433,7 @@ export function ProjectPage({ id }: { id: string }) {
               label={s.name}
               tasks={project.tasks.filter((t) => t.status_id === s.id && matches(t))}
               onOpen={(t) => setOpenTask(t.number)}
-              onAdded={reload}
+              onAdded={added}
             />
           ))}
         </div>
@@ -433,7 +445,7 @@ export function ProjectPage({ id }: { id: string }) {
           collapsed={collapsed}
           onToggle={(key) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key])}
           onOpen={(t) => setOpenTask(t.number)}
-          onAdded={reload}
+          onAdded={added}
           onSettings={() => setSettingsOpen(true)}
         />
       )}
@@ -448,6 +460,7 @@ export function ProjectPage({ id }: { id: string }) {
       <TaskDialog
         project={project}
         task={task}
+        focusNotes={task !== null && task.number === notesFor}
         onClose={() => {
           // Back to the task's card (the board may have redrawn it while the
           // sheet was open, so the browser can't find it by itself).
@@ -518,7 +531,7 @@ function Lanes({
   collapsed: string[];
   onToggle: (key: string) => void;
   onOpen: (t: Task) => void;
-  onAdded: () => void;
+  onAdded: (number?: number, open?: boolean) => void;
   onSettings: () => void;
 }) {
   const lanes = project.topics.map((t) => ({ key: t.id, topicId: t.id as string | null, name: t.name }));
@@ -597,7 +610,8 @@ function Column({
   label: string;
   tasks: Task[];
   onOpen: (t: Task) => void;
-  onAdded: () => void;
+  /** A task was added: its number, and whether to open it (Shift+Enter). */
+  onAdded: (number?: number, open?: boolean) => void;
 }) {
   const { db, act } = useApp();
   const [adding, setAdding] = useState(false);
@@ -611,17 +625,20 @@ function Column({
   // One add at a time: while it's on its way (it may wait for the
   // connection), pressing Add again mustn't add it twice.
   const [saving, setSaving] = useState(false);
-  const add = async (e: React.FormEvent) => {
+  const add = async (e: React.FormEvent, open = false) => {
     e.preventDefault();
     const t = title.trim();
     if (!t || saving) return;
     setSaving(true);
-    const ok = await act(() => addTask(db, project, status.id, t, topicId));
+    let number: number | undefined;
+    const ok = await act(async () => {
+      number = await addTask(db, project, status.id, t, topicId);
+    });
     setSaving(false);
     if (ok) {
       // Only if it's still what was sent (more may have been typed since).
       setTitle((now) => (now.trim() === t ? "" : now));
-      onAdded();
+      onAdded(number, open);
     }
   };
 
@@ -653,13 +670,25 @@ function Column({
       </SortableContext>
       {adding ? (
         <form onSubmit={add} className="mt-2 flex flex-col gap-2">
-          <Input
+          <Textarea
             autoFocus
+            rows={1}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setAdding(false)}
+            // A title is one line: what's typed wraps, and a pasted line
+            // break becomes a space.
+            onChange={(e) => {
+              setTitle(e.target.value.replace(/[\r\n]+/g, " "));
+              e.target.style.height = "auto";
+              e.target.style.height = `${e.target.scrollHeight}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setAdding(false);
+              // Enter adds it and keeps going; Shift+Enter adds it and opens it.
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) add(e, e.shiftKey);
+            }}
             placeholder="What needs doing?"
             aria-label={`New task in ${label}`}
+            className="min-h-9 resize-none overflow-hidden bg-background py-2 [field-sizing:content]"
           />
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={!title.trim() || saving} aria-label="Add task">

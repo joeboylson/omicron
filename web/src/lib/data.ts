@@ -291,7 +291,10 @@ export async function addTask(
   topicId: string | null = null,
 ) {
   const position = after(project.tasks.filter((t) => t.status_id === statusId));
-  must(await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId }));
+  const row = must(
+    await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId }).select("number").single(),
+  ) as { number: number };
+  return row.number;
 }
 
 export async function addTopic(db: SupabaseClient, project: ProjectData, name: string) {
