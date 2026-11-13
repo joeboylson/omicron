@@ -4,7 +4,7 @@
 --
 -- Waiting in supabase/pending until every machine runs a build without chat
 -- (atlas's Stop hook still reads chat_read_at). Then move it to
--- supabase/migrations/ and push. It deletes the chat messages for good.
+-- supabase/migrations/ with the next number and push. It deletes the chat messages for good.
 
 drop table if exists public.chat_messages;
 alter table public.projects drop column if exists chat_enabled;
