@@ -250,7 +250,13 @@ fn launch_lead(board: &Board, team: &TeamRow, note: Option<&str>) -> Result<bool
     }
     let (_, workflow, _) = read_setup(Path::new(&team.folder))?;
     let jobs = board.jobs(team)?;
-    let waiting: Vec<String> = jobs.iter().filter(|j| j.state == "waiting").map(|j| format!("#{} {}", j.number, j.title)).collect();
+    let mut waiting = Vec::new();
+    for j in jobs.iter().filter(|j| j.state == "waiting") {
+        // Added from elsewhere: only by the machine's owner, gate open.
+        if takes_orders_from(board, j.created_by.as_deref())? {
+            waiting.push(format!("#{} {}", j.number, j.title));
+        }
+    }
     let first = if waiting.is_empty() {
         format!("The team {} is running. No jobs are waiting; you'll be told when one comes in.", team.name)
     } else {
@@ -646,26 +652,21 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
             if team.machine_id != key.machine_id.to_string() {
                 return Ok(());
             }
-            let worker = req["worker"].as_str().unwrap_or("lead");
-            let who = record["author_name"].as_str().unwrap_or("someone");
-            let body = record["body"].as_str().unwrap_or("");
-            let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))? || tell(&team.name, "lead", &format!("Answer for {worker} from {who}: {body}"))?;
-            if told {
-                b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")), Some(serde_json::json!({ "state": "answered" })))?;
-                if let Some(job) = req["job_id"].as_str() {
-                    b.supabase.request_as(
-                        &b.session,
-                        "PATCH",
-                        &format!("/rest/v1/jobs?id=eq.{job}&state=eq.blocked"),
-                        Some(serde_json::json!({ "state": "working", "note": format!("Answered by {who}: {body}") })),
-                    )?;
-                }
+            // From elsewhere: only the owner's, while the gate is open. Until
+            // then it stays open, and is passed on when the gate opens.
+            if !takes_orders_from(&b, record["author_id"].as_str())? {
+                return Ok(());
             }
+            pass_answer(&b, &team, req, record)?;
         }
         ("jobs", "INSERT") => {
             let b = board()?;
             let Ok(team) = b.team_by_id(record["team_id"].as_str().unwrap_or("")) else { return Ok(()) };
             if team.machine_id != key.machine_id.to_string() || team.state != "running" {
+                return Ok(());
+            }
+            // Added from elsewhere: waits for the owner and the gate.
+            if !takes_orders_from(&b, record["created_by"].as_str())? {
                 return Ok(());
             }
             // A new lead is told about waiting jobs when it starts.
@@ -684,6 +685,74 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
     Ok(())
 }
 
+/// Whether this machine takes an order from `who` now (ref/BRAINSTORM.md,
+/// "The gate").
+fn takes_orders_from(board: &Board, who: Option<&str>) -> Result<bool> {
+    Ok(omicron::gate::refusal(board, "", who)?.is_none())
+}
+
+/// Pass an answer (a comment on the question's task) to the member who
+/// asked, or its lead, and mark the question answered.
+fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &serde_json::Value) -> Result<bool> {
+    let worker = req["worker"].as_str().unwrap_or("lead");
+    let who = comment["author_name"].as_str().unwrap_or("someone");
+    let body = comment["body"].as_str().unwrap_or("");
+    let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))? || tell(&team.name, "lead", &format!("Answer for {worker} from {who}: {body}"))?;
+    if told {
+        b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")), Some(serde_json::json!({ "state": "answered" })))?;
+        if let Some(job) = req["job_id"].as_str() {
+            b.supabase.request_as(
+                &b.session,
+                "PATCH",
+                &format!("/rest/v1/jobs?id=eq.{job}&state=eq.blocked"),
+                Some(serde_json::json!({ "state": "working", "note": format!("Answered by {who}: {body}") })),
+            )?;
+        }
+    }
+    Ok(told)
+}
+
+/// When the gate opens (or the daemon starts): pass on what waited for it,
+/// for the running teams here. Open questions get their latest answer that
+/// may come in now; jobs added from elsewhere are told to the lead (with
+/// `jobs`: a lead that has just started heard them already). Safe to
+/// run twice: an answered question isn't open any more, and a lead told
+/// about a waiting job again only hears it twice.
+pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey, jobs: bool) -> Result<()> {
+    let b = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
+    let me = key.machine_id.to_string();
+    for team in b.teams()?.into_iter().filter(|t| t.machine_id == me && t.state == "running") {
+        let reqs = b.supabase.request_as(&b.session, "GET", &format!("/rest/v1/team_requests?team_id=eq.{}&state=eq.open&select=id,job_id,worker,task_id,created_at", team.id), None)?;
+        for req in reqs.as_array().into_iter().flatten() {
+            let comments = b.supabase.request_as(
+                &b.session,
+                "GET",
+                &format!(
+                    "/rest/v1/comments?task_id=eq.{}&session_id=is.null&created_at=gt.{}&select=author_id,author_name,body&order=created_at.desc",
+                    req["task_id"].as_str().unwrap_or(""),
+                    req["created_at"].as_str().unwrap_or("").replace('+', "%2B")
+                ),
+                None,
+            )?;
+            for c in comments.as_array().into_iter().flatten() {
+                if takes_orders_from(&b, c["author_id"].as_str())? {
+                    pass_answer(&b, &team, req, c)?;
+                    break;
+                }
+            }
+        }
+        if !jobs {
+            continue;
+        }
+        for j in b.jobs(&team)?.into_iter().filter(|j| j.state == "waiting" && j.created_by.as_deref() != Some(me.as_str())) {
+            if takes_orders_from(&b, j.created_by.as_deref())? {
+                tell(&team.name, "lead", &format!("Job #{} is waiting: {}. Start it if nobody has.", j.number, j.title))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// When the daemon starts: bring back the lead of each running team here.
 pub fn bring_back(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey) -> Result<()> {
     let b = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
@@ -691,6 +760,9 @@ pub fn bring_back(supabase: &omicron::supa::Supabase, key: &omicron::supa::Machi
         if let Err(e) = start_lead(&b, &team) {
             eprintln!("omicron daemon: couldn't start {}'s lead: {e:#}", team.name);
         }
+    }
+    if omicron::gate::open_until().is_some() {
+        pass_waiting(supabase, key, false)?;
     }
     Ok(())
 }
@@ -854,7 +926,7 @@ mod tests {
             state: "running".into(),
             session_id: None,
         };
-        let job = Job { id: "j".into(), team_id: team.id.clone(), number: 4, title: "Two pages".into(), text: String::new(), state: "working".into(), step: None, note: None };
+        let job = Job { created_by: None, id: "j".into(), team_id: team.id.clone(), number: 4, title: "Two pages".into(), text: String::new(), state: "working".into(), step: None, note: None };
         let one = new_part(&team, &job, "the login page").unwrap();
         let two = new_part(&team, &job, "the sign-up page").unwrap();
         assert_eq!((one.number, two.number), (1, 2));

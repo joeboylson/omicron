@@ -1110,6 +1110,12 @@ fn a_team_runs_a_job_from_start_to_finish() {
     let shown = ok(&pat, None, &["tasks", "show", &project, &n]);
     assert!(shown.contains(&format!("{team}: planner asks about job #1")) && shown.contains("Email login, or Google too?"), "{shown}");
     ok(&pat, None, &["tasks", "comment", &project, &n, "Email only for now."]);
+    // From elsewhere, with the gate closed: it waits, and isn't dropped.
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert!(!read(&mac, "planner.typed").contains("Email only for now."), "the answer waits for the gate");
+    assert!(run(&["teams", "jobs", &team], None, None).1.starts_with("#1\tblocked"));
+    // Pat owns the machine and opens its gate: passed on then.
+    open_gate(&mac, &pat);
     wait_for("the answer reached the planner", || read(&mac, "planner.typed").contains("Email only for now."));
     wait_for("the job working again", || run(&["teams", "jobs", &team], None, None).1.starts_with("#1\tworking"));
 

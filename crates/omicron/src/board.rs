@@ -219,6 +219,10 @@ pub struct Job {
     pub state: String,
     pub step: Option<String>,
     pub note: Option<String>,
+    /// Who added it: the team's machine, or someone elsewhere (who needs to
+    /// own the machine, with its gate open).
+    #[serde(default)]
+    pub created_by: Option<String>,
 }
 
 /// Where to put a task in its status.

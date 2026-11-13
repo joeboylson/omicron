@@ -282,6 +282,13 @@ fn run(cli: Cli) -> Result<()> {
             match cmd {
                 GateCmd::Open { until } => {
                     omicron::gate::open(&until)?;
+                    // Pass on what waited for the gate: team answers and jobs.
+                    let config = Config::load()?;
+                    if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
+                        if let Err(e) = teams_run::pass_waiting(&supabase, &key, true) {
+                            eprintln!("couldn't pass on what waited for the gate: {e:#}");
+                        }
+                    }
                 }
                 GateCmd::Close => omicron::gate::close()?,
                 GateCmd::Status => {}
