@@ -63,6 +63,8 @@ pub struct Task {
     pub needs_review: bool,
     pub labels: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
+    /// Who gave it to its session (a person's or machine's id), set by the database.
+    pub given_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -139,7 +141,7 @@ fn check_date(d: &str) -> Result<()> {
     Ok(())
 }
 
-const TASK_FIELDS: &str = "id,number,title,notes,status_id,due_on,needs_review,position,\
+const TASK_FIELDS: &str = "id,number,title,notes,status_id,due_on,needs_review,position,given_by,\
 assignee:people(display_name),session:sessions(name),topic:topics(name),task_labels(labels(name)),checklist_items(id,text,done,position)";
 
 fn task_from(v: &Value) -> Result<Task> {
@@ -167,6 +169,7 @@ fn task_from(v: &Value) -> Result<Task> {
         needs_review: v["needs_review"].as_bool().unwrap_or(false),
         labels,
         checklist,
+        given_by: v["given_by"].as_str().map(String::from),
     })
 }
 
@@ -814,10 +817,12 @@ impl Board {
     /// Put the Needs review mark on (`true`, machines only) or take it off.
     /// Give a task to a Claude session in the same Project. The session gets
     /// it when told to get its tasks (`omicron tasks mine`) or by Dispatch.
+    /// Giving it again makes it new again, given by whoever gave it last
+    /// (the database sets who; `given_by` here only says "anew").
     pub fn send_task(&self, project: &Project, number: i64, session: &str) -> Result<Task> {
         let task = self.task(project, number)?;
         let s = self.session(project, session)?;
-        self.update_task(&task, json!({ "assignee_session_id": s.id, "assignee_person_id": null }))?;
+        self.update_task(&task, json!({ "assignee_session_id": s.id, "assignee_person_id": null, "given_by": null }))?;
         self.task(project, number)
     }
 
@@ -835,9 +840,10 @@ impl Board {
     }
 
     /// Take the tasks sent to a session that it hasn't picked up yet, marking
-    /// them picked up. Returns (Project name, task) pairs.
-    pub fn pick_up_tasks(&self, session_id: &str) -> Result<Vec<(String, Task)>> {
-        let taken = self.send("POST", "/rest/v1/rpc/pick_up_tasks?select=id", json!({ "session": session_id }))?;
+    /// them picked up: only the ones its own machine gave it, unless this
+    /// computer's gate is open. Returns (Project name, task) pairs.
+    pub fn pick_up_tasks(&self, session_id: &str, gate_open: bool) -> Result<Vec<(String, Task)>> {
+        let taken = self.send("POST", "/rest/v1/rpc/pick_up_tasks?select=id", json!({ "session": session_id, "gate_open": gate_open }))?;
         let ids: Vec<&str> = taken.as_array().into_iter().flatten().filter_map(|t| t["id"].as_str()).collect();
         if ids.is_empty() {
             return Ok(Vec::new());

@@ -611,14 +611,40 @@ pub fn tasks_mine() -> Result<()> {
         .and_then(|w| w.session_id.clone())
         .context("run this inside a Claude session Omicron tracks (opened with `omicron open`)")?;
     let board = sign_in(true)?;
-    let new: Vec<String> = board.pick_up_tasks(&session_id)?.into_iter().map(|(_, t)| t.id).collect();
-    let tasks = board.session_tasks(&session_id)?;
-    if tasks.is_empty() {
+    let gate_open = omicron::gate::open_until().is_some();
+    let new: Vec<String> = board.pick_up_tasks(&session_id, gate_open)?.into_iter().map(|(_, t)| t.id).collect();
+    // Only tasks given on this computer are handed over, unless the gate is
+    // open; the rest are only to read (ref/BRAINSTORM.md, "The gate").
+    let me = board.session.user.id.to_string();
+    let (tasks, to_read): (Vec<_>, Vec<_>) =
+        board.session_tasks(&session_id)?.into_iter().partition(|(_, t)| gate_open || t.given_by.as_deref() == Some(me.as_str()));
+    if tasks.is_empty() && to_read.is_empty() {
         println!("Nothing is given to this session right now.");
-    } else {
+        return Ok(());
+    }
+    if !tasks.is_empty() {
         print!("{}", tasks_message(&tasks, &new));
     }
+    if !to_read.is_empty() {
+        if !tasks.is_empty() {
+            println!();
+        }
+        print!("{}", to_read_message(&to_read));
+    }
     Ok(())
+}
+
+/// Tasks given to a session from elsewhere while its computer's gate is
+/// closed: titles only, to read, not to work on.
+pub fn to_read_message(tasks: &[(String, omicron::board::Task)]) -> String {
+    let it = if tasks.len() == 1 { "it" } else { "them" };
+    let mut text = format!(
+        "Given to this session from elsewhere, only to read: don't work on {it}. This computer's gate is closed, so it takes no work from elsewhere. Hand {it} over on this computer (`omicron tasks send`), or open the gate (`omicron gate open --until 17:00`).\n"
+    );
+    for (project, t) in tasks {
+        text.push_str(&format!("#{} in {project}: {}\n", t.number, t.title));
+    }
+    text
 }
 
 /// A new session's name: asked for in a terminal (Enter takes the

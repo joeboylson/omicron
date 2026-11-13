@@ -311,9 +311,21 @@ fn a_session_gets_its_tasks_only_when_told() {
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout), "", "nor does a new conversation");
 
+    // Given from elsewhere (Pat, not this computer) with the gate closed:
+    // only to read, not handed over (ref/BRAINSTORM.md, "The gate").
+    let mine = ok(&mac, Some(w.id()), &["tasks", "mine"]);
+    assert!(mine.starts_with("Given to this session from elsewhere, only to read"), "{mine}");
+    assert!(mine.contains(&format!("#1 in {project}: Write the parser\n")) && !mine.contains("(new)"), "{mine}");
+    assert!(!mine.contains("--review"), "no instructions to work on it: {mine}");
+
+    // Handed over on its own computer: it goes straight in.
+    let sent = ok(&mac, None, &["tasks", "send", &project, "1", "parser", "--as-machine"]);
+    assert!(sent.contains("sent to session parser"), "{sent}");
+
     // Told to get its tasks: it gets the open ones, new ones marked.
     let mine = ok(&mac, Some(w.id()), &["tasks", "mine"]);
     assert!(mine.contains(&format!("#1 in {project}: Write the parser (new)")), "{mine}");
+    assert!(!mine.contains("only to read"), "{mine}");
     assert!(mine.contains("comment") && mine.contains("--review"), "{mine}");
     // With how to write the report.
     assert!(mine.contains("No jargon and no made-up terms") && mine.contains("At most 500 words"), "{mine}");
@@ -327,6 +339,9 @@ fn a_session_gets_its_tasks_only_when_told() {
     assert!(again.contains(&format!("#1 in {project}: Write the parser\n")), "{again}");
     // Outside a tracked session there's no "mine".
     assert!(!run(&mac, None, &["tasks", "mine"]).status.success());
+
+    // With the gate open, work given from elsewhere comes in too.
+    open_gate(&mac);
 
     // Given to another session and back: new again.
     let (other, other_name) = machine(&s);

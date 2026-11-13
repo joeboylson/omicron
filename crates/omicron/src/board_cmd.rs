@@ -554,7 +554,16 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
         Tasks::Dispatch { project, number } => crate::dispatch_cmd::dispatch(&project, number, as_machine),
         Tasks::Send { project, number, session } => {
             let p = board.project(&project)?;
-            let t = board.send_task(&p, number, &session)?;
+            // Given to a session on this computer: given as this machine, so
+            // the session takes it with its gate closed (ref/BRAINSTORM.md,
+            // "The gate"). From anywhere else it's only to read until then.
+            let here = Config::load()?.machine_key().ok().map(|k| k.machine_id.to_string());
+            let t = match here {
+                Some(id) if board.session(&p, &session)?.machine_id == id && board.session.user.id.to_string() != id => {
+                    sign_in(true)?.send_task(&p, number, &session)?
+                }
+                _ => board.send_task(&p, number, &session)?,
+            };
             changed(&p, t)
         }
     }
