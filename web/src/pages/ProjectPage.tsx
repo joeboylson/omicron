@@ -29,6 +29,8 @@ import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
 import { GateButton } from "@/components/GateButton";
+import { DevView } from "@/components/DevView";
+import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
 import { BoardSkeleton } from "@/components/Skeleton";
@@ -57,6 +59,10 @@ export function ProjectPage({ id }: { id: string }) {
     [setTaskInAddress],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The Dev view, for the owner of the computer serving the page (?view=dev).
+  const [dev] = useDev(db);
+  const [viewInAddress, setViewInAddress] = useAddressValue("view");
+  const view = dev && viewInAddress === "dev" ? "dev" : "tasks";
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
   const [collapsed, setCollapsed] = useStored<string[]>(`omicron.collapsedTopics.${id}`, []);
   const [dragging, setDragging] = useState<Task | null>(null);
@@ -248,26 +254,58 @@ export function ProjectPage({ id }: { id: string }) {
     });
     act(() => moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position })).then(reload);
   };
+  const nav = (
+    <NavBar
+      title={project.name}
+      left={
+        <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
+          <ChevronLeft /> Projects
+        </Button>
+      }
+      right={
+        <>
+          {dev && (
+            <div role="radiogroup" aria-label="View" className="mr-1 flex rounded-lg bg-muted p-0.5 text-sm">
+              {(
+                [
+                  ["tasks", "Tasks"],
+                  ["dev", "Dev"],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={view === v}
+                  className={cn("rounded-md px-2.5 py-1", view === v ? "bg-background font-medium shadow-sm" : "text-foreground/75")}
+                  onClick={() => setViewInAddress(v === "dev" ? "dev" : null)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <GateButton />
+          <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
+            <Settings />
+          </Button>
+        </>
+      }
+    />
+  );
+  if (view === "dev" && dev) {
+    return (
+      <main className="flex h-dvh min-h-0 flex-col">
+        {nav}
+        <DevView project={project} dev={dev} onChanged={reload} />
+      </main>
+    );
+  }
   return (
     // By status, the board fills the screen and each column scrolls on its
     // own; by topic, the page scrolls through the rows.
     <main className={cn("flex min-h-0 flex-col", groupBy === "status" ? "h-dvh flex-none" : "flex-1")}>
-      <NavBar
-        title={project.name}
-        left={
-          <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
-            <ChevronLeft /> Projects
-          </Button>
-        }
-        right={
-          <>
-            <GateButton />
-            <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
-              <Settings />
-            </Button>
-          </>
-        }
-      />
+      {nav}
       <Sessions project={project} onChanged={reload} />
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative w-full sm:w-56">

@@ -297,6 +297,51 @@ test("on the computer itself, its owner opens and closes its gate from the page"
   expect(omicron.cli("gate", "status")).toContain("Closed");
 });
 
+test("the Dev view: this computer's sessions in terminals, and tasks handed over here", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  // Not the computer's owner: no Dev view.
+  await expect(page.getByRole("radiogroup", { name: "View" })).toHaveCount(0);
+
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
+  try {
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: omicron.folder(), source: "resume" });
+    omicron.cli("machines", "owner", robin.login);
+    omicron.cli("gate", "close");
+    await page.reload();
+    await page.getByRole("radio", { name: "Dev" }).click();
+    await expect(page).toHaveURL(/view=dev/);
+    const sessions = page.getByRole("list", { name: "Sessions" });
+    await expect(sessions).toContainText("parser");
+
+    // Its terminal: keys go in, and what it shows comes back.
+    await sessions.getByRole("button", { name: /parser/ }).click();
+    await expect(page.getByRole("tab", { name: "parser" })).toHaveAttribute("aria-selected", "true");
+    const term = page.getByTestId("terminal-parser");
+    await expect(term.getByRole("status")).toHaveCount(0);
+    await term.locator(".xterm").click();
+    await page.keyboard.type("hello from the page");
+    await page.keyboard.press("Enter");
+    await expect(term.locator(".xterm-rows")).toContainText("hello from the page");
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-view.png` });
+
+    // Handed over here, with the gate closed: the session takes it as its own.
+    await page.getByLabel("Hand #1 to a session here").selectOption({ label: "parser" });
+    await expect.poll(() => omicron.cliIn(win.pid, "tasks", "show", name, "1", "--as-machine")).toContain("sent to session parser");
+    expect(omicron.cliIn(win.pid, "tasks", "mine", "--as-machine")).toContain(`#1 in ${name}: Write the parser (new)`);
+
+    // Closing the tab leaves the session running.
+    await page.getByRole("button", { name: "Close parser's tab (it keeps running)" }).click();
+    await expect(page.getByRole("tab")).toHaveCount(0);
+    expect(omicron.cli("sessions", "hosted")).toContain("parser");
+  } finally {
+    win.kill();
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

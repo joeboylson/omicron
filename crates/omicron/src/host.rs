@@ -274,7 +274,7 @@ pub fn frame(kind: u8, data: &[u8]) -> Vec<u8> {
     f
 }
 
-fn connect(name: &str) -> Result<UnixStream> {
+pub fn connect(name: &str) -> Result<UnixStream> {
     UnixStream::connect(socket_path(name)?).with_context(|| format!("no session called {name} is running on this machine"))
 }
 

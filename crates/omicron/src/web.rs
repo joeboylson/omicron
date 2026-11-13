@@ -53,6 +53,7 @@ fn content_type(path: &str) -> &'static str {
 }
 
 /// A visit from this computer's owner, as `owner_visit` checked it.
+#[derive(Clone)]
 struct OwnerVisit {
     login: crate::supa::Session,
     /// Signed in as this machine.
@@ -98,13 +99,24 @@ impl WebMachine {
         let server = Server::http(("127.0.0.1", port)).map_err(|e| anyhow!("couldn't listen on 127.0.0.1:{port}: {e}"))?;
         let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
         println!("omicron web page on http://127.0.0.1:{port}");
+        // One thread per request: a terminal's output stays open.
+        let me = std::sync::Arc::new(self);
         for request in server.incoming_requests() {
-            self.handle(request);
+            let me = me.clone();
+            std::thread::spawn(move || me.handle(request));
         }
         Ok(())
     }
 
     fn handle(&self, mut request: Request) {
+        // A session's terminal output: streamed for as long as it's open.
+        let path = request.url().split('?').next().unwrap_or("/").to_string();
+        if *request.method() == Method::Get {
+            if let Some(name) = path.strip_prefix("/api/dev/term/") {
+                let name = name.to_string();
+                return self.terminal_output(request, &name);
+            }
+        }
         let (status, content_type, body) = match self.route(&mut request) {
             Ok(r) => r,
             Err(e) => (500, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes()),
@@ -268,12 +280,23 @@ impl WebMachine {
         let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
             return Ok(Err((401, "sign in first".into())));
         };
-        let Ok(login) = self.supabase.session_for_token(&token) else {
-            return Ok(Err((401, "that login doesn't work any more; reload the page".into())));
-        };
         let peer: IpAddr = request.remote_addr().map(|a| a.ip()).context("no address for this visit")?;
         let Ok(visit) = identity::visitor(peer, |name| request_header(request, name), identity::gate_secret().as_deref(), identity::local_person) else {
             return Ok(Err((409, "this visit's Tailscale login couldn't be checked".into())));
+        };
+        // Checked a moment ago for the same login and visit: the answer
+        // stands for a minute (a terminal asks with every few keys).
+        type Kept = std::collections::HashMap<(String, String, bool), (std::time::Instant, OwnerVisit)>;
+        static KEPT: std::sync::Mutex<Option<Kept>> = std::sync::Mutex::new(None);
+        let local = matches!(visit, Visit::Local(_));
+        let kept_key = (token.clone(), visit.person().login.clone(), local);
+        if let Some((at, v)) = KEPT.lock().unwrap().get_or_insert_with(Default::default).get(&kept_key) {
+            if at.elapsed() < std::time::Duration::from_secs(60) {
+                return Ok(Ok(v.clone()));
+            }
+        }
+        let Ok(login) = self.supabase.session_for_token(&token) else {
+            return Ok(Err((401, "that login doesn't work any more; reload the page".into())));
         };
         if self.supabase.person_for_login(&visit.person().login)? != Some(login.user.id) {
             return Ok(Err((409, "the page's login isn't the Tailscale login of this visit".into())));
@@ -285,7 +308,12 @@ impl WebMachine {
         if board.machine_owner()?.as_deref() != Some(login.user.id.to_string().as_str()) {
             return Ok(Err((409, "you don't own the computer serving this page".into())));
         }
-        Ok(Ok(OwnerVisit { login, board, local: matches!(visit, Visit::Local(_)) }))
+        let v = OwnerVisit { login, board, local };
+        let mut kept = KEPT.lock().unwrap();
+        let kept = kept.get_or_insert_with(Default::default);
+        kept.retain(|_, (at, _)| at.elapsed() < std::time::Duration::from_secs(60));
+        kept.insert(kept_key, (std::time::Instant::now(), v.clone()));
+        Ok(Ok(v))
     }
 
     /// The Dev view's side of this computer, for its owner only
@@ -323,6 +351,49 @@ impl WebMachine {
                     }
                 }
             }
+            "give" => {
+                // A task dragged onto one of this computer's sessions in the
+                // Dev view: given by this computer, so the session takes it
+                // with its gate closed (handed over on its own computer).
+                let (task, session) = (input["task_id"].as_str().unwrap_or(""), input["session_id"].as_str().unwrap_or(""));
+                if task.parse::<uuid::Uuid>().is_err() || session.parse::<uuid::Uuid>().is_err() {
+                    return answer(400, json!({ "error": "which task, to which session?" }));
+                }
+                let seen = self.supabase.request_as(&visit.login, "GET", &format!("/rest/v1/tasks?id=eq.{task}&select=id"), None)?;
+                if seen.as_array().is_none_or(|a| a.is_empty()) {
+                    return answer(404, json!({ "error": "no such task" }));
+                }
+                let me = visit.board.session.user.id.to_string();
+                let s = self.supabase.request_as(&visit.board.session, "GET", &format!("/rest/v1/sessions?id=eq.{session}&select=machine_id"), None)?;
+                if s.get(0).and_then(|r| r["machine_id"].as_str()) != Some(me.as_str()) {
+                    return answer(409, json!({ "error": "that session isn't on this computer" }));
+                }
+                self.supabase.request_as(
+                    &visit.board.session,
+                    "PATCH",
+                    &format!("/rest/v1/tasks?id=eq.{task}"),
+                    Some(json!({ "assignee_session_id": session, "assignee_person_id": null, "given_by": null })),
+                )?;
+            }
+            t if t.starts_with("term/") => {
+                // POST /api/dev/term/<session>/input {data} or /size {rows, cols}.
+                let (name, what) = t.trim_start_matches("term/").rsplit_once('/').unwrap_or(("", ""));
+                if !crate::host::hosted()?.iter().any(|h| h == name) {
+                    return answer(404, json!({ "error": format!("{name} isn't running on this computer") }));
+                }
+                let frame = match what {
+                    "input" => crate::host::frame(crate::host::INPUT, input["data"].as_str().unwrap_or("").as_bytes()),
+                    "size" => {
+                        let (rows, cols) = (input["rows"].as_u64().unwrap_or(24) as u16, input["cols"].as_u64().unwrap_or(80) as u16);
+                        let mut d = rows.to_be_bytes().to_vec();
+                        d.extend(cols.to_be_bytes());
+                        crate::host::frame(crate::host::RESIZE, &d)
+                    }
+                    _ => return answer(404, json!({ "error": "not found" })),
+                };
+                type_into(name, &frame)?;
+                return Ok((204, "application/json", Vec::new()));
+            }
             _ => return answer(404, json!({ "error": "not found" })),
         }
         let me = visit.board.session.user.id.to_string();
@@ -337,6 +408,60 @@ impl WebMachine {
                 "gate_until": crate::gate::open_until().map(|t| t.to_rfc3339()),
             }),
         )
+    }
+
+    /// GET /api/dev/term/<session>: the session's terminal output, for its
+    /// computer's owner (as `owner_visit` checks): first what it kept, then
+    /// live, until the session ends or the page lets go. Only sessions this
+    /// computer hosts.
+    fn terminal_output(&self, request: Request, name: &str) {
+        let refuse = |request: Request, code: u16, why: &str| {
+            let _ = request.respond(
+                Response::from_string(json!({ "error": why }).to_string())
+                    .with_status_code(code)
+                    .with_header(header("Content-Type", "application/json"))
+                    .with_header(header("Cache-Control", "no-store")),
+            );
+        };
+        if !allowed_host(&request_header(&request, "Host").unwrap_or_default(), &self.extra_hosts) {
+            return refuse(request, 421, "this page isn't served here");
+        }
+        match self.owner_visit(&request) {
+            Ok(Ok(_)) => {}
+            Ok(Err((code, why))) => return refuse(request, if code == 409 { 403 } else { code }, &why),
+            Err(e) => return refuse(request, 500, &format!("{e:#}")),
+        }
+        let stream = match crate::host::hosted().map(|all| all.iter().any(|h| h == name)) {
+            Ok(true) => crate::host::connect(name),
+            _ => return refuse(request, 404, &format!("{name} isn't running on this computer")),
+        };
+        let Ok(stream) = stream else { return refuse(request, 404, &format!("{name} isn't running on this computer")) };
+        eprintln!("omicron serve: the owner opened {name}'s terminal from the page");
+        // Written by hand, a chunk as soon as there's output: tiny_http's own
+        // streaming holds output back until it has 8 KB.
+        let mut stream = stream;
+        let mut out = request.into_writer();
+        let mut pass = || -> std::io::Result<()> {
+            use std::io::{Read, Write};
+            out.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+            )?;
+            out.flush()?;
+            let mut buf = [0u8; 16 * 1024];
+            loop {
+                let n = stream.read(&mut buf)?;
+                if n == 0 {
+                    break;
+                }
+                out.write_all(format!("{n:x}\r\n").as_bytes())?;
+                out.write_all(&buf[..n])?;
+                out.write_all(b"\r\n")?;
+                out.flush()?;
+            }
+            out.write_all(b"0\r\n\r\n")?;
+            out.flush()
+        };
+        let _ = pass();
     }
 
     fn dispatch_api(&self, request: &mut Request) -> Result<(u16, &'static str, Vec<u8>)> {
@@ -381,7 +506,13 @@ impl WebMachine {
             Err(e) => return Ok((403, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes())),
         };
         let person = visit.person();
-        let session = self.supabase.sign_in_person(person)?;
+        // One sign-in at a time: each makes a fresh sign-in link, which
+        // spoils the one made just before it if two run at once.
+        static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let session = {
+            let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+            self.supabase.sign_in_person(person)?
+        };
         Ok((
             200,
             "application/json",
@@ -420,6 +551,34 @@ fn page_error(request: &mut Request) -> (u16, &'static str, Vec<u8>) {
         field("stack", 1500)
     );
     (204, "application/json", Vec::new())
+}
+
+/// Pass a frame to a hosted session, over one connection per session kept
+/// open, so keys typed in quick succession arrive in order.
+fn type_into(name: &str, frame: &[u8]) -> Result<()> {
+    use std::collections::HashMap;
+    use std::io::Write;
+    use std::os::unix::net::UnixStream;
+    static OPEN: std::sync::Mutex<Option<HashMap<String, UnixStream>>> = std::sync::Mutex::new(None);
+    let mut open = OPEN.lock().unwrap();
+    let all = open.get_or_insert_with(HashMap::new);
+    if let Some(s) = all.get_mut(name) {
+        if s.write_all(frame).is_ok() {
+            return Ok(());
+        }
+        all.remove(name);
+    }
+    let mut s = crate::host::connect(name)?;
+    s.write_all(frame)?;
+    // Only for typing: what it shows comes through the terminal's own
+    // stream, so this copy is read and dropped.
+    if let Ok(mut drain) = s.try_clone() {
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut drain, &mut std::io::sink());
+        });
+    }
+    all.insert(name.to_string(), s);
+    Ok(())
 }
 
 fn header(name: &str, value: &str) -> Header {
