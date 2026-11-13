@@ -253,7 +253,8 @@ impl Supabase {
         self.session_for(&person_email(person_id))
     }
 
-    fn person_for_login(&self, login: &str) -> Result<Option<Uuid>> {
+    /// The person a Tailscale login belongs to, if anyone. Needs the secret key.
+    pub fn person_for_login(&self, login: &str) -> Result<Option<Uuid>> {
         let rows = self.admin("GET", &format!("/rest/v1/tailscale_identities?login=eq.{}&select=person_id", enc(login)), None, None)?;
         Ok(rows.get(0).and_then(|r| r["person_id"].as_str()).map(Uuid::parse_str).transpose()?)
     }

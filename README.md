@@ -81,6 +81,9 @@ omicron machines use-key <the key>
 omicron daemon start-at-login     # shows it as awake; runs Dispatch and loops
 ```
 
+On any computer, `omicron doctor` lists what's set up and what isn't, with
+the command for each missing piece.
+
 ### 5. Claude sessions
 
 On a machine that's in a Project:

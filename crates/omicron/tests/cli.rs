@@ -261,3 +261,50 @@ fn linking_a_second_tailscale_identity() {
     let again = admin.sign_in_person(&TailscalePerson { login: work, display_name: "Me (work)".into() }).unwrap();
     assert_eq!(again.user.id, me.user.id);
 }
+
+/// `omicron doctor` on a computer with only the settings in `home`: its own
+/// home folder too (for Claude's settings and the start-at-login file), and
+/// nobody signed in to Tailscale.
+fn doctor(home: &Path) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
+    for (k, _) in std::env::vars() {
+        if k.starts_with("OMICRON_") || k == "CLAUDE_CONFIG_DIR" {
+            cmd.env_remove(k);
+        }
+    }
+    let status = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/status-signed-out.json");
+    cmd.env("OMICRON_HOME", home).env("HOME", home).env("OMICRON_TAILSCALE_STATUS", status).arg("doctor").output().unwrap()
+}
+
+#[test]
+fn doctor_on_a_new_computer_says_to_run_setup() {
+    let o = doctor(&new_home());
+    assert!(!o.status.success());
+    let out = stdout(&o);
+    assert!(out.contains("fix   Settings") && out.contains("omicron setup"), "{out}");
+    // What depends on the settings isn't checked yet.
+    assert!(out.contains("--    Machine"), "{out}");
+    assert!(out.contains("fix   Claude hooks") && out.contains("setup-claude"), "{out}");
+    assert!(stderr(&o).contains("things left to set up"), "{}", stderr(&o));
+}
+
+#[test]
+fn doctor_says_what_a_new_machine_still_needs_and_when_its_done() {
+    let s = supabase_or_skip!();
+    let home = web_machine(&s);
+    let out = stdout(&doctor(&home));
+    assert!(out.contains("ok    Settings"), "{out}");
+    assert!(out.contains("fix   Machine") && out.contains("machines register"), "{out}");
+
+    let name = unique("doc");
+    ok(omicron(&home, &["machines", "register", &name]));
+    let out = stdout(&doctor(&home));
+    assert!(out.contains(&format!("{name} can't use any Project yet")), "{out}");
+    assert!(out.contains("fix   Daemon") && out.contains("fix   Start at login"), "{out}");
+
+    // Claude's hooks, in Omicron's own settings file.
+    let settings = home.join("claude/settings.json");
+    ok(omicron(&home, &["sessions", "setup-claude", "--settings", settings.to_str().unwrap()]));
+    let out = stdout(&doctor(&home));
+    assert!(out.contains("ok    Claude hooks") && out.contains("claude --settings"), "{out}");
+}

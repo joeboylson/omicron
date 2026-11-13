@@ -255,6 +255,13 @@ pub fn add_skill(claude_dir: &std::path::Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Does this Claude Code settings file have Omicron's SessionStart hook?
+pub fn has_hooks(path: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else { return false };
+    let Ok(settings) = serde_json::from_str::<Value>(&text) else { return false };
+    settings["hooks"]["SessionStart"].as_array().is_some_and(|l| l.iter().any(is_ours))
+}
+
 fn is_ours(group: &Value) -> bool {
     group["hooks"].as_array().is_some_and(|hs| {
         hs.iter().any(|h| h["command"].as_str().is_some_and(|c| c.contains("omicron") && c.contains(" hook ")))

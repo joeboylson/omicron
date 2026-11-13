@@ -9,6 +9,7 @@ mod accounts_cmd;
 mod board_cmd;
 mod chat_cmd;
 mod dispatch_cmd;
+mod doctor_cmd;
 mod guide;
 mod handoff_cmd;
 mod loops_cmd;
@@ -49,6 +50,8 @@ enum Command {
     },
     /// Who this machine is signed in to Tailscale as
     Whoami,
+    /// What this computer still needs set up, and the command for each
+    Doctor,
     /// Tell Claude Code to trust a folder (this one if left out), so a
     /// session Omicron starts there doesn't stop to ask. Omicron does this
     /// itself for folders it starts Claude in.
@@ -218,6 +221,7 @@ fn run(cli: Cli) -> Result<()> {
             println!("{} ({})", person.display_name, person.login);
             Ok(())
         }
+        Command::Doctor => doctor_cmd::doctor(),
         Command::Serve { port, hosts } => {
             let config = Config::load()?;
             let supabase = config.supabase()?;
