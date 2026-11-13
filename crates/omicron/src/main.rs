@@ -9,6 +9,7 @@ mod accounts_cmd;
 mod board_cmd;
 mod dispatch_cmd;
 mod doctor_cmd;
+mod folders_cmd;
 mod guide;
 mod handoff_cmd;
 mod loops_cmd;
@@ -144,6 +145,9 @@ enum Command {
     /// in its window (after /clear) starts with it
     #[command(subcommand)]
     Handoff(handoff_cmd::HandoffCmd),
+    /// Folders on this machine where a Project's sessions start: add, list, remove
+    #[command(subcommand)]
+    Folders(folders_cmd::FoldersCmd),
     /// Claude accounts on this machine: save, switch (rewrite of janus)
     #[command(subcommand)]
     Accounts(accounts_cmd::Accounts),
@@ -303,6 +307,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Teams(cmd) => teams_cmd::teams(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
+        Command::Folders(cmd) => folders_cmd::folders(cmd, cli.as_machine),
         Command::Accounts(cmd) => accounts_cmd::accounts(cmd),
         Command::Daemon { action: None } => daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {

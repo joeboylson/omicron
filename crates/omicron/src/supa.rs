@@ -228,6 +228,14 @@ impl Supabase {
     /// A request made as a signed-in person or machine. The database's own
     /// rules decide what they can see and change.
     /// Text in what comes back is made safe to show (see `text`).
+    /// Like `request_as`, with a `Prefer` header of your own (an upsert's
+    /// `resolution=merge-duplicates`).
+    pub fn call_as(&self, session: &Session, method: &str, path: &str, body: Value, prefer: &str) -> Result<Value> {
+        let mut v = self.call(method, path, &self.key, Some(&session.access_token), Some(body), Some(prefer))?;
+        crate::text::clean(&mut v);
+        Ok(v)
+    }
+
     pub fn request_as(&self, session: &Session, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
         let mut v = self.call(method, path, &self.key, Some(&session.access_token), body, Some("return=representation"))?;
         crate::text::clean(&mut v);

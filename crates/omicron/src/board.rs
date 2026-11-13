@@ -208,6 +208,27 @@ pub struct TeamRow {
     pub session_id: Option<String>,
 }
 
+/// A folder: one path, on one machine, for one Project. Sessions start in one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Folder {
+    pub id: String,
+    pub machine_id: String,
+    pub machine: String,
+    pub project: String,
+    pub path: String,
+}
+
+fn folder_from(v: &Value) -> Folder {
+    let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
+    Folder {
+        id: s("id"),
+        machine_id: s("machine_id"),
+        machine: v["machines"]["name"].as_str().unwrap_or("").to_string(),
+        project: v["projects"]["name"].as_str().unwrap_or("").to_string(),
+        path: s("path"),
+    }
+}
+
 /// A team's job.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Job {
@@ -401,6 +422,34 @@ impl Board {
         let only = project.map(|p| format!("&project_id=eq.{}", p.id)).unwrap_or_default();
         let rows = self.get(&format!("/rest/v1/sessions?select={SESSION_FIELDS}{only}&order=name"))?;
         rows.as_array().map(|a| a.iter().map(session_from).collect()).unwrap_or(Ok(Vec::new()))
+    }
+
+    /// Folders: one Project's, or all you can see, by machine then path.
+    pub fn folders(&self, project: Option<&Project>) -> Result<Vec<Folder>> {
+        let only = project.map(|p| format!("&project_id=eq.{}", p.id)).unwrap_or_default();
+        let rows = self.get(&format!("/rest/v1/folders?select=id,machine_id,path,projects(name),machines(name){only}&order=path"))?;
+        let mut all: Vec<Folder> = rows.as_array().into_iter().flatten().map(folder_from).collect();
+        all.sort_by(|a, b| (&a.machine, &a.path).cmp(&(&b.machine, &b.path)));
+        Ok(all)
+    }
+
+    /// Add a folder on this machine for a Project (only machines can). A path
+    /// already added moves to this Project. Returns it.
+    pub fn add_folder(&self, project: &Project, path: &str) -> Result<Folder> {
+        let rows = self.supabase.call_as(
+            &self.session,
+            "POST",
+            "/rest/v1/folders?on_conflict=machine_id,path&select=id,machine_id,path,projects(name),machines(name)",
+            json!({ "project_id": project.id, "path": path }),
+            "return=representation,resolution=merge-duplicates",
+        )?;
+        rows.get(0).map(folder_from).context("the folder wasn't saved")
+    }
+
+    /// Take a folder off the list. True if there was one.
+    pub fn remove_folder(&self, folder: &Folder) -> Result<bool> {
+        let rows = self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/folders?id=eq.{}", folder.id), None)?;
+        Ok(rows.as_array().is_some_and(|a| !a.is_empty()))
     }
 
     pub fn session(&self, project: &Project, name: &str) -> Result<SessionRecord> {

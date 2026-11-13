@@ -606,7 +606,31 @@ fn open_says_which_project_when_the_machine_is_in_several() {
     let w = open_window(&mac, &path, &["parser", "--project", &docs]);
     // One name runs once on a machine, whatever its Project.
     assert!(open_refused(&mac, &path, &["parser", "--project", &code]).contains("something called parser is already running"));
+
+    // Its folder is remembered as Docs's: the next one there needs no --project.
+    let work = mac.home.join("work").canonicalize().unwrap();
+    let listed = ok(&pat, None, &["folders", "list", "--project", &docs]);
+    assert_eq!(listed, format!("{mac_name}  {}  {docs}\n", work.display()));
+    let helper = open_window(&mac, &path, &["helper"]);
+    assert!(ok(&pat, None, &["sessions", "list"]).lines().any(|l| l.contains("helper") && l.contains(&docs)), "helper is Docs's");
+    close_window(&mac, helper);
     close_window(&mac, w);
+
+    // Added here for Code instead: it moves. Taken off, nothing else changes.
+    let said = command(&mac, None, &["folders", "add", "--project", &code]).current_dir(&work).output().unwrap();
+    assert!(String::from_utf8_lossy(&said.stdout).contains(&format!("for {code}")), "{}", String::from_utf8_lossy(&said.stderr));
+    assert!(ok(&pat, None, &["folders", "list", "--project", &docs]).starts_with("No folders yet"));
+    let said = command(&mac, None, &["folders", "remove"]).current_dir(&work).output().unwrap();
+    assert!(said.status.success() && String::from_utf8_lossy(&said.stdout).starts_with("Took "), "{}", String::from_utf8_lossy(&said.stderr));
+    assert!(work.exists());
+    assert!(ok(&pat, None, &["folders", "list"]).starts_with("No folders yet"));
+    // A person can't add one: only the computer it's on can.
+    let o = command(&pat, None, &["folders", "add", "--project", &code]).current_dir(&work).output().unwrap();
+    assert!(!o.status.success());
+    // A machine taken out of a Project loses its folders there.
+    command(&mac, None, &["folders", "add", "--project", &code]).current_dir(&work).output().unwrap();
+    ok(&pat, None, &["machines", "remove", &mac_name, &code]);
+    assert!(ok(&pat, None, &["folders", "list", "--project", &code]).starts_with("No folders yet"));
 }
 
 /// A machine with a stand-in for claude on its PATH, which acts like a

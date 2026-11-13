@@ -92,7 +92,10 @@ export type ProjectData = {
   handoffs: HandoffNote[];
   /** Running loops, one per session at most. */
   loops: SessionLoop[];
+  /** Where its sessions start: one path on one machine each. Added only on that machine. */
+  folders: Folder[];
 };
+export type Folder = { id: string; path: string; machine_id: string; machine: string };
 /** A prompt Omicron types into a session every so often. */
 export type SessionLoop = {
   id: string;
@@ -144,7 +147,7 @@ async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders] = await Promise.all([
     db.from("projects").select("id,name").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -176,6 +179,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .select("id,session_id,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at")
       .eq("project_id", id)
       .eq("state", "running"),
+    db.from("folders").select("id,path,machine_id,machines(name)").eq("project_id", id).order("path"),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -232,6 +236,9 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     })),
     handoffs: must(handoffs) as HandoffNote[],
     loops: must(loops) as SessionLoop[],
+    folders: (must(folders) as any[])
+      .map((f) => ({ id: f.id, path: f.path, machine_id: f.machine_id, machine: f.machines?.name ?? "" }))
+      .sort((a, b) => a.machine.localeCompare(b.machine) || a.path.localeCompare(b.path)),
   };
 }
 

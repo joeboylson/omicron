@@ -527,18 +527,16 @@ pub fn open(name: Option<String>, project: Option<String>, resume: Option<String
         }
     }
 
-    // A new session.
-    let project = match project {
-        Some(p) => p,
-        None => match board.projects()?.as_slice() {
-            [one] => one.clone(),
-            [] => bail!("this machine isn't in any Project yet. Add it with `omicron machines add <machine> <Project>`."),
-            all => bail!("say which Project with --project ({})", all.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")),
-        },
-    };
+    // A new session, in a folder: a known one is its Project's.
     let folder = match folder {
         Some(f) => f.canonicalize().with_context(|| format!("there's no folder {}", f.display()))?,
         None => std::env::current_dir()?,
+    };
+    let known = crate::folders_cmd::here(&board, &folder)?;
+    let project = match (project, &known) {
+        (Some(p), _) => p,
+        (None, Some(f)) => board.project(&f.project)?,
+        (None, None) => crate::folders_cmd::only_project(&board)?,
     };
     let name = match name {
         Some(n) => n,
@@ -554,6 +552,12 @@ pub fn open(name: Option<String>, project: Option<String>, resume: Option<String
     }
     let claude_id = resume.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let record = board.add_session(&project, &name, &claude_id, &folder.to_string_lossy())?;
+    // Remembered as the Project's folder here, for next time.
+    if known.as_ref().is_none_or(|f| f.project != project.name) {
+        if let Err(e) = board.add_folder(&project, &folder.to_string_lossy()) {
+            eprintln!("couldn't remember {} as a folder for {}: {e:#}", folder.display(), project.name);
+        }
+    }
     // So the start hook ties Claude's window to the session.
     let mut windows = Windows::load()?;
     windows.links.insert(claude_id.clone(), record.id.clone());

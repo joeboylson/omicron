@@ -103,6 +103,7 @@ const PROJECT_TABLES: &[&str] = &[
     "workers",
     "task_jobs",
     "team_requests",
+    "folders",
     "changes",
 ];
 
@@ -168,6 +169,7 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
     call(&s, &mac, "POST", "/rest/v1/workers", json!({ "team_id": team_id, "name": "builder", "role": "builder", "job_id": job[0]["id"] }));
     call(&s, &pat, "POST", "/rest/v1/task_jobs", json!({ "task_id": tid, "job_id": job[0]["id"] }));
     call(&s, &mac, "POST", "/rest/v1/team_requests", json!({ "team_id": team_id, "job_id": job[0]["id"], "worker": "builder", "task_id": tid }));
+    call(&s, &mac, "POST", "/rest/v1/folders", json!({ "project_id": pid, "path": "/code" }));
     let file = format!("{pid}/{}.png", Uuid::new_v4());
     s.upload_as(&pat, "comment-images", &file, b"\x89PNG\r\n\x1a\nsecret", "image/png").unwrap();
     let pat_id = pat.user.id;

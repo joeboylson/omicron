@@ -232,6 +232,27 @@ test("statuses and members are set in Project settings", async ({ page, request 
   await expect(page.getByLabel("Given to", { exact: true })).toHaveText(friend);
 });
 
+test("a Project's folders are listed in its settings, added only on their computer", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await page.getByRole("button", { name: "Project settings" }).click();
+  const folders = page.getByRole("dialog").getByRole("region", { name: "Folders" });
+  await expect(folders).toContainText("No folders yet.");
+  await expect(folders).toContainText("omicron folders add");
+
+  // Added on the machine: the page shows it live, with nothing to add it from here.
+  const dir = require("node:fs").realpathSync(require("node:fs").mkdtempSync("/tmp/of-"));
+  omicron.cli("folders", "add", dir, "--project", name);
+  await expect(folders).toContainText(dir);
+  await expect(folders).toContainText(machineName);
+  await expect(folders.getByRole("button")).toHaveCount(0);
+  if (process.env.OMICRON_SHOTS) {
+    await folders.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/folders.png` });
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);
