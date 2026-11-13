@@ -103,7 +103,7 @@ test("everything can be reached and seen with the keyboard, and a whole flow nee
   await expect(sheet).toHaveCount(0);
   await expect(card).toBeFocused();
 
-  // Project settings, the command menu and chat give focus back too.
+  // Project settings and the command menu give focus back too.
   await page.getByRole("button", { name: "Project settings" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();

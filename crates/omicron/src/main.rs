@@ -7,7 +7,6 @@ use uuid::Uuid;
 
 mod accounts_cmd;
 mod board_cmd;
-mod chat_cmd;
 mod dispatch_cmd;
 mod doctor_cmd;
 mod guide;
@@ -28,6 +27,19 @@ struct Cli {
     as_machine: bool,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Subcommand)]
+enum GateCmd {
+    /// Open it until a time, like 17:00 or 5pm (today, or tomorrow if that's passed)
+    Open {
+        #[arg(long)]
+        until: String,
+    },
+    /// Close it now
+    Close,
+    /// Whether it's open, and until when
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -121,6 +133,10 @@ enum Command {
     /// Let go of the session this runs in, leaving it running (like
     /// Ctrl-\): `! omicron detach` from inside it
     Detach,
+    /// The gate: whether this computer takes work from elsewhere (the web
+    /// page, other machines). Closed unless opened here; at most 24 hours
+    #[command(subcommand)]
+    Gate(GateCmd),
     /// Claude sessions: list them, pick one, send one a message
     #[command(subcommand)]
     Sessions(sessions_cmd::Sessions),
@@ -128,9 +144,6 @@ enum Command {
     /// in its window (after /clear) starts with it
     #[command(subcommand)]
     Handoff(handoff_cmd::HandoffCmd),
-    /// A Project's chat, for people and Claude sessions
-    #[command(subcommand)]
-    Chat(chat_cmd::Chat),
     /// Claude accounts on this machine: save, switch (rewrite of janus)
     #[command(subcommand)]
     Accounts(accounts_cmd::Accounts),
@@ -261,6 +274,17 @@ fn run(cli: Cli) -> Result<()> {
             let name = std::env::var("OMICRON_SESSION").ok().filter(|n| !n.is_empty()).context("run this inside a session opened with `omicron open`")?;
             omicron::host::detach(&name)
         }
+        Command::Gate(cmd) => {
+            match cmd {
+                GateCmd::Open { until } => {
+                    omicron::gate::open(&until)?;
+                }
+                GateCmd::Close => omicron::gate::close()?,
+                GateCmd::Status => {}
+            }
+            println!("{}", omicron::gate::status());
+            Ok(())
+        }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
         Command::Topics(cmd) => board_cmd::topics(cmd, cli.as_machine),
@@ -268,7 +292,6 @@ fn run(cli: Cli) -> Result<()> {
         Command::Teams(cmd) => teams_cmd::teams(cmd, cli.as_machine),
         Command::Hook(event) => sessions_cmd::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
-        Command::Chat(cmd) => chat_cmd::chat(cmd, cli.as_machine),
         Command::Accounts(cmd) => accounts_cmd::accounts(cmd),
         Command::Daemon { action: None } => daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {

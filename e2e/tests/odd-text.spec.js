@@ -44,8 +44,6 @@ test("odd text shows as plain text, never runs, and the layout holds", async ({ 
   }
   await rest(request, me, "POST", "/rest/v1/task_labels", { task_id: tasks[0].id, label_id: label.id });
   await rest(request, me, "POST", "/rest/v1/comments", { task_id: tasks[0].id, body: '<script>window.__pwned=6</script>\n<b>not bold</b> 😀 שלום' });
-  await rest(request, me, "PATCH", `/rest/v1/projects?id=eq.${project.id}`, { chat_enabled: true });
-  await rest(request, me, "POST", "/rest/v1/chat_messages", { project_id: project.id, body: '<img src=x onerror="window.__pwned=7"> **hi** 🎉' });
 
   // No dialog may open, and nothing may run.
   const dialogs = [];
@@ -90,11 +88,6 @@ test("odd text shows as plain text, never runs, and the layout holds", async ({ 
   await expect(sheet.locator('img[src="x"], script, b')).toHaveCount(0);
   await expect(sheet.getByLabel("Notes")).toHaveValue('<img src=x onerror="window.__pwned=5">\n**not bold**\nשורה');
   await page.keyboard.press("Escape");
-
-  // Chat.
-  await page.getByRole("button", { name: "Chat", exact: true }).click();
-  await expect(page.getByRole("list", { name: "Messages" })).toContainText('<img src=x onerror="window.__pwned=7"> **hi** 🎉');
-  await expect(page.getByRole("dialog").locator('img[src="x"]')).toHaveCount(0);
 
   expect(await page.evaluate(() => /** @type {any} */ (window).__pwned)).toBeUndefined();
   expect(dialogs).toEqual([]);

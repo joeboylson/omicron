@@ -1,7 +1,7 @@
 // @ts-check
 // Accessibility (axe) in the states the main check doesn't reach: an error
 // showing, a task with everything filled in, the "Deleted · Undo" message,
-// chat with messages, a newly made API key, and search finding nothing.
+// a newly made API key, and search finding nothing.
 // Light and dark. Serious and critical problems fail the test.
 const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
@@ -33,7 +33,6 @@ for (const scheme of ["light", "dark"]) {
     const name = unique("House");
     const project = await rest(request, me, "POST", "/rest/v1/rpc/start_project", { name });
     const [todo] = await rest(request, me, "GET", `/rest/v1/statuses?project_id=eq.${project.id}&select=id,name&order=position&limit=1`);
-    await rest(request, me, "PATCH", `/rest/v1/projects?id=eq.${project.id}`, { chat_enabled: true });
     const [label] = await rest(request, me, "POST", "/rest/v1/labels", { project_id: project.id, name: "outside", color: "green" });
     const [task] = await rest(request, me, "POST", "/rest/v1/tasks", {
       project_id: project.id,
@@ -47,7 +46,6 @@ for (const scheme of ["light", "dark"]) {
     await rest(request, me, "POST", "/rest/v1/checklist_items", { task_id: task.id, text: "Buy oil", done: true });
     await rest(request, me, "POST", "/rest/v1/checklist_items", { task_id: task.id, text: "Oil the latch" });
     await rest(request, me, "POST", "/rest/v1/comments", { task_id: task.id, body: "Bought the oil." });
-    await rest(request, me, "POST", "/rest/v1/chat_messages", { project_id: project.id, body: "Anyone seen the oil can?" });
     await rest(request, me, "POST", "/rest/v1/tasks", { project_id: project.id, status_id: todo.id, title: "Paint the fence" });
     await visitAs(page, omicron, login, "Ada Example");
     await page.goto(`${omicron.url}/p/${project.id}`);
@@ -64,14 +62,6 @@ for (const scheme of ["light", "dark"]) {
     await page.getByLabel("Search tasks").fill("nothing like this");
     await check(page, "Search finds nothing");
     await page.getByLabel("Search tasks").fill("");
-
-    // Chat with messages.
-    await page.getByRole("button", { name: "Chat", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Messages" })).toContainText("oil can");
-    await check(page, "Chat");
-    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // "Deleted · Undo".
     await page.getByRole("button", { name: /Paint the fence/ }).click();

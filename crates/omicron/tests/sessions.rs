@@ -473,7 +473,9 @@ fn a_handoff_note_reaches_the_next_conversation_in_the_window() {
 }
 
 #[test]
-fn a_projects_chat_reaches_the_sessions_it_names() {
+fn the_stop_hook_passes_nothing_on() {
+    // No chat, no tasks: anything typed into a session comes from its own
+    // computer (ref/BRAINSTORM.md, "Drop chat").
     let s = supabase_or_skip!();
     let pat = person(&s, "Pat");
     let project = unique("Code");
@@ -482,31 +484,7 @@ fn a_projects_chat_reaches_the_sessions_it_names() {
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
     let (mut w, claude) = opened(&s, &mac, "parser", &project);
     hook(&mac, w.id(), "session-start", json!({ "session_id": claude, "cwd": "/w", "source": "startup" }));
-    let stop = || hook_out(&mac, w.id(), "stop", json!({ "session_id": claude, "stop_hook_active": false }));
-
-    // Off until someone turns it on.
-    let o = run(&pat, None, &["chat", "send", &project, "hello"]);
-    assert!(String::from_utf8_lossy(&o.stderr).contains("chat is off"), "{}", String::from_utf8_lossy(&o.stderr));
-    assert_eq!(ok(&pat, None, &["chat", "on", &project]).trim(), format!("Chat is on for {project}."));
-
-    ok(&pat, None, &["chat", "send", &project, "Morning all."]);
-    assert_eq!(stop(), "", "a message that doesn't name the session isn't sent to it");
-    ok(&pat, None, &["chat", "send", &project, "@parser can you check the error messages?"]);
-    let out: Value = serde_json::from_str(&stop()).unwrap();
-    let reason = out["reason"].as_str().unwrap();
-    assert!(reason.contains(&format!("named in {project}'s chat")) && reason.contains("Pat: @parser can you check"), "{reason}");
-    assert_eq!(stop(), "", "only once");
-
-    // The session answers from its window; its own messages don't come back.
-    ok(&mac, Some(w.id()), &["chat", "send", &project, "On it. @parser note to self.", "--as-machine"]);
-    assert_eq!(stop(), "");
-    let read = ok(&pat, None, &["chat", "read", &project]);
-    let lines: Vec<&str> = read.lines().collect();
-    assert_eq!(lines.len(), 3, "{read}");
-    assert!(lines[2].contains(&format!("{mac_name} (session parser): On it.")), "{read}");
-
-    ok(&pat, None, &["chat", "off", &project]);
-    assert!(!run(&pat, None, &["chat", "send", &project, "x"]).status.success());
+    assert_eq!(hook_out(&mac, w.id(), "stop", json!({ "session_id": claude, "stop_hook_active": false })), "");
     w.kill().unwrap();
 }
 
@@ -737,6 +715,12 @@ fn dispatch_reaches_the_session_and_fails_when_it_ended_or_its_machine_is_asleep
     let mut d = daemon(&mac, &path);
     let told = format!("Omicron dispatched task #1 \"Fix the parser\" ({project}) to you. Run `omicron tasks mine` to get it, then work on it and report as it says.");
 
+    // Its gate is closed to start with: refused, plainly.
+    let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("gate is closed"), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(typed_lines(&mac).is_empty());
+    open_gate(&mac);
+
     // It reaches the session's window, whole.
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert_eq!(said.trim(), format!("Sent the task to parser on {mac_name}."));
@@ -819,6 +803,7 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     // Its window doesn't follow its inbox (no add-on): the task waits for
     // the next time it's opened, and Dispatch says so.
     let mut d = daemon(&mac, &path);
+    open_gate(&mac);
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(said.starts_with("parser isn't open"), "{said}");
     d.kill().unwrap();
@@ -1382,3 +1367,8 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
     close_window(&mac, w);
 }
 
+/// Open a machine's gate for two hours (ref/BRAINSTORM.md, "The gate").
+fn open_gate(mac: &Computer) {
+    let later = std::process::Command::new("date").args(["-v+2H", "+%H:%M"]).output().unwrap();
+    ok(mac, None, &["gate", "open", "--until", String::from_utf8_lossy(&later.stdout).trim()]);
+}

@@ -74,8 +74,7 @@ pub enum Hook {
     SessionStart,
     /// Claude Code's SessionEnd hook
     SessionEnd,
-    /// Claude Code's Stop hook: the turn ended (passes on chat that names
-    /// the session)
+    /// Claude Code's Stop hook: the turn ended
     Stop,
     /// Claude Code's UserPromptSubmit hook: a turn started
     Prompt,
@@ -313,30 +312,11 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         let Some(id) = windows.windows.get(&pid).and_then(|w| w.session_id.clone()) else {
             return Ok(None);
         };
-        // The turn is over: free for a loop's next prompt. First, so a
-        // failure below can't leave it marked busy.
+        // The turn is over: free for a loop's next prompt. Tasks aren't
+        // handed over here: a session only gets them when told (`omicron
+        // tasks mine`) or by Dispatch.
         omicron::windows::set_busy(&id, false)?;
-        // Tasks aren't handed over here: a session only gets them when told
-        // (`omicron tasks mine`) or by Dispatch. Chat that names it is a
-        // message, and is passed on.
-        let board = sign_in(true)?;
-        let (project, mentions) = board.take_chat_mentions(&id)?;
-        let mut reason = Vec::new();
-        if !mentions.is_empty() {
-            let mut text = format!("Omicron: you were named in {project}'s chat.\n");
-            for m in &mentions {
-                text.push_str(&format!("\n{}", crate::chat_cmd::line(m)));
-            }
-            text.push_str(&format!("\n\nAnswer with `omicron chat send '{project}' \"...\" --as-machine`, or read more with `omicron chat read '{project}' --as-machine`.\n"));
-            reason.push(text);
-        }
-        if reason.is_empty() {
-            return Ok(None);
-        }
-        // Blocking the stop makes Claude carry on, with this as the reason:
-        // still busy.
-        omicron::windows::set_busy(&id, true)?;
-        return Ok(Some(json!({ "decision": "block", "reason": reason.join("\n\n") }).to_string()));
+        return Ok(None);
     }
     let mut pick_up = None;
     // After /clear, the window's waiting handoff note goes to the new

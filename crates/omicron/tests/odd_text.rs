@@ -71,7 +71,7 @@ fn odd_text_is_kept_and_shown_safely() {
         assert!(show.contains(&format!("  Project: {project}")), "{show}");
     }
 
-    // Comments, checklist items, labels, topics and chat: the same.
+    // Comments, checklist items, labels and topics: the same.
     let nasty = "<b>hi</b> 😀 שלום\x1b[5m\nsecond line";
     ok(&me, &["tasks", "comment", &project, "1", nasty]);
     ok(&me, &["tasks", "check", &project, "1", "step\x1b[2J one\nand more"]);
@@ -87,12 +87,6 @@ fn odd_text_is_kept_and_shown_safely() {
     assert!(ok(&me, &["labels", "list", &project]).contains("🔥 urgent"));
     ok(&me, &["labels", "rename", &project, "🔥 urgent", "דחוף ⚡"]);
     assert!(ok(&me, &["tasks", "show", &project, "1"]).contains("[דחוף ⚡]"));
-
-    ok(&me, &["chat", "on", &project]);
-    ok(&me, &["chat", "send", &project, "<script>x</script> **hi** \x1b[2J done"]);
-    let chat = ok(&me, &["chat", "read", &project]);
-    assert!(acts(&chat).is_empty(), "{:?}", acts(&chat));
-    assert!(chat.contains("<script>x</script> **hi** [2J done"), "{chat}");
 
     // Very long text: kept whole.
     let long = "word ".repeat(1000);

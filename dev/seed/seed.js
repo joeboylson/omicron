@@ -245,7 +245,7 @@ async function seed(omicron) {
       await groceries.task(t === "Coffee beans" ? joe : claire, s, t, { labels: [l] });
     }
 
-    // ---- Lisbon trip: three people, chat on.
+    // ---- Lisbon trip: three people.
     const trip = await project(joe, "Lisbon trip", [["To book", "orange"], ["Booked", "blue"], ["Packed", "purple"], "Done"], [
       ["travel", "teal"],
       ["money", "yellow"],
@@ -264,15 +264,6 @@ async function seed(omicron) {
     await trip.task(claire, "Booked", "Apartment in Alfama", { labels: ["money"] });
     await trip.task(sam, "Packed", "Adapters and chargers", { to: sam });
     await trip.task(joe, "Done", "Ask for time off", {});
-    await joe.call("PATCH", `/rest/v1/projects?id=eq.${trip.id}`, { chat_enabled: true });
-    for (const [who, body] of [
-      [claire, "Found a great tile workshop near the apartment, worth an afternoon?"],
-      [sam, "Yes! Thursday works for me."],
-      [joe, "Booked flights, landing 10:40. Sam, can you sort the transfer?"],
-      [sam, "On it this week."],
-    ]) {
-      await who.call("POST", "/rest/v1/chat_messages", { project_id: trip.id, body });
-    }
 
     // ---- Wedding photos: Joe and Nina.
     const photos = await project(joe, "Wedding photos", ["To sort", ["Editing", "indigo"], ["Sent", "purple"], "Done"], [
@@ -313,7 +304,7 @@ async function seed(omicron) {
     });
     const stripTask = await code.task(joe, "Review", "Sessions strip on the web page", { labels: ["web"] });
     await code.task(joe, "Review", "Handoff notes sheet", { labels: ["web"] });
-    await code.task(joe, "Done", "Chat per Project", { labels: ["web", "database"] });
+    await code.task(joe, "Done", "Images in comments", { labels: ["web", "database"] });
     await code.task(joe, "Done", "Comments on tasks", { labels: ["web", "database"] });
     await code.task(joe, "Done", "Fix checklist tick flicker", { labels: ["bug", "web"] });
 
@@ -382,14 +373,6 @@ async function seed(omicron) {
     old.cli("handoff", "write", "Wrote the first version of handoff notes. Nothing left open.");
     old.close();
 
-    // Chat.
-    await joe.call("PATCH", `/rest/v1/projects?id=eq.${code.id}`, { chat_enabled: true });
-    await joe.call("POST", "/rest/v1/chat_messages", { project_id: code.id, body: "Morning. @web-page how's the sessions strip going?" });
-    webPage.cli("chat", "send", "Lumen", "Chips are done and open their handoff notes. Screenshots next.");
-    await joe.call("POST", "/rest/v1/chat_messages", { project_id: code.id, body: "Great. @parser how far are you?" });
-    parser.cli("chat", "send", "Lumen", "Inserts and updates done; starting deletes.");
-    await joe.call("POST", "/rest/v1/chat_messages", { project_id: code.id, body: "Thanks both." });
-
     // A Needs review mark from a session without a comment, too.
     webPage.cli("tasks", "needs-review", "Lumen", "9");
 
@@ -434,7 +417,7 @@ async function seed(omicron) {
     stopWindows(windows);
     throw e;
   }
-  console.log("Seeded: 4 people, 5 Projects, 3 machines, 4 Claude sessions, tasks, comments, handoff notes and chat.");
+  console.log("Seeded: 4 people, 5 Projects, 3 machines, 4 Claude sessions, tasks, comments, and handoff notes.");
   // Leave web-page and parser "open" until the caller is done with the page.
   return { logins, stop: () => stopWindows(windows) };
 }

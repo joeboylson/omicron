@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, MessageCircle, Plus, Search, Settings } from "lucide-react";
+import { ChevronDown, ChevronLeft, Plus, Search, Settings } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -30,7 +30,6 @@ import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
-import { Chat } from "@/components/Chat";
 import { BoardSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/lib/toast";
 import { typing, useCommands } from "@/lib/commands";
@@ -57,7 +56,6 @@ export function ProjectPage({ id }: { id: string }) {
     [setTaskInAddress],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
   const [collapsed, setCollapsed] = useStored<string[]>(`omicron.collapsedTopics.${id}`, []);
   const [dragging, setDragging] = useState<Task | null>(null);
@@ -110,7 +108,6 @@ export function ProjectPage({ id }: { id: string }) {
           { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => setAddSignal((n) => n + 1) },
           { id: "search", label: "Search tasks", group: ready.name, shortcut: "/", keywords: "find filter", run: () => searchBox.current?.focus() },
           { id: "settings", label: "Project settings", group: ready.name, run: () => setSettingsOpen(true) },
-          ...(ready.chatEnabled ? [{ id: "chat", label: "Chat", group: ready.name, run: () => setChatOpen(true) }] : []),
           { id: "group-status", label: "Group by status", group: ready.name, keywords: "columns", run: () => setGroupBy("status") },
           { id: "group-topic", label: "Group by status and topic", group: ready.name, keywords: "rows lanes", run: () => setGroupBy("topic") },
           ...ready.tasks.map((t) => ({
@@ -263,11 +260,6 @@ export function ProjectPage({ id }: { id: string }) {
         }
         right={
           <>
-            {project.chatEnabled && (
-              <Button variant="ghost" size="icon" aria-label="Chat" onClick={() => setChatOpen(true)}>
-                <MessageCircle />
-              </Button>
-            )}
             <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
               <Settings />
             </Button>
@@ -436,7 +428,6 @@ export function ProjectPage({ id }: { id: string }) {
           };
         }}
       />
-      <Chat project={project} open={chatOpen && project.chatEnabled} onOpenChange={setChatOpen} />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
     </main>
   );

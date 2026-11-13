@@ -1,8 +1,8 @@
 //! Text from the database, made safe to show in a terminal or type into a
-//! Claude session. Anyone in a Project can write a title, comment or chat
-//! line; none of it may move the cursor, clear the screen, change the
-//! terminal's title, press keys in a session, or flip text around to hide
-//! what it says. The web page reads the database itself and shows the text
+//! Claude session. Anyone in a Project can write a title or comment; none
+//! of it may move the cursor, clear the screen, change the terminal's
+//! title, press keys in a session, or flip text around to hide what it
+//! says. The web page reads the database itself and shows the text
 //! exactly as written.
 
 /// Characters that do something instead of showing: terminal and C1

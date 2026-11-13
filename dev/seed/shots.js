@@ -100,10 +100,6 @@ async function escape(page) {
     await page.getByTestId("dispatch").waitFor();
     await shot("4c-dispatch-failed");
     await escape(page);
-    await page.getByRole("button", { name: "Chat", exact: true }).click();
-    await page.getByRole("list", { name: "Messages" }).waitFor();
-    await shot("5-chat");
-    await escape(page);
     await page.getByRole("button", { name: "Back to Projects" }).click();
     await page.getByRole("link", { name: /^Lisbon trip/ }).click();
     await page.getByRole("button", { name: /Day trip to Sintra/ }).waitFor();

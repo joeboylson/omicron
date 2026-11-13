@@ -80,11 +80,9 @@ export type ClaudeSession = {
   /** Why it's gone, when it is. */
   gone_why: string | null;
 };
-export type ChatMessage = { id: string; author: string; session: string | null; body: string; created_at: string };
 export type ProjectData = {
   id: string;
   name: string;
-  chatEnabled: boolean;
   statuses: Status[];
   labels: Label[];
   topics: Topic[];
@@ -147,7 +145,7 @@ async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
   const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops] = await Promise.all([
-    db.from("projects").select("id,name,chat_enabled").eq("id", id).maybeSingle(),
+    db.from("projects").select("id,name").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
     db.from("project_members").select("people(id,display_name)").eq("project_id", id),
@@ -184,7 +182,6 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
   return {
     id: p.id,
     name: p.name,
-    chatEnabled: p.chat_enabled,
     statuses: must(statuses) as Status[],
     labels: must(labels) as Label[],
     topics: must(topics) as Topic[],
@@ -240,7 +237,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
 
 const after = (xs: { position: number }[]) => xs.reduce((m, x) => Math.max(m, x.position), 0) + 1;
 
-/** Delete a Project and everything in it (tasks, sessions, chat). */
+/** Delete a Project and everything in it (tasks, sessions). */
 export async function deleteProject(db: SupabaseClient, id: string) {
   const gone = must(await db.from("projects").delete().eq("id", id).select("id")) as unknown[];
   if (gone.length === 0) throw new Error("That Project couldn't be deleted (are you a member?).");
@@ -409,28 +406,6 @@ export async function imageLinks(db: SupabaseClient, paths: string[]): Promise<R
   const { data, error } = await db.storage.from(IMAGES_BUCKET).createSignedUrls(paths, 3600);
   if (error) throw new Error(error.message);
   return Object.fromEntries((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
-}
-
-export async function loadChat(db: SupabaseClient, projectId: string): Promise<ChatMessage[]> {
-  const rows = must(
-    await db
-      .from("chat_messages")
-      .select("id,author_name,body,created_at,sessions(name)")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false })
-      .limit(100),
-  ) as any[];
-  return rows
-    .map((r) => ({ id: r.id, author: r.author_name, session: r.sessions?.name ?? null, body: r.body, created_at: r.created_at }))
-    .reverse();
-}
-
-export async function sendChat(db: SupabaseClient, projectId: string, body: string) {
-  must(await db.from("chat_messages").insert({ project_id: projectId, body }));
-}
-
-export async function setChat(db: SupabaseClient, projectId: string, on: boolean) {
-  must(await db.from("projects").update({ chat_enabled: on }).eq("id", projectId));
 }
 
 export async function setStatusColor(db: SupabaseClient, status: Status, color: string) {

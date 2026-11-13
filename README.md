@@ -3,7 +3,7 @@
 One tool for tasks, Projects and Claude sessions, shared by people and
 machines. A task board (like Trello) that people and Claude Code sessions use
 together, plus what it takes to run Claude: sessions you can jump into,
-handing tasks to them, loops, chat, machines and Claude accounts.
+handing tasks to them, loops, machines and Claude accounts.
 
 There's no central server. Every computer runs its own copy of `omicron` and
 talks straight to one Supabase database, which is yours. People sign in with

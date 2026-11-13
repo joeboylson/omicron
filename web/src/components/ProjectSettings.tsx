@@ -19,7 +19,6 @@ import {
   renameStatus,
   deleteLabel,
   renameLabel,
-  setChat,
   setLabelColor,
   setStatusColor,
   type MachineRow,
@@ -38,7 +37,6 @@ import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
 import { ColorSelect } from "@/components/ColorDot";
 import { MultiSelect } from "@/components/MultiSelect";
-import { Switch } from "@/components/base/switch";
 
 export function ProjectSettings({
   project,
@@ -109,21 +107,6 @@ export function ProjectSettings({
                 else if (n !== project.name) change(() => renameProject(db, project.id, n));
               }}
               className={cn(bare, "px-0")}
-            />
-          </Row>
-        </Group>
-
-        <Group
-          title="Chat"
-        >
-          <Row>
-            <span id="chat-switch" className="flex-1 text-[15px] sm:text-sm">
-              Chat for this Project
-            </span>
-            <Switch
-              aria-labelledby="chat-switch"
-              checked={project.chatEnabled}
-              onCheckedChange={(on) => change(() => setChat(db, project.id, on))}
             />
           </Row>
         </Group>
@@ -226,7 +209,7 @@ export function ProjectSettings({
 
         <Group
           title={<label htmlFor="delete-project">Delete Project</label>}
-          note="Deletes it for everyone, with all its tasks, sessions and chat. This can't be undone."
+          note="Deletes it for everyone, with all its tasks and sessions. This can't be undone."
         >
           <form
             className="flex items-center gap-2 py-2"

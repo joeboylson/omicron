@@ -68,7 +68,6 @@ const CASES: &[(&[&str], &str)] = &[
     (&["people", "add", "nobody", "{p}"], "nobody called nobody"),
     (&["machines", "add", "nomachine", "{p}"], "no machine called nomachine"),
     (&["machines", "use-key", "not-a-key"], "start with `omk_`"),
-    (&["chat", "send", "{p}", "hi"], "chat is off"),
     (&["handoff", "show", "{p}", "9"], "no handoff note #9"),
     (&["handoff", "write", "x"], "inside a Claude session"),
     (&["loops", "start", "go", "--every", "soon"], "say how often"),

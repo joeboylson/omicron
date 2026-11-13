@@ -94,7 +94,6 @@ const PROJECT_TABLES: &[&str] = &[
     "task_labels",
     "checklist_items",
     "comments",
-    "chat_messages",
     "sessions",
     "handoffs",
     "dispatches",
@@ -141,7 +140,6 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
     let pid = project["id"].as_str().unwrap().to_string();
     let (mac, mac_id) = machine(&s);
     call(&s, &pat, "POST", "/rest/v1/project_machines", json!({ "project_id": pid, "machine_id": mac_id }));
-    call(&s, &pat, "PATCH", &format!("/rest/v1/projects?id=eq.{pid}"), json!({ "chat_enabled": true }));
     let status = call(&s, &pat, "GET", &format!("/rest/v1/statuses?project_id=eq.{pid}&select=id&limit=1"), Value::Null);
     let label = call(&s, &pat, "POST", "/rest/v1/labels", json!({ "project_id": pid, "name": "secret", "color": "red" }));
     let topic = call(&s, &pat, "POST", "/rest/v1/topics", json!({ "project_id": pid, "name": "Hidden" }));
@@ -156,7 +154,6 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
     call(&s, &pat, "POST", "/rest/v1/task_labels", json!({ "task_id": tid, "label_id": label[0]["id"] }));
     call(&s, &pat, "POST", "/rest/v1/checklist_items", json!({ "task_id": tid, "text": "Step one" }));
     call(&s, &pat, "POST", "/rest/v1/comments", json!({ "task_id": tid, "body": "A private comment" }));
-    call(&s, &pat, "POST", "/rest/v1/chat_messages", json!({ "project_id": pid, "body": "A private chat line" }));
     let session = call(&s, &mac, "POST", "/rest/v1/sessions", json!({ "project_id": pid, "machine_id": mac_id, "name": "worker", "folder": "/code" }));
     let sid = session[0]["id"].as_str().unwrap().to_string();
     call(&s, &mac, "POST", "/rest/v1/handoffs", json!({ "project_id": pid, "session_id": sid, "machine_id": mac_id, "body": "Where I stopped" }));

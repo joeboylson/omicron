@@ -103,7 +103,6 @@ for (const [kind, device] of [
       const name = unique("Garden");
       const project = await rest(request, me, "POST", "/rest/v1/rpc/start_project", { name });
       const statuses = await rest(request, me, "GET", `/rest/v1/statuses?project_id=eq.${project.id}&select=id,name&order=position`);
-      await rest(request, me, "PATCH", `/rest/v1/projects?id=eq.${project.id}`, { chat_enabled: true });
       for (const title of ["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]) {
         await rest(request, me, "POST", "/rest/v1/tasks", { project_id: project.id, status_id: statuses[0].id, title, notes: "Some notes about it." });
       }
@@ -146,7 +145,7 @@ for (const [kind, device] of [
       await page.keyboard.press("Escape");
       await expect(sheet).toHaveCount(0);
 
-      // Project settings and chat.
+      // Project settings.
       await page.getByRole("button", { name: "Project settings" }).tap();
       await expect(page.getByRole("dialog")).toBeVisible();
       await settled(page);
@@ -154,12 +153,6 @@ for (const [kind, device] of [
       await tappable(page, "Project settings");
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await page.getByRole("button", { name: "Chat", exact: true }).tap();
-      await expect(page.getByRole("dialog")).toBeVisible();
-      await settled(page);
-      await onScreen(page, page.getByRole("dialog"), "Chat");
-      await tappable(page, "Chat");
-      await page.keyboard.press("Escape");
 
       // People, Settings and Machines.
       for (const [path, heading] of [

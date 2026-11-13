@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 
 // Each listener gets its own channel name. Two channels with the same name
 // don't share: the live-updates library closes the first when the second
-// opens (the chat sheet was cutting off the Project page's updates).
+// opens (one sheet was cutting off the Project page's updates).
 let next = 0;
 import type { SupabaseClient } from "@supabase/supabase-js";
 

@@ -2,7 +2,7 @@
 
 One tool that replaces my separate dev tools and Trello. It's a task tracker
 (Projects, tasks, members) that people and Claude sessions share, plus the
-parts I use to run Claude: sessions, handoffs, chat, machines, accounts, and
+parts I use to run Claude: sessions, handoffs, machines, accounts, and
 teams of Claude sessions (rewritten from legion).
 
 - Words: `DEFINITIONS.txt`. Use those names and no others.

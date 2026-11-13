@@ -343,6 +343,12 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     await expect(button).toBeEnabled();
     await expect(page.getByTestId("dispatch-asleep")).toHaveCount(0);
 
+    // Its gate is closed to start with: refused, plainly.
+    await button.click();
+    await expect(outcome).toContainText(`${machineName}'s gate is closed, so it takes no work from elsewhere.`);
+    const later = new Date(Date.now() + 2 * 3600 * 1000);
+    omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
+
     // Its window has no add-on following the inbox: the task waits for the
     // next time the session is opened.
     await button.click();
@@ -361,55 +367,11 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
   }
 });
 
-test("a Project's chat: turned on, a session named in it answers, live", async ({ page, request }) => {
-  await newPerson(page, request);
-  const name = unique("Code");
-  await startProjectIn(page, name);
-  const claude = crypto.randomUUID();
-  const win = await omicron.open("parser", name, claude);
-  try {
-    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
-
-    // Off to start with: nobody sees it.
-    await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Project settings" }).click();
-    const chatSwitch = page.getByRole("switch", { name: "Chat for this Project" });
-    await expect(chatSwitch).toHaveAttribute("aria-checked", "false");
-    await chatSwitch.click();
-    await expect(chatSwitch).toHaveAttribute("aria-checked", "true");
-    await escape(page);
-    await page.getByRole("button", { name: "Chat" }).click();
-    const sheet = page.getByRole("dialog");
-    await sheet.getByLabel("New message").fill("@parser how far did you get?");
-    await sheet.getByLabel("New message").press("Enter");
-    const messages = sheet.getByRole("list", { name: "Messages" });
-    await expect(messages).toContainText("@parser how far did you get?");
-
-    // The session is told at the end of its turn, and answers.
-    const out = JSON.parse(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false }));
-    expect(out.reason).toContain("@parser how far did you get?");
-    omicron.cliIn(win.pid, "chat", "send", name, "Half way: parser done, errors next.", "--as-machine");
-    await expect(messages.getByRole("listitem")).toHaveCount(2);
-    await expect(messages.getByRole("listitem").last()).toContainText(`${machineName}parser`);
-    await expect(messages.getByRole("listitem").last()).toContainText("Half way: parser done, errors next.");
-
-    // Turned off from settings: the chat and its button go away.
-    await escape(page);
-    await page.getByRole("button", { name: "Project settings" }).click();
-    await page.getByRole("switch", { name: "Chat for this Project" }).click();
-    await escape(page);
-    await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
-  } finally {
-    win.kill();
-  }
-});
-
-test("opening the chat doesn't stop the Project page's live updates", async ({ page, request }) => {
+test("a sheet opened and closed doesn't stop the Project page's live updates", async ({ page, request }) => {
   const me = await newPerson(page, request);
   const projectId = await startProjectIn(page, unique("Code"));
-  await rest(request, me.session, "PATCH", `/rest/v1/projects?id=eq.${projectId}`, { chat_enabled: true });
-  await page.getByRole("button", { name: "Chat", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("No messages yet.");
+  await page.getByRole("button", { name: "Project settings" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await escape(page);
 
   const [todo] = await rest(request, me.session, "GET", `/rest/v1/statuses?project_id=eq.${projectId}&name=eq.To%20do&select=id`);

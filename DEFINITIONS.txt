@@ -66,3 +66,9 @@ Heads-up
 Runner
   The program a worker runs in, like Claude Code or OpenCode.
   (legion: harness)
+
+Gate
+  Whether a computer takes work handed to it from elsewhere (the web page
+  or another machine). Closed unless opened on that computer itself, and it
+  closes by itself at the time chosen, never more than 24 hours later
+  (`omicron gate open --until 17:00`). Don't use "lock" or "unlock".

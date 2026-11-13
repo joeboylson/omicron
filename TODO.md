@@ -164,7 +164,7 @@ Built in this order. Each part replaces an old tool only once it's ready.
       note with `omicron handoff write`, and says to type `/clear`. Named so
       it doesn't replace the existing `handoff` and `lethe` skills.
 
-## 5. Chat
+## 5. Chat (dropped 13 Nov 2026, #76: see ref/BRAINSTORM.md)
 - [x] `omicron chat on | off | read | send`: one chat per Project, for people
       and Claude sessions, off until a member turns it on. A message naming a
       session (`@parser`) reaches it at the end of its next turn (Stop hook),
@@ -220,7 +220,7 @@ The work list now lives in the **Omicron** Project in the real database
   push, and a rebuild of the Mac's pages (`dev/mac.sh`) for each one.
 - Anything that needs Joe becomes a task given to him in **Waiting on Joe**;
   he answers in its comments.
-- A morning summary goes in the Omicron Project's chat.
+- A morning summary goes in a comment on the task being worked on.
 - Every new piece of UI should feel like a finished product, as easy as Trello,
   Linear or Things from the first minute.
 
