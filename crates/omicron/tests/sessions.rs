@@ -1575,3 +1575,84 @@ fn a_run_works_down_to_do_one_task_at_a_time() {
     ok(&mac, None, &["sessions", "send", "runner", "\u{4}", "--no-enter"]);
     let _ = Command::new("kill").arg(pid.to_string()).status();
 }
+
+/// In a run, a task labelled "team" goes to a team running here as a
+/// linked job, and the run carries on; when the job finishes, the session
+/// checks it, and the run finishes once nothing's left (#92).
+#[test]
+fn a_run_gives_big_tasks_to_a_team_and_checks_them_after() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name) = machine(&s);
+    let short = PathBuf::from(format!("/tmp/oq-{}", &Uuid::new_v4().simple().to_string()[..8]));
+    std::fs::rename(&mac.home, &short).unwrap();
+    let mac = Computer { home: short, tailscale: None };
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+
+    // One stand-in for Claude: a team member writes what's typed to
+    // <worker>.typed; the run's session also runs the start hook.
+    let bin = mac.home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let o = env!("CARGO_BIN_EXE_omicron");
+    std::fs::write(
+        bin.join("claude"),
+        format!(
+            "#!/bin/sh\nd=\"$OMICRON_HOME/claude\"; mkdir -p \"$d\"\nif [ -n \"$OMICRON_WORKER\" ]; then while read -r line; do echo \"$line\" >> \"$d/$OMICRON_WORKER.typed\"; [ \"$line\" = \"/exit\" ] && exit 0; done; exit 0; fi\nid=\nwhile [ $# -gt 0 ]; do case \"$1\" in --session-id) id=\"$2\"; shift;; esac; shift; done\necho $$ > \"$d/run.pid\"\nprintf '{{\"session_id\":\"%s\",\"cwd\":\"%s\",\"source\":\"startup\"}}' \"$id\" \"$PWD\" | {o} hook session-start > /dev/null\nwhile read -r line; do echo \"$line\" >> \"$d/run.typed\"; done\n"
+        ),
+    )
+    .unwrap();
+    Command::new("chmod").args(["+x", bin.join("claude").to_str().unwrap()]).status().unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let run = |args: &[&str], dir: &std::path::Path| {
+        let o = command(&mac, None, args).env("PATH", &path).current_dir(dir).stdin(Stdio::null()).output().unwrap();
+        assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).to_string()
+    };
+
+    // A team here for the Project, and the run's session.
+    let folder = mac.home.join("app");
+    std::fs::create_dir_all(&folder).unwrap();
+    for args in [&["init", "-q", "-b", "main"][..], &["-c", "user.email=t@x", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "start"][..]] {
+        assert!(Command::new("git").arg("-C").arg(&folder).args(args).status().unwrap().success());
+    }
+    let team = format!("web{}", &Uuid::new_v4().simple().to_string()[..4]);
+    let mut d = daemon(&mac, &path);
+    run(&["teams", "init", "--name", &team], &folder);
+    run(&["teams", "start", "--project", &project], &folder);
+    run(&["open", "runner", "--project", &project], &folder);
+    wait_for("claude started", || read(&mac, "run.pid").trim().parse::<u32>().is_ok());
+    let pid: u32 = read(&mac, "run.pid").trim().parse().unwrap();
+
+    ok(&pat, None, &["tasks", "add", &project, "Big feature", "--label", "team", "--notes", "Login with email."]);
+    ok(&pat, None, &["tasks", "add", &project, "Small fix"]);
+    run(&["runs", "start", &project, "--session", "runner"], &folder);
+
+    // The big one goes to the team, linked; the session gets the small one.
+    wait_for("the small task typed in", || read(&mac, "run.typed").contains("your next task is #2 \"Small fix\""));
+    let jobs = ok(&pat, None, &["teams", "jobs", &team]);
+    assert!(jobs.contains("#1\twaiting") && jobs.contains("Big feature"), "{jobs}");
+    assert!(ok(&pat, None, &["tasks", "show", &project, "1"]).contains(&format!("Job: {team} #1 Big feature")));
+    wait_for("the lead told", || read(&mac, "lead.typed").contains("New job #1: Big feature"));
+
+    // Small one done: hand off, then it waits for the team.
+    ok(&pat, None, &["tasks", "done", &project, "2"]);
+    wait_for("asked for its note", || read(&mac, "run.typed").contains("Omicron: write your handoff note now"));
+    ok(&mac, Some(pid), &["handoff", "write", "# Small fix done"]);
+    wait_for("waiting for the team", || ok(&pat, None, &["runs", "list", &project]).contains(&format!("waiting for the team: #1 ({team} job #1)")));
+
+    // The team's job finishes: the session checks it.
+    let job = s.admin_request("GET", &format!("/rest/v1/jobs?title=eq.Big%20feature&select=id,teams!inner(name)&teams.name=eq.{team}"), None).unwrap();
+    s.admin_request("PATCH", &format!("/rest/v1/jobs?id=eq.{}", job[0]["id"].as_str().unwrap()), Some(json!({ "state": "done" }))).unwrap();
+    wait_for("asked to check it", || read(&mac, "run.typed").contains(&format!("the team {team} finished job #1 for task #1 \"Big feature\"")));
+    ok(&pat, None, &["tasks", "done", &project, "1"]);
+    wait_for("asked for its note again", || read(&mac, "run.typed").matches("write your handoff note now").count() == 2);
+    ok(&mac, Some(pid), &["handoff", "write", "# Big feature checked"]);
+    wait_for("finished", || ok(&pat, None, &["runs", "list", &project]).contains("finished\t2 done\tfinished: To do is empty (2 done)"));
+
+    run(&["teams", "stop", &team], &folder);
+    d.kill().unwrap();
+    ok(&mac, None, &["sessions", "send", "runner", "\u{4}", "--no-enter"]);
+    let _ = Command::new("kill").arg(pid.to_string()).status();
+}

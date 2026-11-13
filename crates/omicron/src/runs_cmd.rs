@@ -118,6 +118,11 @@ pub fn heard(supabase: &Supabase, key: &MachineKey, row: &Value) {
         Some("runs") if record["machine_id"].as_str() == Some(me.as_str()) && matches!(record["state"].as_str(), Some("running" | "pausing")) => {
             vec![record["id"].as_str().unwrap_or("").to_string()]
         }
+        // A team's job finished: runs here waiting on it carry on.
+        Some("jobs") if row["kind"] == "UPDATE" && record["state"] == "done" && row["old_record"]["state"] != "done" => match signed_in(supabase, key).and_then(|b| b.my_active_runs()) {
+            Ok(runs) => runs.into_iter().filter(|r| r.task_id.is_none()).map(|r| r.id).collect(),
+            Err(e) => return eprintln!("omicron daemon: runs: {e:#}"),
+        },
         Some("tasks") if row["kind"] == "UPDATE" && record["status_id"] != row["old_record"]["status_id"] => {
             // Only tasks a run here is on.
             let board = match signed_in(supabase, key) {
@@ -230,17 +235,71 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
         }
     }
 
+    // A big task a team here finished: the session checks it, reports, and
+    // moves it to Review, before anything new (#92).
+    let team_tasks = board.team_tasks_here(&run.project_id)?;
+    if let Some((t, job, _, team)) = team_tasks.iter().find(|(t, _, state, _)| {
+        state == "done" && in_progress(&statuses, t["status_id"].as_str().unwrap_or("")) && t["assignee_session_id"].as_str() != Some(session.id.as_str())
+    }) {
+        let (task_id, number, title) = (t["id"].as_str().unwrap_or(""), t["number"].as_i64().unwrap_or(0), t["title"].as_str().unwrap_or(""));
+        board.give_task(task_id, &session.id)?;
+        board.set_run(id, json!({ "task_id": task_id, "note": format!("checking #{number}: {team} finished job #{job}") }))?;
+        omicron::handover::wait_until_free(&session.id);
+        omicron::host::say(
+            &session.name,
+            &format!(
+                "Omicron run: the team {team} finished job #{job} for task #{number} \"{}\" in {}. Run `omicron tasks mine` to get the task with the Project's run rules, check the job's work (`omicron teams jobs {team}`, its branch is merged), then report on the task and move it to Review. Then stop; the run hands off and gives you the next one.",
+                omicron::text::line(title),
+                project.name
+            ),
+        )?;
+        return Ok(());
+    }
+
     // The next task: the top of To do (only the run's label, if it has one),
-    // not given to anyone else.
+    // not given to anyone else, not already with a team. A task labelled
+    // "team" goes to a team running here for this Project as a linked job,
+    // and the run carries on with the next (#92).
     let first = statuses.iter().min_by(|a, b| a.position.total_cmp(&b.position)).context("the Project has no statuses")?;
-    let next = board.task_rows_in(&run.project_id, &first.id)?.into_iter().find(|t| {
+    let team_label = board.labels(&project)?.into_iter().map(|(n, _)| n).find(|n| n.eq_ignore_ascii_case("team"));
+    let team_label_id = match team_label {
+        Some(n) => Some(board.label_id(&project, &n)?),
+        None => None,
+    };
+    let me = board.session.user.id.to_string();
+    let team = board.teams()?.into_iter().find(|t| t.machine_id == me && t.project_id == run.project_id && t.state == "running");
+    let mut next = None;
+    for t in board.task_rows_in(&run.project_id, &first.id)? {
         let free = t["assignee_person_id"].is_null() && (t["assignee_session_id"].is_null() || t["assignee_session_id"].as_str() == Some(session.id.as_str()));
-        let labelled = run.label_id.as_deref().is_none_or(|l| {
-            t["task_labels"].as_array().into_iter().flatten().any(|x| x["label_id"].as_str() == Some(l))
-        });
-        free && labelled
-    });
+        let labels: Vec<&str> = t["task_labels"].as_array().into_iter().flatten().filter_map(|x| x["label_id"].as_str()).collect();
+        let labelled = run.label_id.as_deref().is_none_or(|l| labels.contains(&l));
+        let with_a_team = t["task_jobs"].as_array().is_some_and(|j| !j.is_empty());
+        if !free || !labelled || with_a_team {
+            continue;
+        }
+        if let (Some(team), Some(l)) = (&team, &team_label_id) {
+            if labels.contains(&l.as_str()) {
+                let (number, title) = (t["number"].as_i64().unwrap_or(0), t["title"].as_str().unwrap_or(""));
+                let task = board.task(&project, number)?;
+                let job = board.add_job(team, title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
+                board.link_job(&task, team, job.number)?;
+                board.set_run(id, json!({ "note": format!("gave #{number} to the team {} as job #{}", team.name, job.number) }))?;
+                continue;
+            }
+        }
+        next = Some(t);
+        break;
+    }
     let Some(next) = next else {
+        let waiting: Vec<String> = team_tasks
+            .iter()
+            .filter(|(t, _, state, _)| !matches!(state.as_str(), "done" | "cancelled") && in_progress(&statuses, t["status_id"].as_str().unwrap_or("")))
+            .map(|(t, job, _, team)| format!("#{} ({team} job #{job})", t["number"].as_i64().unwrap_or(0)))
+            .collect();
+        if !waiting.is_empty() {
+            // Comes back when a job finishes (the daemon steps runs then).
+            return board.set_run(id, json!({ "note": format!("waiting for the team: {}", waiting.join(", ")) }));
+        }
         let done = board.run(id)?.map(|r| r.done).unwrap_or(run.done);
         return board.set_run(id, json!({ "state": "finished", "note": format!("finished: {} is empty ({done} done)", first.name) }));
     };

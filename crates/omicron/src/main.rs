@@ -646,7 +646,7 @@ fn daemon() -> Result<()> {
     let runner = loops_cmd::Runner::start(supabase.clone(), key.clone());
     let react = |row: &serde_json::Value| {
         runner.heard(row);
-        if matches!(row["table_name"].as_str(), Some("runs" | "tasks")) {
+        if matches!(row["table_name"].as_str(), Some("runs" | "tasks" | "jobs")) {
             runs_cmd::heard(&supabase, &key, row);
         }
         if matches!(row["table_name"].as_str(), Some("teams" | "jobs" | "comments")) {

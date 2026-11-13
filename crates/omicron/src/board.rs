@@ -611,7 +611,7 @@ impl Board {
             .with_context(|| format!("{} has no label called {name}", project.name))
     }
 
-    fn label_id(&self, project: &Project, name: &str) -> Result<String> {
+    pub fn label_id(&self, project: &Project, name: &str) -> Result<String> {
         let found = self.get(&format!("/rest/v1/labels?project_id=eq.{}&name=eq.{}&select=id", project.id, enc(name)))?;
         if let Some(id) = found.get(0).and_then(|r| r["id"].as_str()) {
             return Ok(id.to_string());
