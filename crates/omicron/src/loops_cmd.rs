@@ -322,6 +322,18 @@ impl Runner {
             }
             return Ok(());
         }
+        // Started from elsewhere: only while this computer's gate is open.
+        let here = l.started_by.as_deref() == Some(board.session.user.id.to_string().as_str());
+        if !here && omicron::gate::open_until().is_none() {
+            let note = "waiting: it was started from elsewhere, and this computer's gate is closed (`omicron gate open --until 17:00`)".to_string();
+            if l.note.as_deref() != Some(note.as_str()) {
+                board.loop_note(&l.id, Some(&note))?;
+                if let Some(x) = self.loops.lock().unwrap().get_mut(&l.id) {
+                    x.note = Some(note);
+                }
+            }
+            return Ok(());
+        }
         if omicron::windows::is_busy(&l.session_id) {
             // Still working on the last one: wait for its turn to end.
             return Ok(());

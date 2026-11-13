@@ -185,6 +185,9 @@ pub struct Loop {
     pub state: String,
     pub note: Option<String>,
     pub next_run_at: String,
+    /// Who started it: this machine, or someone elsewhere (who needs its gate open).
+    #[serde(default)]
+    pub started_by: Option<String>,
     pub last_run_at: Option<String>,
 }
 

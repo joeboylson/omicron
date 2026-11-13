@@ -888,6 +888,8 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     let o = run(&pat, None, &["loops", "start", "x", "--every", "30s", "--session", "parser", "--project", &project]);
     assert!(String::from_utf8_lossy(&o.stderr).contains("at most once a minute"));
 
+    // Started from elsewhere: it only runs while the gate is open.
+    open_gate(&mac);
     let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--session", "parser", "--project", &project]);
     assert!(started.starts_with("Started a loop for parser: every 10m, 0 of 2 runs done."), "{started}");
     let o = run(&pat, None, &["loops", "start", "again", "--every", "10m", "--session", "parser", "--project", &project]);
@@ -1305,6 +1307,8 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
     let (mac, mac_name, path) = machine_with_claude(&s);
     ok(&pat, None, &["machines", "add", &mac_name, &project]);
     let w = open_window(&mac, &path, &["parser", "--project", &project]);
+    // Started from elsewhere: it only runs while the gate is open.
+    open_gate(&mac);
     ok(&pat, None, &["loops", "start", "Next task please", "--every", "10m", "--session", "parser", "--project", &project]);
     let loop_id = s
         .admin_request("GET", "/rest/v1/loops?prompt=eq.Next task please&state=eq.running&select=id,sessions!inner(projects!inner(name))", None)
