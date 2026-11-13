@@ -74,6 +74,9 @@ By default a computer takes no orders from anywhere else. The gate is the one ex
 - **Only the computer's owner can send it orders**, even while the gate is open. Other people in the Project can't, ever.
 - **The computer serving the web page always takes orders from Joe**, with no gate to open, so he can work from his phone without logging in to unlock it each day. It only counts when the order comes straight into that computer's own page and that computer sees Joe's Tailscale login itself (through the home lab's gate), not from a row in the database. Everything else still needs the gate.
 - Risk Joe accepts: anyone holding his unlocked phone (or his Tailscale login) can give orders to that computer.
+- **One rule everywhere, teams and tasks too** (decided 13 Nov 2026):
+  - Answers to a team's questions (task comments) wait while its computer's gate is closed, and are passed on once it opens, never dropped.
+  - Tasks given to a session from elsewhere show when it asks for its tasks (`omicron tasks mine`), but only to read until the gate is open. Tasks handed over on the session's own computer always go straight in.
 - **The same rule covers the Dev view.** Seeing and typing into a terminal is no more dangerous than giving orders. So on the serving computer's own page, signed in as Joe, the page shows that computer's Dev view, terminal included, for that computer's sessions only. Everyone else, and every other computer, gets only the Tasks view.
 
 Not hosting publicly: the web page stays behind Tailscale and the home lab's gate (no Vercel), so sign-in stays as it is.
