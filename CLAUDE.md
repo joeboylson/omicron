@@ -142,6 +142,9 @@ Repeated steps, in `scripts/` (run on the Mac):
   Supabase, cleaning up after (see "Running tests").
 - `scripts/e2e.sh [playwright args]`: the browser tests, the same way.
   Both share `scripts/lib/test-run.sh` (settings and clean-up).
+- `scripts/desktop.sh`: build the desktop app (`desktop/`, Tauri, a
+  workspace of its own) and install it as `~/Applications/Omicron.app`.
+  It's a window on `omicron serve` here, starting it and the daemon if off.
 - `scripts/migrate.sh <connection string>`: set up Omicron's tables in a
   Supabase someone hosts themselves (the hosted one gets them from GitHub).
 

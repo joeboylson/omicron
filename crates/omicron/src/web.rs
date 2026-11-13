@@ -52,6 +52,15 @@ fn content_type(path: &str) -> &'static str {
     }
 }
 
+/// A visit from this computer's owner, as `owner_visit` checked it.
+struct OwnerVisit {
+    login: crate::supa::Session,
+    /// Signed in as this machine.
+    board: crate::board::Board,
+    /// From this computer itself (not through the home lab's gate).
+    local: bool,
+}
+
 pub struct WebMachine {
     pub supabase: Supabase,
     /// Where visitors' browsers reach Supabase, if not `supabase.url`.
@@ -148,6 +157,10 @@ impl WebMachine {
             (Method::Post, "/api/session") => self.session(request),
             (Method::Post, "/api/page-error") => Ok(page_error(request)),
             (Method::Post, "/api/dispatch") => self.dispatch_api(request),
+            (Method::Post, p) if p == "/api/dev" || p.starts_with("/api/dev/") => {
+                let rest = p.trim_start_matches("/api/dev").trim_start_matches('/').to_string();
+                self.dev_api(request, &rest)
+            }
             (Method::Post, "/api/machines") => self.machines_api(request, None),
             (Method::Post, p) if p.starts_with("/api/machines/") => {
                 let rest = p.trim_start_matches("/api/machines/").to_string();
@@ -247,22 +260,94 @@ impl WebMachine {
     /// gate) and the page's login is the same person. Anything else answers
     /// `{"elsewhere": true}`, and the page asks through the database, where
     /// the gate applies.
-    fn dispatch_api(&self, request: &mut Request) -> Result<(u16, &'static str, Vec<u8>)> {
-        let answer = |code: u16, v: serde_json::Value| Ok((code, "application/json", v.to_string().into_bytes()));
-        let elsewhere = |why: &str| answer(409, json!({ "elsewhere": true, "error": why }));
+    /// Is this visit this computer's owner, seen by this computer itself?
+    /// The page's login, the Tailscale login of the visit (from this computer,
+    /// or through the home lab's gate) and the machine's owner must all be
+    /// the same person. Ok(Err(why)) when not.
+    fn owner_visit(&self, request: &Request) -> Result<std::result::Result<OwnerVisit, (u16, String)>> {
         let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
-            return answer(401, json!({ "error": "sign in first" }));
+            return Ok(Err((401, "sign in first".into())));
         };
         let Ok(login) = self.supabase.session_for_token(&token) else {
-            return answer(401, json!({ "error": "that login doesn't work any more; reload the page" }));
+            return Ok(Err((401, "that login doesn't work any more; reload the page".into())));
         };
         let peer: IpAddr = request.remote_addr().map(|a| a.ip()).context("no address for this visit")?;
         let Ok(visit) = identity::visitor(peer, |name| request_header(request, name), identity::gate_secret().as_deref(), identity::local_person) else {
-            return elsewhere("this visit's Tailscale login couldn't be checked");
+            return Ok(Err((409, "this visit's Tailscale login couldn't be checked".into())));
         };
         if self.supabase.person_for_login(&visit.person().login)? != Some(login.user.id) {
-            return elsewhere("the page's login isn't the Tailscale login of this visit");
+            return Ok(Err((409, "the page's login isn't the Tailscale login of this visit".into())));
         }
+        let Ok(key) = crate::config::Config::load().and_then(|c| c.machine_key()) else {
+            return Ok(Err((409, "this computer has no machine key".into())));
+        };
+        let board = crate::board::Board { supabase: self.supabase.clone(), session: self.supabase.sign_in_machine(&key)? };
+        if board.machine_owner()?.as_deref() != Some(login.user.id.to_string().as_str()) {
+            return Ok(Err((409, "you don't own the computer serving this page".into())));
+        }
+        Ok(Ok(OwnerVisit { login, board, local: matches!(visit, Visit::Local(_)) }))
+    }
+
+    /// The Dev view's side of this computer, for its owner only
+    /// (ref/BRAINSTORM.md, "Two views of a Project" and "The gate"):
+    /// - POST /api/dev: whether this visit gets the Dev view, this machine's
+    ///   name, and its gate. Anyone else gets `{"dev": false}`.
+    /// - POST /api/dev/gate {until: "17:00"} or {close: true}: open or close
+    ///   the gate. Only from this computer itself, never through the home
+    ///   lab's gate: a computer's gate is opened only on it.
+    fn dev_api(&self, request: &mut Request, what: &str) -> Result<(u16, &'static str, Vec<u8>)> {
+        let answer = |code: u16, v: serde_json::Value| Ok((code, "application/json", v.to_string().into_bytes()));
+        let visit = match self.owner_visit(request)? {
+            Ok(v) => v,
+            Err((401, why)) => return answer(401, json!({ "error": why })),
+            Err((_, why)) => return answer(200, json!({ "dev": false, "why": why })),
+        };
+        let mut body = Vec::new();
+        {
+            use std::io::Read;
+            let _ = request.as_reader().take(4096).read_to_end(&mut body);
+        }
+        let input: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+        match what {
+            "" => {}
+            "gate" => {
+                if !visit.local {
+                    return answer(403, json!({ "error": "a computer's gate is opened only on it" }));
+                }
+                if input["close"] == true {
+                    crate::gate::close()?;
+                } else {
+                    let until = input["until"].as_str().unwrap_or("");
+                    if let Err(e) = crate::gate::open(until) {
+                        return answer(400, json!({ "error": format!("{e:#}") }));
+                    }
+                }
+            }
+            _ => return answer(404, json!({ "error": "not found" })),
+        }
+        let me = visit.board.session.user.id.to_string();
+        let name = visit.board.machines()?.into_iter().find(|m| m.id == me).map(|m| m.name).unwrap_or_default();
+        answer(
+            200,
+            json!({
+                "dev": true,
+                "local": visit.local,
+                "machine": name,
+                "machine_id": me,
+                "gate_until": crate::gate::open_until().map(|t| t.to_rfc3339()),
+            }),
+        )
+    }
+
+    fn dispatch_api(&self, request: &mut Request) -> Result<(u16, &'static str, Vec<u8>)> {
+        let answer = |code: u16, v: serde_json::Value| Ok((code, "application/json", v.to_string().into_bytes()));
+        let elsewhere = |why: &str| answer(409, json!({ "elsewhere": true, "error": why }));
+        let OwnerVisit { login, board, .. } = match self.owner_visit(request)? {
+            Ok(v) => v,
+            Err((401, why)) => return answer(401, json!({ "error": why })),
+            Err((_, why)) => return elsewhere(&why),
+        };
+        let key = crate::config::Config::load()?.machine_key()?;
         let mut body = Vec::new();
         {
             use std::io::Read;
@@ -272,13 +357,6 @@ impl WebMachine {
         let Some(task_id) = input["task_id"].as_str().and_then(|t| t.parse::<uuid::Uuid>().ok()) else {
             return answer(400, json!({ "error": "which task?" }));
         };
-        let Ok(key) = crate::config::Config::load().and_then(|c| c.machine_key()) else {
-            return elsewhere("this computer has no machine key");
-        };
-        let board = crate::board::Board { supabase: self.supabase.clone(), session: self.supabase.sign_in_machine(&key)? };
-        if board.machine_owner()?.as_deref() != Some(login.user.id.to_string().as_str()) {
-            return elsewhere("you don't own the computer serving this page");
-        }
         // The person must see the task too (the rules say what they may see).
         let seen = self.supabase.request_as(&login, "GET", &format!("/rest/v1/tasks?id=eq.{task_id}&select=id"), None)?;
         if seen.as_array().is_none_or(|a| a.is_empty()) {

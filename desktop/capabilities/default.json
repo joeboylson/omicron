@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The page is Omicron's own web page on this computer; it gets nothing from Tauri.",
+  "windows": ["main"],
+  "permissions": []
+}

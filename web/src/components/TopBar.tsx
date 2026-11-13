@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { go, useApp } from "@/lib/app";
 import { Button } from "@/components/base/button";
 import { cn } from "@/lib/utils";
+import { GateButton } from "@/components/GateButton";
 
 const PAGES = [
   { path: "/", label: "Projects" },
@@ -33,6 +34,7 @@ export function TopBar({ here, title, actions }: { here: (typeof PAGES)[number][
               </Button>
             ))}
           </nav>
+          <GateButton />
           <Button
             variant="ghost"
             size="sm"

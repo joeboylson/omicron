@@ -15,3 +15,6 @@ dist/
 # The tests' own Supabase: what its tool writes for itself
 dev/test-db/supabase/.branches/
 dev/test-db/supabase/.temp/
+
+# The desktop app: what Tauri generates for itself
+desktop/gen/

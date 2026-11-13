@@ -28,6 +28,7 @@ import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
+import { GateButton } from "@/components/GateButton";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
 import { BoardSkeleton } from "@/components/Skeleton";
@@ -260,6 +261,7 @@ export function ProjectPage({ id }: { id: string }) {
         }
         right={
           <>
+            <GateButton />
             <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
               <Settings />
             </Button>

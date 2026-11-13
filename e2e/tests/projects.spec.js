@@ -253,6 +253,50 @@ test("a Project's folders are listed in its settings, added only on their comput
   }
 });
 
+test("the computer's owner sees its gate on its own page; nobody else does", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  await page.goto(omicron.url);
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  await expect(page.getByTestId("gate")).toHaveCount(0);
+
+  // Robin owns the computer serving the page: its gate shows, closed.
+  omicron.cli("machines", "owner", robin.login);
+  omicron.cli("gate", "close");
+  await page.reload();
+  const gate = page.getByTestId("gate");
+  await expect(gate).toHaveAccessibleName(`${machineName}'s gate: closed`);
+  // Opened on the computer: the page says until when.
+  const later = new Date(Date.now() + 2 * 3600 * 1000);
+  omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
+  await page.reload();
+  await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s gate: open until`));
+  // Through the tailnet, it can't be opened or closed from the page.
+  await gate.click();
+  await expect(page.getByRole("dialog")).toContainText("A computer's gate is opened only on it.");
+  await expect(page.getByRole("button", { name: "Close the gate" })).toHaveCount(0);
+  omicron.cli("gate", "close");
+});
+
+test("on the computer itself, its owner opens and closes its gate from the page", async ({ page }) => {
+  // No Tailscale headers: a visit from this computer, as the person signed in to it.
+  await page.goto(omicron.url);
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  omicron.cli("machines", "owner", omicron.me.login);
+  omicron.cli("gate", "close");
+  await page.reload();
+  const gate = page.getByTestId("gate");
+  await expect(gate).toHaveAccessibleName(`${machineName}'s gate: closed`);
+  await gate.click();
+  if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/gate-closed.png` });
+  await page.getByLabel("Open until").fill("23:59");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s gate: open until`));
+  expect(omicron.cli("gate", "status")).toContain("Open until 11:59 PM");
+  await page.getByRole("button", { name: "Close the gate" }).click();
+  await expect(gate).toHaveAccessibleName(`${machineName}'s gate: closed`);
+  expect(omicron.cli("gate", "status")).toContain("Closed");
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

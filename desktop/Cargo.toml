@@ -1,0 +1,20 @@
+# Omicron's desktop app: the page in a window, on this computer. A
+# workspace of its own, so `cargo build` and the tests in the main one
+# don't compile Tauri. Build with `bash scripts/desktop.sh`.
+[package]
+name = "omicron-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+
+[profile.release]
+strip = true
