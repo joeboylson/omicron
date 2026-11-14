@@ -6,12 +6,48 @@ import { Check, Search } from "lucide-react";
 import { useAllCommands, type Command } from "@/lib/commands";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/base/dialog";
 import { cn } from "@/lib/utils";
+import { go, useApp } from "@/lib/app";
+import { searchTasks } from "@/lib/data";
+import { recentTasks, type RecentTask } from "@/lib/recent";
 
 export function CommandMenu() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
-  const commands = useAllCommands();
+  const { db } = useApp();
+  const ownCommands = useAllCommands();
+  // Tasks from every Project you're in, as you type; recently opened ones
+  // before you do (#234).
+  const [found, setFound] = useState<RecentTask[]>([]);
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) return setFound([]);
+    let live = true;
+    const t = setTimeout(() => searchTasks(db, q).then((r) => live && setFound(r), () => {}), 200);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [db, open, query]);
+  const taskCommand = (t: RecentTask, group: string): Command => ({
+    id: `find-${t.projectId}-${t.number}`,
+    label: `#${t.number} ${t.title}`,
+    group,
+    keywords: t.title,
+    run: () => go(`/p/${t.projectId}?task=${t.number}`),
+  });
+  const commands = useMemo(() => {
+    if (!query.trim()) {
+      // After the open Project's own commands, before the ones for anywhere.
+      const recent = recentTasks().map((t) => taskCommand(t, "Recently opened"));
+      const at = ownCommands.findIndex((c) => c.group === "Projects" || c.group === "Go to");
+      return at < 0 ? [...ownCommands, ...recent] : [...ownCommands.slice(0, at), ...recent, ...ownCommands.slice(at)];
+    }
+    // A task this page already lists isn't listed twice.
+    const have = new Set(ownCommands.map((c) => c.label));
+    return [...ownCommands, ...found.filter((t) => !have.has(`#${t.number} ${t.title}`)).map((t) => taskCommand(t, `Tasks in ${t.project}`))];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownCommands, found, query, open]);
   const list = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,8 +57,13 @@ export function CommandMenu() {
         setOpen((o) => !o);
       }
     };
+    const show = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("omicron:commands", show);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("omicron:commands", show);
+    };
   }, []);
   useEffect(() => {
     if (open) {
@@ -33,7 +74,10 @@ export function CommandMenu() {
 
   const shown = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return commands;
     return commands.filter((c) => {
+      // Found by the search already (its title has the words).
+      if (c.id.startsWith("find-")) return true;
       const text = `${c.label} ${c.group} ${c.keywords ?? ""}`.toLowerCase();
       return words.every((w) => text.includes(w));
     });
@@ -74,7 +118,7 @@ export function CommandMenu() {
               else if (e.key === "ArrowUp") (e.preventDefault(), setAt((i) => Math.max(i - 1, 0)));
               else if (e.key === "Enter") (e.preventDefault(), choose(shown[at]));
             }}
-            placeholder="Type a command or a Project…"
+            placeholder="Search tasks, Projects and commands"
             aria-label="Command"
             role="combobox"
             aria-expanded
@@ -85,7 +129,7 @@ export function CommandMenu() {
           <kbd className="hidden rounded border px-1.5 tabular-nums text-[0.6875rem] text-muted-foreground sm:block">esc</kbd>
         </div>
         <div id="command-list" ref={list} role="listbox" aria-label="Commands" className="max-h-[min(60vh,28rem)] overflow-y-auto p-2">
-          {shown.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">No commands match.</p>}
+          {shown.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">Nothing matches.</p>}
           {/* Each heading names its group, as screen readers read it. */}
           {groups.map(({ name, items }, g) => (
             <div key={name + g} role="group" aria-labelledby={`command-group-${g}`}>

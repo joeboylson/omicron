@@ -1,3 +1,5 @@
+import { openCommands } from "@/lib/recent";
+import { Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { go, useApp } from "@/lib/app";
 import { Button } from "@/components/base/button";
@@ -38,6 +40,9 @@ export function TopBar({ here, title, actions }: { here: (typeof PAGES)[number][
             ))}
           </nav>
           <GateButton />
+          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground sm:hidden" aria-label="Search everything" onClick={openCommands}>
+            <Search />
+          </Button>
           {/* You: a menu with Settings (like most apps' avatar menu). */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

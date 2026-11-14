@@ -194,3 +194,13 @@ export async function unlinkJob(db: SupabaseClient, task: Task, jobId: string) {
 export async function putTaskBack(db: SupabaseClient, taskId: string, fields: Partial<Task>) {
   must(await db.from("tasks").update(fields).eq("id", taskId));
 }
+
+/** Tasks in any of your Projects whose title has these words, for ⌘K (#234). */
+export async function searchTasks(db: SupabaseClient, query: string): Promise<{ projectId: string; project: string; number: number; title: string }[]> {
+  const words = query.trim().split(/\s+/).filter(Boolean).slice(0, 5);
+  if (words.length === 0) return [];
+  let q = db.from("tasks").select("number,title,project_id,projects(name)");
+  for (const w of words) q = q.ilike("title", `%${w.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+  const rows = must(await q.order("updated_at", { ascending: false }).limit(20)) as any[];
+  return rows.map((r) => ({ projectId: r.project_id, project: r.projects?.name ?? "", number: r.number, title: r.title }));
+}

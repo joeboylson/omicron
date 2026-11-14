@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GateButton } from "@/components/GateButton";
 import { UndoSteps, type Step } from "@/lib/undo";
+import { openCommands, rememberTask } from "@/lib/recent";
 import { ShareButton, ShareSheet } from "@/components/ShareSheet";
 import { DevView } from "@/components/DevView";
 import { RunBar } from "@/components/RunBar";
@@ -277,6 +278,12 @@ export function ProjectPage({ id }: { id: string }) {
   // A link to a task that isn't there (deleted, or a wrong number): say so
   // and drop it from the address.
   const missing = loaded && openTask !== null && !loaded.tasks.some((t) => t.number === openTask);
+  // Opened: remembered, for ⌘K's Recently opened (#234).
+  const opened = loaded && openTask !== null ? loaded.tasks.find((t) => t.number === openTask) : undefined;
+  useEffect(() => {
+    if (loaded && opened) rememberTask({ projectId: loaded.id, project: loaded.name, number: opened.number, title: opened.title });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened?.id]);
   useEffect(() => {
     if (!missing) return;
     toast({ message: `There's no task #${openTask} in this Project (it may have been deleted).` });
@@ -519,6 +526,10 @@ export function ProjectPage({ id }: { id: string }) {
             </div>
           )}
           <GateButton />
+          {/* ⌘K on a phone: find a task in any Project (#234). */}
+          <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search everything" onClick={openCommands}>
+            <Search />
+          </Button>
           {view !== "dev" && project.sessions.length > 0 && (
             <Button variant="ghost" size="sm" className="gap-1 px-2 text-muted-foreground sm:hidden" aria-label={`Claude sessions: ${project.sessions.length}`} onClick={() => setSessionsOpen(true)}>
               <TerminalSquare className="h-5 w-5" aria-hidden />

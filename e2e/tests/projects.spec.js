@@ -2190,3 +2190,26 @@ test("columns are added, renamed and deleted from the board itself", async ({ pa
   await page.getByRole("menuitem", { name: "Delete Column" }).click();
   await expect(page.getByRole("region")).toHaveText([/^To do/, /^Done/]);
 });
+
+test("⌘K finds tasks in every Project, and lists recently opened ones before you type", async ({ page, request }) => {
+  await newPerson(page, request);
+  const garden = unique("Garden");
+  await startProjectIn(page, garden);
+  await addTaskIn(page, "To do", "Prune the roses");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await startProjectIn(page, unique("Kitchen"));
+  // (#234) From another Project: found by its words, grouped by its Project.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("combobox", { name: "Command" }).fill("prune roses");
+  const found = page.getByRole("option", { name: /#1 Prune the roses/ });
+  await expect(found).toBeVisible();
+  await expect(page.getByRole("group", { name: `Tasks in ${garden}` })).toBeVisible();
+  await found.click();
+  await expect.poll(() => page.url()).toContain("task=1");
+  await expect(page.getByRole("dialog")).toContainText("Prune the roses");
+  await escape(page);
+  await expect(page.getByRole("heading", { level: 1, name: garden })).toBeVisible();
+  // Before typing: what was opened lately.
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByRole("group", { name: "Recently opened" })).toContainText("Prune the roses");
+});
