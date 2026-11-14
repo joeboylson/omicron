@@ -18,6 +18,7 @@ use clap::Subcommand;
 use omicron::board::{Board, Run};
 use omicron::supa::{MachineKey, Supabase};
 use serde_json::Value;
+use omicron::board::TaskRow;
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -190,6 +191,27 @@ fn in_progress(statuses: &[omicron::board::Status], status_id: &str) -> bool {
     statuses.iter().any(|s| s.id == status_id && (Some(s.id.as_str()) == first || s.name.eq_ignore_ascii_case("doing")) && !s.is_done)
 }
 
+/// A run's pick from the top status, in order: the tasks to give a team
+/// here (labelled `team_label`) on the way, and the next one for the
+/// session itself. Skipped: tasks given to anyone else, without the run's
+/// label (when it has one), or already with a team.
+fn choose<'a>(rows: &'a [TaskRow], session: &str, run_label: Option<&str>, team_label: Option<&str>) -> (Vec<&'a TaskRow>, Option<&'a TaskRow>) {
+    let mut for_team = Vec::new();
+    for t in rows {
+        let free = t.assignee_person_id.is_none() && t.assignee_session_id.as_deref().is_none_or(|s| s == session);
+        let labels = t.label_ids();
+        if !free || !run_label.is_none_or(|l| labels.contains(&l)) || t.has_job() {
+            continue;
+        }
+        if team_label.is_some_and(|l| labels.contains(&l)) {
+            for_team.push(t);
+            continue;
+        }
+        return (for_team, Some(t));
+    }
+    (for_team, None)
+}
+
 /// Do the next thing a run needs, if anything.
 fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     let Some(run) = board.run(id)? else { return Ok(()) };
@@ -269,27 +291,17 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     };
     let me = board.me();
     let team = board.teams()?.into_iter().find(|t| t.machine_id == me && t.project_id == run.project_id && t.state == "running");
-    let mut next = None;
-    for t in board.task_rows_in(&run.project_id, &first.id)? {
-        let free = t.assignee_person_id.is_none() && t.assignee_session_id.as_deref().is_none_or(|s| s == session.id);
-        let labels = t.label_ids();
-        let labelled = run.label_id.as_deref().is_none_or(|l| labels.contains(&l));
-        let with_a_team = t.has_job();
-        if !free || !labelled || with_a_team {
-            continue;
+    let rows = board.task_rows_in(&run.project_id, &first.id)?;
+    let team_label = team.as_ref().and(team_label_id.as_deref());
+    let (for_team, next) = choose(&rows, &session.id, run.label_id.as_deref(), team_label);
+    if let Some(team) = &team {
+        for t in for_team {
+            let number = t.number;
+            let task = board.task(&project, number)?;
+            let job = board.add_job(team, &t.title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
+            board.link_job(&task, team, job.number)?;
+            board.run_note(id, &format!("gave #{number} to the team {} as job #{}", team.name, job.number))?;
         }
-        if let (Some(team), Some(l)) = (&team, &team_label_id) {
-            if labels.contains(&l.as_str()) {
-                let number = t.number;
-                let task = board.task(&project, number)?;
-                let job = board.add_job(team, &t.title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
-                board.link_job(&task, team, job.number)?;
-                board.run_note(id, &format!("gave #{number} to the team {} as job #{}", team.name, job.number))?;
-                continue;
-            }
-        }
-        next = Some(t);
-        break;
     }
     let Some(next) = next else {
         let waiting: Vec<String> = team_tasks
@@ -317,4 +329,52 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
         ),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn row(n: i64, labels: &[&str], person: Option<&str>, session: Option<&str>, job: bool) -> TaskRow {
+        serde_json::from_value(json!({
+            "id": format!("t{n}"), "number": n, "title": format!("Task {n}"), "status_id": "todo",
+            "assignee_person_id": person, "assignee_session_id": session,
+            "task_labels": labels.iter().map(|l| json!({ "label_id": l })).collect::<Vec<_>>(),
+            "task_jobs": if job { json!([{ "job_id": "j" }]) } else { json!([]) },
+        }))
+        .unwrap()
+    }
+
+    fn numbers(v: &[&TaskRow]) -> Vec<i64> {
+        v.iter().map(|t| t.number).collect()
+    }
+
+    #[test]
+    fn a_run_takes_the_first_task_free_for_it() {
+        let rows = [
+            row(1, &[], Some("pat"), None, false),      // a person's
+            row(2, &[], None, Some("other"), false),    // another session's
+            row(3, &[], None, None, true),              // with a team already
+            row(4, &[], None, Some("mine"), false),     // its own
+            row(5, &[], None, None, false),
+        ];
+        let (team, next) = choose(&rows, "mine", None, None);
+        assert_eq!((numbers(&team), next.map(|t| t.number)), (vec![], Some(4)));
+        // Nothing free: nothing.
+        assert!(choose(&rows[..3], "mine", None, None).1.is_none());
+    }
+
+    #[test]
+    fn a_run_with_a_label_takes_only_those_and_team_tasks_go_to_the_team() {
+        let rows = [row(1, &["team", "web"], None, None, false), row(2, &["api"], None, None, false), row(3, &["web"], None, None, false), row(4, &["team"], None, None, false)];
+        // Only "web" tasks; the team one on the way goes to the team.
+        let (team, next) = choose(&rows, "s", Some("web"), Some("team"));
+        assert_eq!((numbers(&team), next.map(|t| t.number)), (vec![1], Some(3)));
+        // No team here: a "team" task is just a task.
+        assert_eq!(choose(&rows, "s", None, None).1.map(|t| t.number), Some(1));
+        // With a team and no run label: every team task is passed on, up to the first other one.
+        let (team, next) = choose(&rows, "s", None, Some("team"));
+        assert_eq!((numbers(&team), next.map(|t| t.number)), (vec![1], Some(2)));
+    }
 }

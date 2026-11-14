@@ -360,6 +360,47 @@ pub enum Place {
     After(i64),
 }
 
+/// Where a task goes among the others in its status: its new position, and
+/// new positions for all the others first when two of them tie (tasks that
+/// never had a place can't have anything put between them).
+#[derive(Debug, PartialEq)]
+pub struct Placement {
+    pub renumbered: Vec<f64>,
+    pub position: f64,
+}
+
+/// Place task #`number` among `others` ((number, position), in order).
+pub fn placement(others: &[(i64, f64)], number: i64, place: Place) -> Result<Placement> {
+    let mut spots: Vec<f64> = others.iter().map(|(_, p)| *p).collect();
+    let renumbered = if spots.windows(2).any(|w| w[0] >= w[1]) {
+        spots = (0..spots.len()).map(|i| i as f64).collect();
+        spots.clone()
+    } else {
+        Vec::new()
+    };
+    let at = match place {
+        Place::Top => 0,
+        Place::Bottom => spots.len(),
+        Place::Before(n) | Place::After(n) => {
+            let i = others.iter().position(|(m, _)| *m == n).with_context(|| {
+                if n == number {
+                    "a task can't be placed next to itself".to_string()
+                } else {
+                    format!("#{n} isn't in that status")
+                }
+            })?;
+            if matches!(place, Place::After(_)) { i + 1 } else { i }
+        }
+    };
+    let position = match (at.checked_sub(1).map(|i| spots[i]), spots.get(at)) {
+        (None, None) => 0.0,
+        (None, Some(a)) => a - 1.0,
+        (Some(b), None) => b + 1.0,
+        (Some(b), Some(a)) => (b + *a) / 2.0,
+    };
+    Ok(Placement { renumbered, position })
+}
+
 /// A request to hand a task to its session (see `dispatch`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dispatch {
@@ -991,36 +1032,13 @@ impl Board {
         let mut others: Vec<Task> =
             self.tasks(project)?.into_iter().filter(|t| t.status_id == status_id && t.id != task.id).collect();
         others.sort_by(|a, b| a.position.total_cmp(&b.position).then(a.number.cmp(&b.number)));
-        // Ties (tasks that never had a place) can't have anything put
-        // between them: number the column first.
-        if others.windows(2).any(|w| w[0].position >= w[1].position) {
-            for (i, t) in others.iter_mut().enumerate() {
-                t.position = i as f64;
-                self.update_task(t, json!({ "position": t.position }))?;
-            }
+        let spots: Vec<(i64, f64)> = others.iter().map(|t| (t.number, t.position)).collect();
+        let placed = placement(&spots, number, place)?;
+        for (i, p) in placed.renumbered.iter().enumerate() {
+            others[i].position = *p;
+            self.update_task(&others[i], json!({ "position": p }))?;
         }
-        let at = match place {
-            Place::Top => 0,
-            Place::Bottom => others.len(),
-            Place::Before(n) | Place::After(n) => {
-                let i = others.iter().position(|t| t.number == n).with_context(|| {
-                    if n == number {
-                        "a task can't be placed next to itself".to_string()
-                    } else {
-                        format!("#{n} isn't in that status")
-                    }
-                })?;
-                if matches!(place, Place::After(_)) { i + 1 } else { i }
-            }
-        };
-        let before = at.checked_sub(1).map(|i| others[i].position);
-        let after = others.get(at).map(|t| t.position);
-        let position = match (before, after) {
-            (None, None) => 0.0,
-            (None, Some(a)) => a - 1.0,
-            (Some(b), None) => b + 1.0,
-            (Some(b), Some(a)) => (b + a) / 2.0,
-        };
+        let position = placed.position;
         self.update_task(&task, json!({ "status_id": status_id, "position": position }))?;
         self.task(project, number)
     }
@@ -1714,6 +1732,35 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn placing_a_task() {
+        let col = [(1, 0.0), (2, 1.0), (3, 2.0)];
+        let at = |place| placement(&col, 9, place).unwrap();
+        assert_eq!(at(Place::Top), Placement { renumbered: vec![], position: -1.0 });
+        assert_eq!(at(Place::Bottom).position, 3.0);
+        assert_eq!(at(Place::Before(2)).position, 0.5);
+        assert_eq!(at(Place::After(2)).position, 1.5);
+        assert_eq!(at(Place::After(3)).position, 3.0);
+        // An empty status.
+        assert_eq!(placement(&[], 9, Place::Top).unwrap().position, 0.0);
+        // Not there, or itself.
+        assert!(placement(&col, 9, Place::Before(7)).unwrap_err().to_string().contains("#7 isn't in that status"));
+        // (The task itself is never among the others.)
+        assert!(placement(&[(1, 0.0), (3, 2.0)], 2, Place::After(2)).unwrap_err().to_string().contains("next to itself"));
+    }
+
+    #[test]
+    fn tied_tasks_are_numbered_before_one_goes_between() {
+        // Three that never had a place (all 0), as the database's old default did (#118).
+        let col = [(1, 0.0), (2, 0.0), (3, 0.0)];
+        let p = placement(&col, 9, Place::After(1)).unwrap();
+        assert_eq!(p.renumbered, vec![0.0, 1.0, 2.0]);
+        assert_eq!(p.position, 0.5);
+        assert_eq!(placement(&col, 9, Place::Top).unwrap().position, -1.0);
+        // A tie anywhere renumbers the whole status.
+        assert_eq!(placement(&[(1, 0.0), (2, 5.0), (3, 5.0)], 9, Place::Bottom).unwrap(), Placement { renumbered: vec![0.0, 1.0, 2.0], position: 3.0 });
+    }
 
     #[test]
     fn task_rows_team_tasks_and_workers_are_read() {
