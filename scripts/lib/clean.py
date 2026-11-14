@@ -48,7 +48,7 @@ for p in projects:
 machines = get_all(f"/rest/v1/machines?created_at=gte.{q}&select=id,name")
 # The made-up machines of scripts/shots.sh (dev/seed/seed.js) have plain
 # names; only ones made during the run are taken.
-SEED_MACHINES = {"mac-mini", "studio", "build-box"}
+SEED_MACHINES = {"mac-mini", "studio", "build-box", "this-mac"}
 test_machines = [m["id"] for m in machines if re.search(r"-[0-9a-f]{4,32}$", m["name"]) or m["name"] in SEED_MACHINES]
 
 users = 0

@@ -472,9 +472,14 @@ impl WebMachine {
         if input["close"] == true {
             crate::gate::close()?;
         } else {
+            // The same way in as `omicron gate open`, so whatever waited for
+            // the gate (team answers and jobs) is passed on however it's
+            // opened (the team side lives in the command, not here).
             let until = input["until"].as_str().unwrap_or("");
-            if let Err(e) = crate::gate::open(until) {
-                return Ok(Some(json_reply(400, json!({ "error": format!("{e:#}") }))));
+            let (ok, _, err) = run_omicron(&["gate", "open", "--until", until]);
+            if !ok {
+                let why = err.trim().trim_start_matches("omicron: ").trim_start_matches("Error: ").to_string();
+                return Ok(Some(json_reply(400, json!({ "error": why }))));
             }
         }
         Ok(None)
