@@ -54,7 +54,7 @@ import { RunBar } from "@/components/RunBar";
 import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
-import { BoardSkeleton } from "@/components/Skeleton";
+import { BoardSkeleton, LoadFailed } from "@/components/Skeleton";
 import { useToast } from "@/lib/toast";
 import { typing, useCommands } from "@/lib/commands";
 
@@ -138,8 +138,10 @@ export function ProjectPage({ id }: { id: string }) {
   // things were before the save lands.
   const saving = usePendingChanges();
   const withSaving = (p: ProjectData | null) => saving.over(p);
+  // The first load failed: say so in place of the placeholder (#198).
+  const [loadFailed, setLoadFailed] = useState(false);
   const reload = useCallback(() => {
-    act(async () => setProject(withSaving(await loadProject(db, id))));
+    act(async () => setProject(withSaving(await loadProject(db, id)))).then((ok) => setLoadFailed(!ok));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, act, id]);
   useEffect(reload, [reload]);
@@ -253,7 +255,16 @@ export function ProjectPage({ id }: { id: string }) {
     setTaskInAddress(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missing]);
-  if (project === undefined) return <BoardSkeleton />;
+  if (project === undefined) {
+    return loadFailed ? (
+      <main>
+        <TopBar here="/" title="Couldn't load this Project" />
+        <LoadFailed what="this Project" onRetry={reload} titled />
+      </main>
+    ) : (
+      <BoardSkeleton />
+    );
+  }
   if (project === null) {
     return (
       <>

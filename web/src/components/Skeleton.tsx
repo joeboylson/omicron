@@ -2,6 +2,7 @@
 // arrives. Read out as "Loading" once; still when Reduce Motion is on.
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/base/button";
 
 export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cn("animate-pulse rounded-md bg-muted motion-reduce:animate-none", className)} />;
@@ -67,5 +68,15 @@ export function ProjectsSkeleton() {
         </div>
       ))}
     </Loading>
+  );
+}
+
+/** In place of a placeholder whose first load failed: say so, and Try again (#198). */
+export function LoadFailed({ what, onRetry, titled = false }: { what: string; onRetry: () => void; titled?: boolean }) {
+  return (
+    <div role="alert" className="mx-auto flex max-w-md flex-col items-start gap-3 px-[max(1rem,env(safe-area-inset-left))] py-10">
+      {titled ? <span className="sr-only">Couldn't load {what}</span> : <h2 className="text-lg font-semibold">Couldn't load {what}</h2>}
+      <Button onClick={onRetry}>Try again</Button>
+    </div>
   );
 }

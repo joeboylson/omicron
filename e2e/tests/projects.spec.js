@@ -1991,3 +1991,27 @@ test("a change that fails says so, stays said through reloads, and can be tried 
   await escape(page);
   await expect(column(page, "Done")).toContainText("Fix the gate");
 });
+
+test("a Project or the Projects list that can't load says so, with Try again (#198)", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  const url = page.url();
+  // Every read of the database fails, for now.
+  let failing = true;
+  await page.route(/\/rest\/v1\/(projects|statuses|tasks)\?/, (route) =>
+    failing && route.request().method() === "GET" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "server is down" }) }) : route.continue(),
+  );
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Couldn't load this Project" })).toBeVisible();
+  failing = false;
+  await page.getByRole("main").getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+
+  failing = true;
+  await page.goto(url.split("/p/")[0] + "/");
+  await expect(page.getByRole("heading", { name: "Couldn't load your Projects" })).toBeVisible();
+  failing = false;
+  await page.getByRole("main").getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("link", { name: new RegExp(name) })).toBeVisible();
+});

@@ -19,12 +19,14 @@ import { cn } from "@/lib/utils";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { TopBar } from "@/components/TopBar";
 import { Input } from "@/components/base/input";
-import { ProjectsSkeleton } from "@/components/Skeleton";
+import { LoadFailed, ProjectsSkeleton } from "@/components/Skeleton";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/base/dialog";
 
 export function ProjectsPage() {
   const { db, act, me } = useApp();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  // The first load failed: say so in place of the placeholder (#198).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [name, setName] = useState("");
   const [starting, setStarting] = useState(false);
   // Who and what the new Project starts with: nobody ticked at first.
@@ -52,7 +54,7 @@ export function ProjectsPage() {
   const reload = useCallback(() => {
     act(async () => {
       setProjects(await listProjects(db));
-    });
+    }).then((ok) => setLoadFailed(!ok));
   }, [db, act]);
   useEffect(reload, [reload]);
   useChanges(db, null, reload);
@@ -146,7 +148,7 @@ export function ProjectsPage() {
     />
     <main className="mx-auto grid w-full max-w-5xl gap-3 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       {projects === null ? (
-        <ProjectsSkeleton />
+        loadFailed ? <LoadFailed what="your Projects" onRetry={reload} /> : <ProjectsSkeleton />
       ) : projects.length === 0 ? (
         <p className="py-6 text-muted-foreground">No Projects yet. Start one, or ask someone to add you to theirs.</p>
       ) : (
