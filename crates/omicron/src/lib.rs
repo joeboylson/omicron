@@ -13,6 +13,7 @@ pub mod names;
 pub mod reactions;
 pub mod realtime;
 pub mod supa;
+pub mod tell;
 pub mod text;
 pub mod trust;
 pub mod web;

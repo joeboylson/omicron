@@ -199,9 +199,10 @@ fn hand_over(board: &Board, machine: &str, d: &Dispatch) -> Result<String> {
     let session = board.session_by_id(&d.session_id)?;
     let text = message(&project, &task);
     let name = &session.name;
-    if crate::sessions_cmd::deliver(board, &session, &text)? {
-        Ok(format!("Sent the task to {name} on {machine}."))
-    } else {
-        Ok(format!("{name} isn't open on {machine}. It gets the task when it's next opened (`omicron open {name}`)."))
-    }
+    use omicron::tell::Delivery;
+    Ok(match omicron::tell::tell(board, &session, &text)? {
+        Delivery::Sent => format!("Sent the task to {name} on {machine}."),
+        Delivery::Waiting => format!("{name} on {machine} isn't ready for it yet. It gets the task as soon as it is."),
+        Delivery::NotOpen => format!("{name} isn't open on {machine}. It gets the task when it's next opened (`omicron open {name}`)."),
+    })
 }

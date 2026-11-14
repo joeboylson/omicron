@@ -332,8 +332,7 @@ impl Runner {
             }
         };
         let name = session.name.clone();
-        let open = session.claude_session_id.as_deref().is_some_and(omicron::inbox::listening);
-        if !open {
+        if !omicron::tell::is_open(&session) {
             // Not open in any window: wait rather than pile prompts up for
             // when it is. Say so once.
             let note = format!("waiting: {name} isn't open (`omicron open {name}`)");
@@ -381,7 +380,7 @@ impl Runner {
             return Ok(());
         }
         omicron::windows::set_busy(&l.session_id, true)?;
-        crate::sessions_cmd::deliver(&board, &session, &l.prompt)?;
+        omicron::tell::tell(&board, &session, &l.prompt)?;
         self.recorded(claimed, &l.id);
         Ok(())
     }

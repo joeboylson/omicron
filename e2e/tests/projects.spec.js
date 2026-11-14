@@ -939,10 +939,10 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     omicron.cli("machines", "owner", robin.login);
     omicron.cli("gate", "close");
 
-    // Its window has no add-on following the inbox: the task waits for the
-    // next time the session is opened.
+    // Its window is running but no add-on follows the inbox yet: the task
+    // waits until one does.
     await button.click();
-    await expect(outcome).toContainText(`parser isn't open on ${machineName}. It gets the task when it's next opened`);
+    await expect(outcome).toContainText(`parser on ${machineName} isn't ready for it yet. It gets the task as soon as it is.`);
 
     // With the add-on: the waiting one arrives, and the next goes straight in.
     addon = await omicron.follow(claude);

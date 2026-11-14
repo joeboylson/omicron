@@ -140,10 +140,11 @@ pub fn sessions(cmd: Sessions, as_machine: bool) -> Result<()> {
             match found {
                 // A session: through its inbox, as if typed once Claude is free.
                 Some((board, session)) => {
-                    if deliver(&board, &session, &text)? {
-                        println!("Sent it to {name}.");
-                    } else {
-                        println!("Left it for {name}. It shows up once Omicron's add-on runs in its window.");
+                    use omicron::tell::Delivery;
+                    match omicron::tell::tell(&board, &session, &text)? {
+                        Delivery::Sent => println!("Sent it to {name}."),
+                        Delivery::Waiting => println!("Left it for {name}. It isn't ready for it yet; it gets it as soon as it is."),
+                        Delivery::NotOpen => println!("Left it for {name}. It isn't open; it gets it when it's next opened (`omicron open {name}`)."),
                     }
                 }
                 // Something else in the host (a team member): typed, then
@@ -560,22 +561,6 @@ pub fn addon_dir() -> Result<PathBuf> {
     Ok(omicron::config::home()?.join("claude/addon"))
 }
 
-/// Send a session a message: it goes into the session's inbox, and
-/// Omicron's add-on puts it into the session's window. True when a window
-/// has the session open now; otherwise it waits there until it's opened.
-pub fn deliver(board: &omicron::board::Board, session: &omicron::board::SessionRecord, text: &str) -> Result<bool> {
-    let conversation = match &session.claude_session_id {
-        Some(c) => c.clone(),
-        None => {
-            // Never opened yet: give it the conversation it'll start with.
-            let c = uuid::Uuid::new_v4().to_string();
-            board.session_conversation(&session.id, &c)?;
-            c
-        }
-    };
-    omicron::inbox::put(&conversation, text)?;
-    Ok(omicron::inbox::listening(&conversation))
-}
 
 /// `omicron open`: the one way to run a Claude session. Claude runs in the
 /// background, with Omicron's hooks and add-on (so it gets its messages

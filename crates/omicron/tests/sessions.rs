@@ -879,12 +879,12 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     let gave = s.request_as(&login, "POST", "/rest/v1/rpc/give_up_dispatch", Some(json!({ "dispatch": fresh, "why": "it crashed" }))).unwrap();
     assert_eq!(gave[0]["state"], "failed");
 
-    // Its window doesn't follow its inbox (no add-on): the task waits for
-    // the next time it's opened, and Dispatch says so.
+    // Its window runs but doesn't follow its inbox (no add-on): the task
+    // waits until it does, and Dispatch says so.
     let mut d = daemon(&mac, &path);
     open_gate(&mac, &pat);
     let said = ok(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert!(said.starts_with("parser isn't open"), "{said}");
+    assert!(said.starts_with("parser on ") && said.contains("isn't ready for it yet"), "{said}");
     d.kill().unwrap();
     w.kill().unwrap();
 }
