@@ -1048,8 +1048,25 @@ test("comments hold images: picked, dropped, or posted by a session, and open fu
   await comments.getByRole("button", { name: "Open gate.png" }).click();
   const viewer = page.getByRole("dialog", { name: "gate.png" });
   await expect(viewer.getByRole("img", { name: "gate.png" })).toBeVisible();
+  // Full screen, with the comment's other image a swipe, button or key away (#155).
+  const box = await viewer.boundingBox();
+  const size = page.viewportSize();
+  expect([box.width, box.height]).toEqual([size.width, size.height]);
+  await expect(viewer).toContainText("1 of 2");
+  await expect(viewer.getByRole("link", { name: "Open original" })).toHaveAttribute("href", /gate\.png/);
+  await viewer.getByRole("button", { name: "Next image" }).click();
+  await expect(page.getByRole("dialog", { name: "dropped.png" })).toContainText("2 of 2");
+  await page.keyboard.press("ArrowRight");
+  await expect(viewer).toContainText("1 of 2");
+  // Tapped: at full size, to look around; tapped again, back to fit.
+  const img = viewer.getByRole("img", { name: "gate.png" });
+  await img.click();
+  await expect(img).toHaveClass(/max-w-none/);
+  await img.click();
+  await expect(img).not.toHaveClass(/max-w-none/);
   await escape(page);
   await expect(viewer).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(1);
   // Focus goes back to the image that was opened.
   await expect(comments.getByRole("button", { name: "Open gate.png" })).toBeFocused();
 

@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, ImagePlus, Loader2, Terminal, X } from "lucide-react";
+import { ImageViewer } from "@/components/ImageViewer";
 import { useApp } from "@/lib/app";
 import {
   addComment,
@@ -20,7 +21,6 @@ import {
 } from "@/lib/data";
 import { Button } from "@/components/base/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/base/dialog";
 import { Group, Row } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +55,8 @@ export function Comments({
   const [comment, setComment] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [viewing, setViewing] = useState<string | null>(null);
+  // The comment's images being looked at, and which one.
+  const [viewing, setViewing] = useState<{ images: string[]; at: number } | null>(null);
   const [, setLinksVersion] = useState(0);
   const picker = useRef<HTMLInputElement>(null);
   // The thumbnail that opened the viewer, to put focus back on when it closes.
@@ -140,7 +141,7 @@ export function Comments({
                         type="button"
                         onClick={(e) => {
                           opener.current = e.currentTarget;
-                          setViewing(path);
+                          setViewing({ images: c.images, at: c.images.indexOf(path) });
                         }}
                         aria-label={`Open ${imageName(path)}`}
                         className="block overflow-hidden rounded-md border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -257,21 +258,18 @@ export function Comments({
         </Row>
       </form>
 
-      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent
-          className="max-w-[min(96vw,80rem)] gap-3 p-3 sm:max-w-[min(96vw,80rem)] sm:p-4"
-          onCloseAutoFocus={(e) => {
-            e.preventDefault();
-            opener.current?.focus();
-          }}
-        >
-          <DialogTitle className="truncate pr-10 text-sm font-medium">{viewing && imageName(viewing)}</DialogTitle>
-          <DialogDescription className="sr-only">The image at full size.</DialogDescription>
-          {viewing && links.get(viewing) && (
-            <img src={links.get(viewing)} alt={imageName(viewing)} className="max-h-[80dvh] w-full rounded-md object-contain" />
-          )}
-        </DialogContent>
-      </Dialog>
+      <ImageViewer
+        images={viewing?.images ?? []}
+        at={viewing?.at ?? null}
+        link={(p) => links.get(p)}
+        name={imageName}
+        onAt={(at) => setViewing((v) => (v ? { ...v, at } : v))}
+        onClose={() => {
+          setViewing(null);
+          // Back to the thumbnail it was opened from.
+          setTimeout(() => opener.current?.focus(), 0);
+        }}
+      />
     </Group>
   );
 }
