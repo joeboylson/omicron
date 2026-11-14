@@ -28,7 +28,7 @@ pub enum Machines {
         key: String,
     },
     /// Set who owns this machine: the only person who can send it orders
-    /// (dispatches, loops), while its gate is open. Run on the machine
+    /// (dispatches, loops), while its remote control is on. Run on the machine
     /// itself; without a login, it's you (your Tailscale login).
     Owner { login: Option<String> },
     /// Sign in with this machine's key and record when it was last seen
@@ -88,7 +88,7 @@ pub fn machines(m: Machines) -> Result<()> {
                 None => omicron::identity::local_person().context("couldn't tell who you are: give a Tailscale login")?.login,
             };
             let name = board.set_owner(&login)?;
-            println!("{} owns this machine now: only they can send it orders, while its gate is open.", name.as_deref().unwrap_or(&login));
+            println!("{} owns this machine now: only they can send it orders, while its remote control is on.", name.as_deref().unwrap_or(&login));
             Ok(())
         }
         Machines::CheckIn => {

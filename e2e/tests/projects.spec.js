@@ -300,29 +300,29 @@ test("the computer's owner sees its gate on its own page; nobody else does", asy
 
   // Robin owns the computer serving the page: its gate shows, closed.
   omicron.cli("machines", "owner", robin.login);
-  omicron.cli("gate", "close");
+  omicron.cli("remote", "off");
   await page.reload();
   const gate = page.getByTestId("gate");
-  await expect(gate).toHaveAccessibleName(`${machineName}'s gate: closed`);
+  await expect(gate).toHaveAccessibleName(`${machineName}'s remote control: off`);
   // Opened on the computer: the page says until when.
   const later = new Date(Date.now() + 2 * 3600 * 1000);
-  omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
+  omicron.cli("remote", "on", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
   await page.reload();
-  await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s gate: open until`));
+  await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s remote control: on until`));
   // Through the tailnet, it can't be opened or closed from the page. It
   // says plainly that this page can always use the computer (#151).
   await gate.click();
   const said = page.getByRole("dialog");
   await expect(said).toContainText(`You can always use ${machineName} from this page.`);
   await expect(said).toContainText("also takes your work from other computers");
-  await expect(page.getByRole("button", { name: "Close the gate" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Turn off remote control" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   // Closed: how to open it, to copy and run on the computer.
-  omicron.cli("gate", "close");
+  omicron.cli("remote", "off");
   await page.reload();
   await gate.click();
   await expect(said).toContainText("takes no work from other computers");
-  await expect(said.locator("code")).toHaveText(/^omicron gate open --until \d{2}:\d{2}$/);
+  await expect(said.locator("code")).toHaveText(/^omicron remote on --until \d{2}:\d{2}$/);
   await expect(said.getByRole("button", { name: "Copy" })).toBeVisible();
 });
 
@@ -331,19 +331,19 @@ test("on the computer itself, its owner opens and closes its gate from the page"
   await page.goto(omicron.url);
   await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
   omicron.cli("machines", "owner", omicron.me.login);
-  omicron.cli("gate", "close");
+  omicron.cli("remote", "off");
   await page.reload();
   const gate = page.getByTestId("gate");
-  await expect(gate).toHaveAccessibleName(`${machineName}'s gate: closed`);
+  await expect(gate).toHaveAccessibleName(`${machineName}'s remote control: off`);
   await gate.click();
   if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/gate-closed.png` });
-  await page.getByLabel("Open until").fill("23:59");
-  await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s gate: open until`));
-  expect(omicron.cli("gate", "status")).toContain("Open until 11:59 PM");
-  await page.getByRole("button", { name: "Close the gate" }).click();
-  await expect(gate).toHaveAccessibleName(`${machineName}'s gate: closed`);
-  expect(omicron.cli("gate", "status")).toContain("Closed");
+  await page.getByLabel("On until").fill("23:59");
+  await page.getByRole("button", { name: "Turn on", exact: true }).click();
+  await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s remote control: on until`));
+  expect(omicron.cli("remote", "status")).toContain("Remote control is on until 11:59 PM");
+  await page.getByRole("button", { name: "Turn off remote control" }).click();
+  await expect(gate).toHaveAccessibleName(`${machineName}'s remote control: off`);
+  expect(omicron.cli("remote", "status")).toContain("Remote control is off");
 });
 
 test("the Dev view: this computer's sessions in terminals, and tasks handed over here", async ({ page, request }) => {
@@ -359,7 +359,7 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
   try {
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: omicron.folder(), source: "resume" });
     omicron.cli("machines", "owner", robin.login);
-    omicron.cli("gate", "close");
+    omicron.cli("gate", "close"); // the old name still works
     await page.reload();
     await page.getByRole("radio", { name: "Dev" }).click();
     await expect(page).toHaveURL(/view=dev/);
@@ -892,7 +892,7 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     await expect(page.getByTestId("dispatch")).toHaveText(/parser gets it when it next looks for tasks\./);
     omicron.cli("machines", "owner", robin.login);
     const later = new Date(Date.now() + 2 * 3600 * 1000);
-    omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
+    omicron.cli("remote", "on", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
     // ...the session gets it when told to get its tasks.
     mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
     expect(mine).toContain(`#1 in ${name}: Write the parser (new)`);
@@ -956,7 +956,7 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     // Robin owns it, and this page is served by that machine: it takes
     // Robin's orders from here with its gate closed (ref/BRAINSTORM.md, "The gate").
     omicron.cli("machines", "owner", robin.login);
-    omicron.cli("gate", "close");
+    omicron.cli("remote", "off");
 
     // Its window is running but no add-on follows the inbox yet: the task
     // waits until one does.
@@ -1171,7 +1171,7 @@ test("a team's question shows it's waiting on you, and what happened to the answ
   // Answered while the team's computer's gate is closed: held, and says so.
   await sheet.getByLabel("New comment").fill("Use version 2.");
   await sheet.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(sheet.getByTestId("answer-mark")).toHaveText(`Held until ${machineName}'s gate opens`);
+  await expect(sheet.getByTestId("answer-mark")).toHaveText(`Held until ${machineName}'s remote control is on`);
 
   // Passed on (as the computer marks it): it says to whom, and the card's mark goes.
   const [comment] = await rest(request, me.session, "GET", `/rest/v1/comments?task_id=eq.${task.id}&select=id`);

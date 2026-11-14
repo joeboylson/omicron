@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DoorClosed, DoorOpen } from "lucide-react";
+import { MonitorSmartphone, MonitorX } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { devApi, gateOpen, useDev } from "@/lib/dev";
 import { Button } from "@/components/base/button";
@@ -16,8 +16,9 @@ function suggested(): string {
 }
 
 /**
- * This computer's gate, for its owner: whether it takes work from
- * elsewhere, and until when. Opened and closed only on the computer itself.
+ * This computer's remote control (called the gate in the code), for its
+ * owner: whether it takes work from elsewhere, and until when. Turned on
+ * and off only on the computer itself.
  */
 export function GateButton() {
   const { db, act } = useApp();
@@ -35,7 +36,7 @@ export function GateButton() {
   if (!dev) return null;
   const open = gateOpen(dev);
   const change = (body: unknown) => act(async () => setDev(await devApi(db, "/gate", body)));
-  const Icon = open ? DoorOpen : DoorClosed;
+  const Icon = open ? MonitorSmartphone : MonitorX;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -44,10 +45,10 @@ export function GateButton() {
           size="sm"
           className="shrink-0 gap-1.5 text-muted-foreground"
           data-testid="gate"
-          aria-label={open ? `${dev.machine}'s gate: open until ${time(dev.gate_until!)}` : `${dev.machine}'s gate: closed`}
+          aria-label={open ? `${dev.machine}'s remote control: on until ${time(dev.gate_until!)}` : `${dev.machine}'s remote control: off`}
         >
           <Icon className="h-4 w-4" style={{ color: open ? "var(--sys-green)" : undefined }} aria-hidden />
-          <span className="hidden sm:inline">{open ? `Open until ${time(dev.gate_until!)}` : "Gate closed"}</span>
+          <span className="hidden sm:inline">{open ? `Remote control on until ${time(dev.gate_until!)}` : "Remote control off"}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="grid w-80 max-w-[calc(100vw-2rem)] gap-3 text-sm">
@@ -62,7 +63,7 @@ export function GateButton() {
           open ? null : <OpenOnIt machine={dev.machine} until={until} />
         ) : open ? (
           <Button variant="outline" onClick={() => change({ close: true })}>
-            Close the gate
+            Turn off remote control
           </Button>
         ) : (
           <form
@@ -73,10 +74,10 @@ export function GateButton() {
             }}
           >
             <label htmlFor="gate-until" className="shrink-0">
-              Open until
+              On until
             </label>
             <Input id="gate-until" type="time" value={until} onChange={(e) => setUntil(e.target.value)} className="h-9" />
-            <Button type="submit">Open</Button>
+            <Button type="submit">Turn on</Button>
           </form>
         )}
         <p className="text-xs text-muted-foreground">Only you can hand it work, never anyone else. At most 24 hours at a time.</p>
@@ -88,14 +89,14 @@ export function GateButton() {
 /** Opening it from elsewhere isn't allowed: the command to run on it, to copy. */
 function OpenOnIt({ machine, until }: { machine: string; until: string }) {
   const [copied, setCopied] = useState(false);
-  const command = `omicron gate open --until ${until}`;
+  const command = `omicron remote on --until ${until}`;
   return (
     <div className="grid gap-1.5">
       <p>
-        To let it take work from elsewhere, run this on <span className="font-mono">{machine}</span>:
+        To turn on remote control, run this on <span className="font-mono">{machine}</span>:
       </p>
       <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
-        <code className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs">{command}</code>
+        <code className="min-w-0 flex-1 font-mono text-xs">{command}</code>
         <Button
           variant="ghost"
           size="sm"

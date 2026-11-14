@@ -67,23 +67,25 @@ Runner
   The program a worker runs in, like Claude Code or OpenCode.
   (legion: harness)
 
-Gate
+Remote control
   Whether a computer takes work handed to it from elsewhere (the web page
-  or another machine). Closed unless opened on that computer itself, and it
-  closes by itself at the time chosen, never more than 24 hours later
-  (`omicron gate open --until 17:00`). Don't use "lock" or "unlock".
+  or another machine). Off unless turned on on that computer itself, and it
+  turns off by itself at the time chosen, never more than 24 hours later
+  (`omicron remote on --until 17:00`, `omicron remote off`). Called "the
+  gate" in the code and in older notes; say "remote control" to people.
+  Don't use "lock" or "unlock".
 
 Remote control token
   A token a computer makes (`omicron remote token`), shown once, that lets
   one browser control it from its page for a while (8 hours unless asked,
   at most 30 days), as if its owner visited from the computer itself: its
   Dev side, terminals and Dispatch. Only while that browser is signed in as
-  the owner who made it. Kept only on that computer, like the gate, and
+  the owner who made it. Kept only on that computer, like remote control, and
   taken back with `omicron remote revoke`. Don't use "lock" or "unlock".
 
 Owner
   The one person a machine takes orders from (dispatches, loops, tasks and
-  team answers from elsewhere), and only while its gate is open. The
+  team answers from elsewhere), and only while its remote control is on. The
   person who made its key, or set on it with `omicron machines owner`.
 
 Folder

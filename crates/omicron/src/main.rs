@@ -45,6 +45,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum RemoteCmd {
+    /// Turn it on until a time, like 17:00 or 5pm (today, or tomorrow if
+    /// that's passed): this computer takes work from elsewhere until then
+    On {
+        #[arg(long)]
+        until: String,
+    },
+    /// Turn it off now: this computer takes no work from elsewhere
+    Off,
+    /// Whether it's on, and until when
+    Status,
     /// Make a token that lets one browser control this computer from its
     /// page for a while. It's shown once: paste it in the page's Settings,
     /// signed in as this computer's owner.
@@ -176,11 +186,12 @@ enum Command {
     /// Let go of the session this runs in, leaving it running (like
     /// Ctrl-\): `! omicron detach` from inside it
     Detach,
-    /// The gate: whether this computer takes work from elsewhere (the web
-    /// page, other machines). Closed unless opened here; at most 24 hours
-    #[command(subcommand)]
+    /// The old name for `omicron remote on`, `off` and `status`
+    #[command(subcommand, hide = true)]
     Gate(GateCmd),
-    /// Remote control tokens: let one browser control this computer for a while
+    /// Remote control: whether this computer takes work from elsewhere (the
+    /// web page, other machines), turned on here for a while (at most 24
+    /// hours); and tokens that let one browser control it
     #[command(subcommand)]
     Remote(RemoteCmd),
     /// Claude sessions: list them, pick one, send one a message
@@ -273,34 +284,12 @@ fn run(cli: Cli) -> Result<()> {
             omicron::host::detach(&name)
         }
         Command::Remote(cmd) => remote(cmd),
-        Command::Gate(cmd) => {
-            let changes = !matches!(cmd, GateCmd::Status);
-            match cmd {
-                GateCmd::Open { until } => {
-                    omicron::gate::open(&until)?;
-                    // Pass on what waited for the gate: team answers and jobs.
-                    let config = Config::load()?;
-                    if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
-                        if let Err(e) = teams_run::pass_waiting(&supabase, &key, true) {
-                            eprintln!("couldn't pass on what waited for the gate: {e:#}");
-                        }
-                    }
-                }
-                GateCmd::Close => omicron::gate::close()?,
-                GateCmd::Status => {}
-            }
-            // Pages show it (the computer still decides).
-            if changes {
-                let config = Config::load()?;
-                if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
-                    if let Err(e) = omicron::board::Board::as_machine(&supabase, &key).and_then(|b| omicron::gate::report(&b)) {
-                        eprintln!("couldn't tell Omicron about the gate: {e:#}");
-                    }
-                }
-            }
-            println!("{}", omicron::gate::status());
-            Ok(())
-        }
+        // The old name for `omicron remote on/off/status`, kept for a while.
+        Command::Gate(cmd) => switch_remote(match cmd {
+            GateCmd::Open { until } => Some(Some(until)),
+            GateCmd::Close => Some(None),
+            GateCmd::Status => None,
+        }),
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
         Command::Labels(cmd) => projects_cmd::labels(cmd, cli.as_machine),
         Command::Topics(cmd) => projects_cmd::topics(cmd, cli.as_machine),
@@ -377,6 +366,9 @@ fn setup(url: Option<String>, key: Option<String>, secret_key: Option<String>, p
 fn remote(cmd: RemoteCmd) -> Result<()> {
     use omicron::remote;
     match cmd {
+        RemoteCmd::On { until } => switch_remote(Some(Some(until))),
+        RemoteCmd::Off => switch_remote(Some(None)),
+        RemoteCmd::Status => switch_remote(None),
         RemoteCmd::Token { lasts } => {
             let last = remote::parse_last(&lasts)?;
             // Only its owner can use one, as with the gate.
@@ -412,5 +404,34 @@ fn remote(cmd: RemoteCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Turn remote control on until a time (`Some(Some(until))`), off
+/// (`Some(None)`), or only say how it is (`None`).
+fn switch_remote(to: Option<Option<String>>) -> Result<()> {
+    if let Some(change) = &to {
+        match change {
+            Some(until) => {
+                omicron::gate::open(until)?;
+                // Pass on what waited for it: team answers and jobs.
+                let config = Config::load()?;
+                if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
+                    if let Err(e) = teams_run::pass_waiting(&supabase, &key, true) {
+                        eprintln!("couldn't pass on what waited for remote control: {e:#}");
+                    }
+                }
+            }
+            None => omicron::gate::close()?,
+        }
+        // Pages show it (the computer still decides).
+        let config = Config::load()?;
+        if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
+            if let Err(e) = omicron::board::Board::as_machine(&supabase, &key).and_then(|b| omicron::gate::report(&b)) {
+                eprintln!("couldn't tell Omicron about remote control: {e:#}");
+            }
+        }
+    }
+    println!("{}", omicron::gate::status());
+    Ok(())
 }
 

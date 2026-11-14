@@ -79,7 +79,7 @@ pub fn daemon() -> Result<()> {
         board.check_in()?;
         // And its gate, in case it closed by itself or changed by hand.
         if let Err(e) = omicron::gate::report(&board) {
-            eprintln!("couldn't tell Omicron about the gate: {e:#}");
+            eprintln!("couldn't tell Omicron about remote control: {e:#}");
         }
         Ok(board.login().clone())
     };

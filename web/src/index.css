@@ -166,3 +166,12 @@
     }
   }
 }
+
+/* Geist Mono joins characters like " --" into one shape, so commands shown
+   to copy (`omicron remote on --until 17:00`) read wrong: keep every
+   character as typed. */
+.font-mono,
+code,
+kbd {
+  font-variant-ligatures: none;
+}

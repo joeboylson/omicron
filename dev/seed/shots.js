@@ -257,7 +257,7 @@ async function escape(page) {
   // folder and a session of Lumen's on it.
   omicron.cli("machines", "register", "this-mac", "--all-projects");
   omicron.cli("machines", "owner", seeded.logins.joe);
-  omicron.cli("gate", "close");
+  omicron.cli("remote", "off");
   const lumenDir = omicron.folder();
   omicron.cli("folders", "add", lumenDir, "--project", "Lumen");
   const claude = crypto.randomUUID();

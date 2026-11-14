@@ -38,7 +38,7 @@ function answerMark(task: Task, c: Comment): string | null {
   if (q.answer_comment_id === c.id) return `Passed on to ${q.worker}`;
   if (!q.open) return null;
   const open = q.gate_until !== null && new Date(q.gate_until).getTime() > Date.now();
-  return open ? `Passing on to ${q.worker}…` : `Held until ${q.machine}'s gate opens`;
+  return open ? `Passing on to ${q.worker}…` : `Held until ${q.machine}'s remote control is on`;
 }
 
 export function Comments({

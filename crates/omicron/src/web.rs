@@ -512,7 +512,7 @@ impl WebMachine {
     /// Open or close this computer's gate: only from the computer itself. `None`: answer with the Dev status.
     fn dev_gate(&self, visit: &OwnerVisit, input: &serde_json::Value, _what: &str) -> Result<Option<Reply>> {
         if !visit.local {
-            return Ok(Some(json_reply(403, json!({ "error": "a computer's gate is opened only on it" }))));
+            return Ok(Some(json_reply(403, json!({ "error": "remote control is turned on only on the computer itself" }))));
         }
         if input["close"] == true {
             crate::gate::close()?;

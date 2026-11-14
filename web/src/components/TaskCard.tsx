@@ -145,7 +145,7 @@ export function TeamWaiting() {
 }
 
 /** The Needs review mark: orange, Apple's color for "look at this". */
-/** "Check this": indigo, apart from the orange that warns something's wrong (an ended session, a closed gate). */
+/** "Check this": indigo, apart from the orange that warns something's wrong (an ended session, remote control off). */
 export function NeedsReview() {
   return (
     <Badge className="border-transparent font-medium text-white hover:opacity-90" style={{ background: "var(--sys-indigo)" }}>

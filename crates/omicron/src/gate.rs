@@ -1,4 +1,5 @@
-//! The gate: whether this computer takes orders from anywhere else (work
+//! Remote control (called the gate in the code): whether this computer takes
+//! orders from anywhere else (work
 //! handed over from the web page or another machine). Closed unless opened
 //! here, on this computer, and it closes by itself, never more than 24
 //! hours after it opened. It lives in a file on this computer, not the
@@ -43,7 +44,7 @@ pub fn open(until: &str) -> Result<DateTime<Local>> {
         when += Duration::days(1);
     }
     if when > now + LONGEST {
-        bail!("a gate stays open at most 24 hours");
+        bail!("remote control stays on at most 24 hours");
     }
     let file = path()?;
     if let Some(dir) = file.parent() {
@@ -165,7 +166,7 @@ pub fn decide(me: &str, owner: Option<&str>, who: Option<&str>, gate_open: bool,
     }
     if !gate_open {
         return Some(format!(
-            "{machine}'s gate is closed, so it takes no work from elsewhere. Open it on {machine} with `omicron gate open --until 17:00`."
+            "{machine}'s remote control is off, so it takes no work from elsewhere. Turn it on, on {machine}, with `omicron remote on --until 17:00`."
         ));
     }
     None
@@ -174,8 +175,8 @@ pub fn decide(me: &str, owner: Option<&str>, who: Option<&str>, gate_open: bool,
 /// Words for whether the gate is open.
 pub fn status() -> String {
     match open_until() {
-        Some(until) => format!("Open until {}: this computer takes work from elsewhere.", until.format("%-I:%M %p %a")),
-        None => "Closed: this computer takes no work from elsewhere. Open it with `omicron gate open --until 17:00`.".into(),
+        Some(until) => format!("Remote control is on until {}: this computer takes work from elsewhere.", until.format("%-I:%M %p %a")),
+        None => "Remote control is off: this computer takes no work from elsewhere. Turn it on with `omicron remote on --until 17:00`.".into(),
     }
 }
 
@@ -190,7 +191,7 @@ mod tests {
         assert_eq!(d(Some("mac"), None, false), None);
         // The owner's, only with the gate open.
         assert_eq!(d(Some("joe"), Some("joe"), true), None);
-        assert!(d(Some("joe"), Some("joe"), false).unwrap().contains("gate is closed"));
+        assert!(d(Some("joe"), Some("joe"), false).unwrap().contains("remote control is off"));
         // Anyone else never, gate open or not; nobody's, with no owner.
         assert!(d(Some("sam"), Some("joe"), true).unwrap().contains("someone else"));
         assert!(d(Some("joe"), None, true).unwrap().contains("no owner yet"));

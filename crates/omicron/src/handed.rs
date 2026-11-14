@@ -93,7 +93,7 @@ pub fn tasks_mine() -> Result<()> {
 pub fn to_read_message(tasks: &[(String, omicron::board::Task)]) -> String {
     let it = if tasks.len() == 1 { "it" } else { "them" };
     let mut text = format!(
-        "Given to this session from elsewhere, only to read: don't work on {it}. This computer takes work from elsewhere only from its owner, while its gate is open. Hand {it} over on this computer (`omicron tasks send`), or have its owner give {it} with the gate open (`omicron gate open --until 17:00`).\n"
+        "Given to this session from elsewhere, only to read: don't work on {it}. This computer takes work from elsewhere only from its owner, while its remote control is on. Hand {it} over on this computer (`omicron tasks send`), or have its owner give {it} with the gate open (`omicron gate open --until 17:00`).\n"
     );
     for (project, t) in tasks {
         text.push_str(&format!("#{} in {project}: {}\n", t.number, t.title));

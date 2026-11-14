@@ -778,7 +778,7 @@ fn dispatch_reaches_the_session_and_fails_when_it_ended_or_its_machine_is_asleep
     ok(&mac, None, &["gate", "close"]);
     assert_eq!(gate_until(), Value::Null);
     let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("gate is closed"), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("remote control is off"), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(typed_lines(&mac).is_empty());
     open_gate(&mac, &pat);
 
@@ -1498,7 +1498,7 @@ fn open_gate(mac: &Computer, owner: &Computer) {
     let said = ok(mac, None, &["machines", "owner", login]);
     assert!(said.contains("owns this machine now"), "{said}");
     let later = std::process::Command::new("date").args(["-v+2H", "+%H:%M"]).output().unwrap();
-    ok(mac, None, &["gate", "open", "--until", String::from_utf8_lossy(&later.stdout).trim()]);
+    ok(mac, None, &["remote", "on", "--until", String::from_utf8_lossy(&later.stdout).trim()]);
 }
 
 /// Linking (ref/BRAINSTORM.md, "Linking"): a Claude started in one of the

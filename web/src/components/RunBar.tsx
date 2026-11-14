@@ -25,10 +25,10 @@ function gateUntil(s: ClaudeSession): string | null {
   return s.gate_until && new Date(s.gate_until).getTime() > Date.now() ? s.gate_until : null;
 }
 
-/** "studio's gate is open until 7:00 AM." or "… is closed." */
+/** "studio's remote control is on until 7:00 AM." or "… is off." */
 function gateWords(s: ClaudeSession): string {
   const until = gateUntil(s);
-  return until ? `${s.machine}'s gate is open until ${clock(until)}.` : `${s.machine}'s gate is closed.`;
+  return until ? `${s.machine}'s remote control is on until ${clock(until)}.` : `${s.machine}'s remote control is off.`;
 }
 
 /** What a run works down: the first status's tasks (only its label, if it
@@ -147,7 +147,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
             }
           />
           <p className="text-xs text-muted-foreground">
-            From anywhere but the session's own computer, it only starts if you own that computer and its gate is open.
+            From anywhere but the session's own computer, it only starts if you own that computer and its remote control is on.
           </p>
         </DialogContent>
       </Dialog>
@@ -237,7 +237,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
         <DialogDescription>
           {session ? `In ${session.name} on ${session.machine}` : "Its session has ended"}, since {when(run.started_at)}. {run.done} done.
           {active(run) && " It stops when To do is empty."}
-          {session && run.started_by !== run.machine_id && ` ${gateWords(session)} Started from elsewhere, it stops when the gate closes.`}
+          {session && run.started_by !== run.machine_id && ` ${gateWords(session)} Started from elsewhere, it stops when remote control turns off.`}
         </DialogDescription>
       </DialogHeader>
       <Group title="Now">

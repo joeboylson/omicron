@@ -71,6 +71,7 @@ Tasks: #80 (linking), #81 (background program), #78 (tasks).
 - **Tasks carry the same risk chat did.** If a session acted on tasks or comments given to it from the web page, anyone who can add a task could give Claude orders. So a session only works on a task handed to it on that computer: dragged onto it in the desktop app, or given with the `omicron` command. Tasks and comments from the web page are only things to read.
 
 ## The gate: letting a computer take orders for a while (13 Nov 2026)
+Renamed (Joe, 14 Nov, #188): people see it as **Remote control**, on or off until a time (`omicron remote on --until 17:00`, `omicron remote off`, `omicron remote status`; `omicron gate` still works). The code keeps calling it the gate.
 Tasks: #77 (the gate: command, dispatches and loops done), #86 (owner-only), #87 (team answers), #88 (serving computer), #85 (Dev view on the serving computer's page).
 By default a computer takes no orders from anywhere else. The gate is the one exception.
 - Each computer opens its own gate, only from itself: a **toggle in the desktop app**, or a closing time typed into the `omicron` command (like `omicron gate open --until 17:00`).
