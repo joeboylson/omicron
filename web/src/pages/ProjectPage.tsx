@@ -96,8 +96,12 @@ export function ProjectPage({ id }: { id: string }) {
   // A new task is typed into the board's first column; from the list, the
   // board comes back first. (A ref, so the key handler always has the latest.)
   const newTask = useRef(() => {});
+  // Which column "c" adds in: the one focus is in, or the first.
+  const [addIn, setAddIn] = useState<string | null>(null);
   newTask.current = () => {
     setLayout("board");
+    const here = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("section[data-group]")?.dataset.group ?? null;
+    setAddIn(here);
     setAddSignal((n) => n + 1);
   };
   // Search and filters (not kept: a fresh look each visit).
@@ -647,7 +651,8 @@ export function ProjectPage({ id }: { id: string }) {
           {groups.map((g, i) => (
             <Column
               key={g.key}
-              addSignal={i === 0 ? addSignal : 0}
+              groupKey={g.key}
+              addSignal={(addIn ? g.key === addIn : i === 0) ? addSignal : 0}
               onAddShown={() => setAddSignal(0)}
               project={project}
               kind={g.kind}
@@ -745,6 +750,7 @@ function byStatus(project: ProjectData, tasks: Task[]): Task[] {
 
 function Column({
   project,
+  groupKey,
   kind,
   refId,
   status,
@@ -757,6 +763,8 @@ function Column({
   onAdded,
 }: {
   project: ProjectData;
+  /** Its group's key ("c" adds in the column focus is in). */
+  groupKey: string;
   /** What the column groups by, and which one (see Group). */
   kind: Group["kind"];
   refId: string | null;
@@ -775,6 +783,13 @@ function Column({
 }) {
   const { db, act } = useApp();
   const [adding, setAdding] = useState(false);
+  // Closed (Escape, Cancel): focus goes back to its Add a task, not the page.
+  const addButton = useRef<HTMLButtonElement>(null);
+  const wasAdding = useRef(false);
+  useEffect(() => {
+    if (wasAdding.current && !adding && !document.querySelector('[role="dialog"]')) addButton.current?.focus();
+    wasAdding.current = adding;
+  }, [adding]);
   // Who it's for and when, picked in the add form; and what was just added.
   const [forWho, setForWho] = useState<Who | undefined>(undefined);
   const [due, setDue] = useState<string | null>(null);
@@ -831,6 +846,7 @@ function Column({
   return (
     <section
       aria-label={label}
+      data-group={groupKey}
       className="flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
@@ -932,7 +948,7 @@ function Column({
           </div>
         </form>
       ) : (
-        <Button variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" onClick={() => setAdding(true)}>
+        <Button ref={addButton} variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" onClick={() => setAdding(true)}>
           <Plus /> Add a task
         </Button>
       )}

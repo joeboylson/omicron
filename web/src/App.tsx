@@ -15,6 +15,7 @@ import { BoardSkeleton } from "@/components/Skeleton";
 import { ToastProvider } from "@/lib/toast";
 import { CommandMenu } from "@/components/CommandMenu";
 import { GlobalCommands } from "@/components/GlobalCommands";
+import { ShortcutsSheet } from "@/components/Shortcuts";
 
 /** An address that isn't a page here. */
 function NotFound() {
@@ -130,6 +131,7 @@ export default function App() {
     <AppContext.Provider value={app}>
       <ToastProvider>
         <GlobalCommands />
+        <ShortcutsSheet />
         <CommandMenu />
       <div className="flex min-h-dvh flex-col">
         {projectId ? (

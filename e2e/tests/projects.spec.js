@@ -1762,6 +1762,28 @@ test("search and filters narrow the board", async ({ page, request }) => {
   await expect(cards()).toHaveCount(3);
 });
 
+test("keyboard: c adds where you are, Escape keeps your place, ? lists every shortcut (#176)", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Home");
+  await startProjectIn(page, name);
+  omicron.cli("tasks", "add", name, "Paint the fence", "--as-machine");
+  omicron.cli("tasks", "done", name, "1", "--as-machine");
+  await page.reload();
+  const done = page.getByRole("button", { name: /^#1 Paint the fence/ });
+  await done.focus();
+  await page.keyboard.press("c");
+  await expect(page.getByLabel("New task in Done")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(column(page, "Done").getByRole("button", { name: "Add a task" })).toBeFocused();
+
+  await page.keyboard.press("?");
+  const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(sheet).toContainText("Shift+Enter (adding a task)");
+  await expect(sheet).toContainText("Escape");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+});
+
 test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("Garden");
