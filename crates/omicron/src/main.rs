@@ -658,7 +658,7 @@ fn daemon() -> Result<()> {
         std::thread::spawn(move || {
             let mut follower = omicron::names::Follower::default();
             loop {
-                let board = || Ok(omicron::board::Board { supabase: supabase.clone(), session: supabase.sign_in_machine(&key)? });
+                let board = || omicron::board::Board::as_machine(&supabase, &key);
                 if let Err(e) = follower.check(board) {
                     eprintln!("omicron daemon: following /rename: {e:#}");
                 }

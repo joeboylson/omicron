@@ -350,7 +350,7 @@ impl WebMachine {
         let Ok(key) = crate::config::Config::load().and_then(|c| c.machine_key()) else {
             return Ok(Err((409, "this computer has no machine key".into())));
         };
-        let board = crate::board::Board { supabase: self.supabase.clone(), session: self.supabase.sign_in_machine(&key)? };
+        let board = crate::board::Board::as_machine(&self.supabase, &key)?;
         if !crate::gate::Orders::new(&board).owner_visiting(&login.user.id.to_string())? {
             return Ok(Err((409, "you don't own the computer serving this page".into())));
         }

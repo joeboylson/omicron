@@ -399,6 +399,12 @@ fn session_from(v: &Value) -> Result<SessionRecord> {
 }
 
 impl Board {
+    /// Signed in as this machine, with its key (the daemon, the web page's
+    /// server and `omicron` commands all sign in this one way).
+    pub fn as_machine(supabase: &Supabase, key: &crate::supa::MachineKey) -> Result<Board> {
+        Ok(Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? })
+    }
+
     /// Read rows. The database hands back at most a page of rows per
     /// request (1,000 in Supabase's settings), so a list that fills a page
     /// is read on, page by page, until it's all there. (A request with its

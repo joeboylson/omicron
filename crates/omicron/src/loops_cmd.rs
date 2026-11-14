@@ -250,7 +250,7 @@ impl Runner {
     }
 
     fn board(&self) -> Result<Board> {
-        Ok(Board { supabase: self.supabase.clone(), session: self.supabase.sign_in_machine(&self.key)? })
+        Board::as_machine(&self.supabase, &self.key)
     }
 
     /// Read this machine's running loops afresh (on start and reconnect).

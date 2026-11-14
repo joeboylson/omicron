@@ -658,7 +658,7 @@ pub fn stop_worker(name: &str) -> Result<String> {
 pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey, row: &serde_json::Value) -> Result<()> {
     let table = row["table_name"].as_str().unwrap_or("");
     let record = &row["record"];
-    let board = || -> Result<Board> { Ok(Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? }) };
+    let board = || -> Result<Board> { Board::as_machine(supabase, key) };
     match (table, row["kind"].as_str().unwrap_or("")) {
         ("teams", "INSERT" | "UPDATE") if record["machine_id"] == key.machine_id.to_string() => {
             let b = board()?;
@@ -776,7 +776,7 @@ fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &ser
 /// run twice: an answered question isn't open any more, and a lead told
 /// about a waiting job again only hears it twice.
 pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey, jobs: bool) -> Result<()> {
-    let b = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
+    let b = Board::as_machine(supabase, key)?;
     let me = key.machine_id.to_string();
     let orders = omicron::gate::Orders::new(&b);
     for team in b.teams()?.into_iter().filter(|t| t.machine_id == me && t.state == "running") {
@@ -816,7 +816,7 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
 
 /// When the daemon starts: bring back the lead of each running team here.
 pub fn bring_back(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey) -> Result<()> {
-    let b = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
+    let b = Board::as_machine(supabase, key)?;
     for team in b.teams()?.into_iter().filter(|t| t.machine_id == key.machine_id.to_string() && t.state == "running") {
         if let Err(e) = start_lead(&b, &team) {
             eprintln!("omicron daemon: couldn't start {}'s lead: {e:#}", team.name);

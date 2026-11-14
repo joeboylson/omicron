@@ -152,7 +152,7 @@ pub fn bring_back(supabase: &Supabase, key: &MachineKey) -> Result<()> {
 }
 
 fn signed_in(supabase: &Supabase, key: &MachineKey) -> Result<Board> {
-    Ok(Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? })
+    Board::as_machine(supabase, key)
 }
 
 /// Runs being stepped now, and ones to step again once that's done.

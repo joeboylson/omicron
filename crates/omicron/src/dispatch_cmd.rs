@@ -180,7 +180,7 @@ pub fn carry_out(supabase: &Supabase, key: &MachineKey, machine: &str, row: &Val
     if row["state"] != "pending" || row["machine_id"].as_str() != Some(key.machine_id.to_string().as_str()) {
         return Ok(());
     }
-    let board = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
+    let board = Board::as_machine(supabase, key)?;
     let Some(d) = board.claim_dispatch(id)? else { return Ok(()) };
     // Work handed over from elsewhere: only from this machine's owner, while
     // its gate is open. One this machine asked for itself is fine.
