@@ -792,6 +792,42 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
   }
 });
 
+test("a session's tasks can be given away one at a time or all at once (#171)", async ({ page, request }) => {
+  await newPerson(page, request, "Robin Example");
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  for (const t of ["Write the parser", "Write the tests", "Write the docs"]) omicron.cli("tasks", "add", name, t, "--as-machine");
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
+  try {
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
+    for (const n of ["1", "2", "3"]) omicron.cliIn(win.pid, "tasks", "send", name, n, "parser", "--as-machine");
+    const sessions = page.getByRole("region", { name: "Claude sessions" });
+    await sessions.getByRole("button", { name: /parser/ }).click();
+    const sheet = page.getByRole("dialog");
+    const open = sheet.getByRole("list", { name: "Open tasks" });
+    await expect(open.getByRole("listitem")).toHaveCount(3);
+
+    // One, to a person: only that one goes.
+    await sheet.getByRole("combobox", { name: "Give #1 to" }).click();
+    await page.getByRole("option", { name: "Robin Example" }).click();
+    await expect(open.getByRole("listitem")).toHaveCount(2);
+    // All of them, said as all.
+    await expect(sheet.getByRole("combobox", { name: "Give parser's open tasks to" })).toHaveText("Give all 2 open tasks to…");
+    // A row opens its task.
+    await open.getByRole("button", { name: /#2 Write the tests/ }).click();
+    await expect(page.getByRole("dialog")).toContainText("Write the tests");
+    await expect(page.getByLabel("Given to", { exact: true })).toHaveText("parser");
+    await escape(page);
+    await sessions.getByRole("button", { name: /parser/ }).click();
+    await sheet.getByRole("combobox", { name: "Give parser's open tasks to" }).click();
+    await page.getByRole("option", { name: "Robin Example" }).click();
+    await expect(sheet.getByRole("list", { name: "Open tasks" })).toHaveCount(0);
+  } finally {
+    win.kill();
+  }
+});
+
 test("a task sent to a Claude session from the page is picked up by it", async ({ page, request }) => {
   const robin = await newPerson(page, request);
   const name = unique("Code");

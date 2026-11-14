@@ -442,7 +442,7 @@ export function ProjectPage({ id }: { id: string }) {
     // The board fills the screen and each column scrolls on its own.
     <main className="flex h-dvh min-h-0 flex-none flex-col">
       {nav}
-      <Sessions project={project} onChanged={reload} />
+      <Sessions project={project} onChanged={reload} onOpenTask={(n) => setOpenTask(n)} />
       <RunBar project={project} onChanged={reload} />
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">

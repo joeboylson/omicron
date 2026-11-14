@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Copy, Repeat, Terminal } from "lucide-react";
 import {
   giveSessionTasks,
+  updateTask,
   sayEvery,
   stopLoop,
   type ClaudeSession,
@@ -35,7 +36,7 @@ function folderName(path: string): string {
  * The Project's Claude sessions: only ones running now (a session's record
  * goes when it ends). Tap one for its handoff notes.
  */
-export function Sessions({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
+export function Sessions({ project, onChanged, onOpenTask }: { project: ProjectData; onChanged: () => void; onOpenTask?: (number: number) => void }) {
   const { sessions, handoffs } = project;
   const [openId, setOpenId] = useState<string | null>(null);
   if (sessions.length === 0) return null;
@@ -65,7 +66,20 @@ export function Sessions({ project, onChanged }: { project: ProjectData; onChang
       <Dialog open={open !== null} onOpenChange={(o) => !o && setOpenId(null)}>
         <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           {open && (
-            <SessionNotes project={project} session={open} notes={handoffs.filter((h) => h.session_id === open.id)} onChanged={onChanged} />
+            <SessionNotes
+              project={project}
+              session={open}
+              notes={handoffs.filter((h) => h.session_id === open.id)}
+              onChanged={onChanged}
+              onOpenTask={
+                onOpenTask &&
+                ((n) => {
+                  // This sheet closes; the task's opens.
+                  setOpenId(null);
+                  setTimeout(() => onOpenTask(n), 0);
+                })
+              }
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -78,11 +92,13 @@ function SessionNotes({
   session,
   notes,
   onChanged,
+  onOpenTask,
 }: {
   project: ProjectData;
   session: ClaudeSession;
   notes: HandoffNote[];
   onChanged: () => void;
+  onOpenTask?: (number: number) => void;
 }) {
   const { db, act } = useApp();
   const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
@@ -129,47 +145,38 @@ function SessionNotes({
         <Group title="Open tasks">
           <ul aria-label="Open tasks" className="divide-y">
             {tasks.map((t) => (
-              <li key={t.id} className="flex gap-2 px-4 py-3 text-[15px] sm:text-sm">
-                <span className="font-mono text-muted-foreground">#{t.number}</span>
-                <span className="flex-1">{t.title}</span>
+              <li key={t.id} className="flex items-center gap-2 px-4 py-1.5 text-[15px] sm:text-sm">
+                {/* The row opens the task; Give to… hands just this one over. */}
+                <button
+                  type="button"
+                  className="flex min-h-9 min-w-0 flex-1 items-center gap-2 text-left hover:underline disabled:no-underline"
+                  disabled={!onOpenTask}
+                  onClick={() => onOpenTask?.(t.number)}
+                >
+                  <span className="font-mono text-muted-foreground">#{t.number}</span>
+                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                </button>
+                <GiveTo
+                  label={`Give #${t.number} to`}
+                  text="Give to…"
+                  project={project}
+                  others={others}
+                  onPick={(to) => act(() => updateTask(db, project, t, { assignee_person_id: to.person ?? null, assignee_session_id: to.session ?? null })).then((ok) => ok && onChanged())}
+                />
               </li>
             ))}
           </ul>
-          <Row>
-            <Select
-              value=""
-              onValueChange={(v) => {
-                const [kind, id] = v.split(":");
-                act(() => giveSessionTasks(db, project, session, kind === "person" ? { person: id } : { session: id })).then(
-                  (ok) => ok && onChanged(),
-                );
-              }}
-            >
-              <SelectTrigger aria-label={`Give ${session.name}'s open tasks to`} className={cn(bare, "px-0 text-link")}>
-                <SelectValue placeholder={tasks.length === 1 ? "Give it to…" : `Give all ${tasks.length} to…`} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>People</SelectLabel>
-                  {project.members.map((m) => (
-                    <SelectItem key={m.id} value={`person:${m.id}`}>
-                      {m.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-                {others.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>Claude sessions</SelectLabel>
-                    {others.map((o) => (
-                      <SelectItem key={o.id} value={`session:${o.id}`}>
-                        {o.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
-          </Row>
+          {tasks.length > 1 && (
+            <Row>
+              <GiveTo
+                label={`Give ${session.name}'s open tasks to`}
+                text={`Give all ${tasks.length} open tasks to…`}
+                project={project}
+                others={others}
+                onPick={(to) => act(() => giveSessionTasks(db, project, session, to)).then((ok) => ok && onChanged())}
+              />
+            </Row>
+          )}
         </Group>
       )}
       <Group title="Handoff notes">
@@ -181,7 +188,7 @@ function SessionNotes({
           <ul aria-label="Handoff notes" className="divide-y">
             {notes.map((n) => (
               <li key={n.id} className="grid gap-1.5 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:flex-nowrap">
                   <span className="whitespace-nowrap font-mono">#{n.number}</span>
                   <Badge
                     variant="outline"
@@ -289,4 +296,53 @@ function since(iso: string): string {
   if (min < 1) return "just now";
   if (min < 60) return `${min} min`;
   return `${Math.round(min / 60)} h`;
+}
+
+/** A "Give to…" picker: a person in the Project, or another Claude session. */
+function GiveTo({
+  label,
+  text,
+  project,
+  others,
+  onPick,
+}: {
+  label: string;
+  text: string;
+  project: ProjectData;
+  others: ClaudeSession[];
+  onPick: (to: { person?: string; session?: string }) => void;
+}) {
+  return (
+    <Select
+      value=""
+      onValueChange={(v) => {
+        const [kind, id] = v.split(":");
+        onPick(kind === "person" ? { person: id } : { session: id });
+      }}
+    >
+      <SelectTrigger aria-label={label} className={cn(bare, "w-auto shrink-0 gap-1 px-0 text-link")}>
+        <SelectValue placeholder={text} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>People</SelectLabel>
+          {project.members.map((m) => (
+            <SelectItem key={m.id} value={`person:${m.id}`}>
+              {m.display_name}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+        {others.length > 0 && (
+          <SelectGroup>
+            <SelectLabel>Claude sessions</SelectLabel>
+            {others.map((o) => (
+              <SelectItem key={o.id} value={`session:${o.id}`}>
+                {o.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+      </SelectContent>
+    </Select>
+  );
 }
