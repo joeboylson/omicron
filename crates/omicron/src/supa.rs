@@ -353,6 +353,14 @@ impl Supabase {
         Ok(())
     }
 
+    /// Delete a person for good: their login, their identities and their
+    /// place in every Project (the database follows their login). Tasks
+    /// given to them are given to nobody; machines they owned have no owner.
+    pub fn delete_person(&self, id: Uuid) -> Result<()> {
+        self.admin("DELETE", &format!("/auth/v1/admin/users/{id}"), None, None)?;
+        Ok(())
+    }
+
     /// Remove a machine for good: its record, its sessions, and its login.
     pub fn remove_machine(&self, id: Uuid) -> Result<()> {
         self.admin("DELETE", &format!("/rest/v1/machines?id=eq.{id}"), None, None)?;

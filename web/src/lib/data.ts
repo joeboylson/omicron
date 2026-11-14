@@ -648,6 +648,13 @@ export async function switchMachine(db: SupabaseClient, id: string, on: boolean)
   await machinesApi(db, `/${id}/${on ? "switch-on" : "switch-off"}`);
 }
 
+/** Delete a person for good, through the Web Machine (it has the secret key). */
+export async function deletePerson(db: SupabaseClient, id: string) {
+  const { data } = await db.auth.getSession();
+  const res = await fetch(`/api/people/${id}/delete`, { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}` } });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? res.statusText);
+}
+
 export async function removeMachine(db: SupabaseClient, id: string) {
   await machinesApi(db, `/${id}/remove`);
 }

@@ -62,7 +62,10 @@ export function DataTable<T>({
   rowLabel,
   initialSort,
   empty,
+  toolbar,
 }: {
+  /** More filters, beside the search box. */
+  toolbar?: ReactNode;
   /** What the table is called to screen readers (and tests). */
   label: string;
   columns: ColumnDef<T, any>[];
@@ -91,10 +94,15 @@ export function DataTable<T>({
   const rows = table.getRowModel().rows;
   return (
     <div className="grid gap-3">
-      {search && data.length > 0 && (
-        <div className="relative max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={search.placeholder} aria-label={search.label} className="pl-9" />
+      {(search || toolbar) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {search && (
+            <div className="relative w-full max-w-sm">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={search.placeholder} aria-label={search.label} className="pl-9" />
+            </div>
+          )}
+          {toolbar}
         </div>
       )}
       <div className="rounded-lg border">

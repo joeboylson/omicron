@@ -173,6 +173,10 @@ impl WebMachine {
                 let rest = p.trim_start_matches("/api/dev").trim_start_matches('/').to_string();
                 self.dev_api(request, &rest)
             }
+            (Method::Post, p) if p.starts_with("/api/people/") && p.ends_with("/delete") => {
+                let id = p.trim_start_matches("/api/people/").trim_end_matches("/delete").to_string();
+                self.delete_person(request, &id)
+            }
             (Method::Post, "/api/machines") => self.machines_api(request, None),
             (Method::Post, p) if p.starts_with("/api/machines/") => {
                 let rest = p.trim_start_matches("/api/machines/").to_string();
@@ -192,6 +196,41 @@ impl WebMachine {
             },
             _ => Ok((404, "application/json", json!({ "error": "not found" }).to_string().into_bytes())),
         }
+    }
+
+    /// POST /api/people/<id>/delete: delete a person for good (it needs the
+    /// secret key, which only a Web Machine has). Asked by a person, never
+    /// themselves, and only someone all of whose Projects the asker is in:
+    /// nobody vanishes from a Project the asker can't see.
+    fn delete_person(&self, request: &mut Request, id: &str) -> Result<(u16, &'static str, Vec<u8>)> {
+        let fail = |code: u16, msg: &str| Ok((code, "application/json", json!({ "error": msg }).to_string().into_bytes()));
+        let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
+            return fail(401, "sign in first");
+        };
+        let Ok(login) = self.supabase.session_for_token(&token) else { return fail(401, "that login doesn't work any more; reload the page") };
+        let me = self.supabase.request_as(&login, "GET", &format!("/rest/v1/people?id=eq.{}&select=id", login.user.id), None)?;
+        if me.as_array().is_none_or(|a| a.is_empty()) {
+            return fail(403, "only people can delete people");
+        }
+        let Ok(id) = id.parse::<uuid::Uuid>() else { return fail(404, "no such person") };
+        if id == login.user.id {
+            return fail(400, "you can't delete yourself");
+        }
+        // Their Projects, all of them (as the database sees it), against the asker's.
+        let theirs = self.supabase.admin_request("GET", &format!("/rest/v1/project_members?person_id=eq.{id}&select=project_id"), None)?;
+        let mine = self.supabase.request_as(&login, "GET", &format!("/rest/v1/project_members?person_id=eq.{}&select=project_id", login.user.id), None)?;
+        let ids = |v: &serde_json::Value| -> Vec<String> { v.as_array().into_iter().flatten().filter_map(|r| r["project_id"].as_str().map(String::from)).collect() };
+        let mine = ids(&mine);
+        if ids(&theirs).iter().any(|p| !mine.contains(p)) {
+            return fail(403, "they're in a Project you're not in, so you can't delete them");
+        }
+        let exists = self.supabase.admin_request("GET", &format!("/rest/v1/people?id=eq.{id}&select=id"), None)?;
+        if exists.as_array().is_none_or(|a| a.is_empty()) {
+            return fail(404, "no such person");
+        }
+        self.supabase.delete_person(id)?;
+        eprintln!("omicron serve: {} deleted the person {id}", login.user.id);
+        Ok((204, "application/json", Vec::new()))
     }
 
     /// API keys, for people on the page (keys are only for machines, and

@@ -228,6 +228,9 @@ enum People {
     Add { person: String, project: String },
     /// Take a person out of a Project
     Remove { person: String, project: String },
+    /// Delete a person for good: their login and their place in every
+    /// Project (tasks given to them are given to nobody). Needs the secret key.
+    Delete { person: String },
     /// Link another Tailscale identity to a person. Needs the secret key.
     Link {
         /// The person's ID
@@ -525,6 +528,16 @@ fn awake(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey) ->
 fn people(p: People) -> Result<()> {
     match p {
         People::List | People::Add { .. } | People::Remove { .. } => unreachable!("handled in run"),
+        People::Delete { person } => {
+            let board = board_cmd::sign_in(false)?;
+            let p = board.person(&person)?;
+            if p.id == board.session.user.id.to_string() {
+                bail!("you can't delete yourself");
+            }
+            board.supabase.delete_person(p.id.parse()?)?;
+            println!("Deleted {}: their login and their place in every Project.", p.name);
+            Ok(())
+        }
         People::Link { person, login, name } => {
             let supabase = Config::load()?.supabase()?;
             let who = TailscalePerson { display_name: name.unwrap_or_else(|| login.clone()), login };

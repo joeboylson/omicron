@@ -905,7 +905,7 @@ test("a session's loop shows on the page, live, and can be stopped there", async
 });
 
 test("the People page: everyone, their Projects, and adding or taking them out", async ({ page, request }) => {
-  await newPerson(page, request, "Robin Example");
+  const me = await newPerson(page, request, "Robin Example");
   const garden = unique("Garden");
   const house = unique("House");
   await startProjectIn(page, garden);
@@ -933,6 +933,33 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await page.getByRole("option", { name: garden }).click();
   await page.keyboard.press("Escape");
   await expect(projects).toHaveText("No Projects you're in");
+
+  // Only the people in one Project (#73).
+  await projects.click();
+  await page.getByRole("option", { name: garden }).click();
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Search people").fill("");
+  await page.getByLabel("Only people in").selectOption({ label: `In ${house}` });
+  await expect(page.getByRole("table", { name: "People" }).getByRole("row", { name: sam })).toHaveCount(0);
+  await page.getByLabel("Only people in").selectOption({ label: `In ${garden}` });
+  await expect(row).toBeVisible();
+  if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/people.png` });
+
+  // Deleted, after asking once more: gone for good. Not yourself.
+  await expect(page.getByRole("button", { name: "Delete Robin Example" })).toHaveCount(0);
+  await row.getByRole("button", { name: `Delete ${sam}` }).click();
+  await row.getByRole("button", { name: `Delete ${sam}` }).click();
+  await expect(page.getByRole("table", { name: "People" }).getByRole("row", { name: sam })).toHaveCount(0);
+  await page.getByLabel("Only people in").selectOption({ label: "Everyone" });
+  await page.getByLabel("Search people").fill(sam);
+  await expect(page.getByText(/Nothing matches/)).toBeVisible();
+
+  // Someone in a Project Robin isn't in: the Web Machine refuses.
+  const zed = await sessionFor(request, omicron, `${unique("zed")}@example.com`, unique("Zed"));
+  await rest(request, zed, "POST", "/rest/v1/rpc/start_project", { name: unique("Zed's") });
+  const refused = await request.post(`${omicron.url}/api/people/${zed.person_id}/delete`, { headers: { Authorization: `Bearer ${me.session.access_token}` } });
+  expect(refused.status()).toBe(403);
+  expect((await refused.json()).error).toContain("in a Project you're not in");
 
   // Search narrows the table; the top menu goes back to Projects.
   await page.getByLabel("Search people").fill("nobody-like-this");
