@@ -677,7 +677,7 @@ function Column({
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-7", !status.is_done && "ml-auto")} aria-label="More for this column">
+            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-8", !status.is_done && "ml-auto")} aria-label="More for this column">
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>

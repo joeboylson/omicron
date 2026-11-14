@@ -93,7 +93,7 @@ export function DataTable<T>({
   });
   const rows = table.getRowModel().rows;
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       {(search || toolbar) && (
         <div className="flex flex-wrap items-center gap-2">
           {search && (
@@ -105,7 +105,7 @@ export function DataTable<T>({
           {toolbar}
         </div>
       )}
-      <div className="rounded-lg border">
+      <div className="min-w-0 rounded-lg border">
         <Table aria-label={label}>
           <TableHeader>
             {table.getHeaderGroups().map((g) => (
