@@ -307,19 +307,19 @@ export function DevView({
                           </span>
                         )}
                       </button>
-                      {/* Who has it, as a chip; or, if nobody here, Hand to… (not on Done). */}
+                      {/* Who has it, as a chip; or, if nobody here, Give to… (not on Done). */}
                       {session && here.some((h) => h.id === session.id) ? (
                         <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-mono text-[11px]">
                           <TerminalIcon className="h-3 w-3" aria-hidden /> {session.name}
                         </span>
                       ) : !isDone && here.length > 0 ? (
                         <select
-                          aria-label={`Hand #${t.number} to a session here`}
-                          className="mt-0.5 min-h-11 max-w-28 shrink-0 truncate rounded border-0 bg-transparent text-sm text-link lg:min-h-0 lg:text-[11px]"
+                          aria-label={`Give #${t.number} to a session here`}
+                          className="mt-0.5 min-h-11 max-w-28 shrink-0 truncate rounded-md border bg-transparent px-1 text-sm lg:min-h-0 lg:text-[11px]"
                           value=""
                           onChange={(e) => e.target.value && give(t, e.target.value)}
                         >
-                          <option value="">{session ? session.name : person ? person.display_name : "Hand to…"}</option>
+                          <option value="">{session ? session.name : person ? person.display_name : "Give to…"}</option>
                           {here.map((x) => (
                             <option key={x.id} value={x.id}>
                               {x.name}
