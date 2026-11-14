@@ -617,8 +617,11 @@ test("a card dropped between tied cards lands there, and Organize while filtered
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 10, { steps: 5 });
   await page.mouse.move(to.x + to.width / 2, to.y + 6, { steps: 15 });
   await page.waitForTimeout(150);
+  // Shown at once; saved a moment later (wait for it before reloading).
+  const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH" && r.request().postData()?.includes('"status_id"'));
   await page.mouse.up();
   await expect.poll(titles).toEqual(["Milk", "Eggs", "Bread", "Butter"]);
+  await saved;
   await page.reload();
   await expect.poll(titles).toEqual(["Milk", "Eggs", "Bread", "Butter"]);
 
