@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { useApp, go } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import {
@@ -18,7 +18,6 @@ import { Button } from "@/components/base/button";
 import { cn } from "@/lib/utils";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { TopBar } from "@/components/TopBar";
-import { DeleteProject } from "@/components/DeleteProject";
 import { Input } from "@/components/base/input";
 import { ProjectsSkeleton } from "@/components/Skeleton";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/base/dialog";
@@ -26,7 +25,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 export function ProjectsPage() {
   const { db, act, me } = useApp();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
   const [name, setName] = useState("");
   const [starting, setStarting] = useState(false);
   // Who and what the new Project starts with: nobody ticked at first.
@@ -113,20 +111,25 @@ export function ProjectsPage() {
     count("machineCount", "Machines", "hidden sm:table-cell"),
     count("sessionCount", "Sessions", "hidden md:table-cell"),
     {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
+      // A chevron, so the row reads as a way in (deleting is in its settings).
+      id: "open",
+      header: () => <span className="sr-only">Open</span>,
+      enableSorting: false,
       cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-destructive"
-          aria-label={`Delete ${row.original.name}…`}
-          onClick={() => setDeleting(row.original)}
+        <a
+          href={`/p/${row.original.id}`}
+          tabIndex={-1}
+          aria-hidden
+          className="flex min-h-8 items-center justify-end text-muted-foreground"
+          onClick={(e) => {
+            e.preventDefault();
+            go(`/p/${row.original.id}`);
+          }}
         >
-          <Trash2 />
-        </Button>
+          <ChevronRight className="h-4 w-4" />
+        </a>
       ),
-      meta: { className: "w-12 py-0 text-right", phone: "end" },
+      meta: { className: "w-10 py-0 text-right", phone: "end" },
     },
   ];
 
@@ -152,10 +155,10 @@ export function ProjectsPage() {
           columns={columns}
           data={projects}
           initialSort={[{ id: "name", desc: false }]}
+          onRowTap={(p) => go(`/p/${p.id}`)}
           search={{ label: "Search Projects", placeholder: "Search Projects", text: (p) => p.name }}
         />
       )}
-      <DeleteProject project={deleting} onOpenChange={(o) => !o && setDeleting(null)} onDeleted={reload} />
       <Dialog open={starting} onOpenChange={setStarting}>
         <DialogContent className="gap-4 sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader className="text-left">

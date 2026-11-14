@@ -68,7 +68,10 @@ export function DataTable<T>({
   initialSort,
   empty,
   toolbar,
+  onRowTap,
 }: {
+  /** On a phone, a tap anywhere on a row (besides its controls) does this. */
+  onRowTap?: (row: T) => void;
   /** More filters, beside the search box. */
   toolbar?: ReactNode;
   /** What the table is called to screen readers (and tests). */
@@ -124,7 +127,15 @@ export function DataTable<T>({
           const cells = r.getVisibleCells();
           const at = (where: string) => cells.filter((c) => (c.column.columnDef.meta?.phone ?? "below") === where);
           return (
-            <li key={r.id} aria-label={rowLabel?.(r.original)} className="grid gap-2 p-3">
+            <li
+              key={r.id}
+              aria-label={rowLabel?.(r.original)}
+              className={cn("grid gap-2 p-3", onRowTap && "cursor-pointer active:bg-accent")}
+              onClick={(e) => {
+                // Not when a link or control inside it was tapped.
+                if (onRowTap && !(e.target as HTMLElement).closest("a, button, input, select, [role=combobox]")) onRowTap(r.original);
+              }}
+            >
               <div className="flex min-h-9 items-center gap-2">
                 <div className="min-w-0 flex-1 break-words">{at("main").map(show)}</div>
                 {at("end").map(show)}

@@ -130,8 +130,15 @@ for (const [kind, device] of [
       await fits(page, "Projects");
       await tappable(page, "Projects");
 
+      // No delete on the list (it's in the Project's settings) (#157).
+      await expect(page.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
       // The board: the page itself doesn't scroll sideways (the columns do, in their strip).
-      await page.getByRole("link", { name: new RegExp(name) }).tap();
+      if (kind === "phone") {
+        // A tap anywhere on the row opens it, not only on its name.
+        const row = page.getByRole("list", { name: "Projects" }).getByRole("listitem").filter({ hasText: name });
+        const box = await row.boundingBox();
+        await page.touchscreen.tap(box.x + box.width * 0.6, box.y + box.height / 2);
+      } else await page.getByRole("link", { name: new RegExp(name) }).tap();
       await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
       await expect(page.getByRole("button", { name: /Fix the gate/ })).toBeVisible();
       await settled(page);
