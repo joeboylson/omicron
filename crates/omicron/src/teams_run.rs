@@ -730,7 +730,12 @@ fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &ser
     let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))?
         || (team.state == "running" && tell_lead(b, team, &format!("Answer for {worker} from {who}: {body}")).is_ok());
     if told {
-        b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")), Some(serde_json::json!({ "state": "answered" })))?;
+        b.supabase.request_as(
+            &b.session,
+            "PATCH",
+            &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")),
+            Some(serde_json::json!({ "state": "answered", "answer_comment_id": comment["id"], "answered_at": "now" })),
+        )?;
         if let Some(job) = req["job_id"].as_str() {
             b.supabase.request_as(
                 &b.session,
@@ -759,7 +764,7 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
                 &b.session,
                 "GET",
                 &format!(
-                    "/rest/v1/comments?task_id=eq.{}&session_id=is.null&created_at=gt.{}&select=author_id,author_name,body&order=created_at.desc",
+                    "/rest/v1/comments?task_id=eq.{}&session_id=is.null&created_at=gt.{}&select=id,author_id,author_name,body&order=created_at.desc",
                     req["task_id"].as_str().unwrap_or(""),
                     req["created_at"].as_str().unwrap_or("").replace('+', "%2B")
                 ),
