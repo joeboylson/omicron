@@ -48,7 +48,9 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
   const runs = machineId ? project.runs.filter((r) => r.machine_id === machineId) : project.runs;
   const run = runs.find(active) ?? runs[0] ?? null;
   const session = run && project.sessions.find((s) => s.id === run.session_id);
-  if (!run && !project.sessions.some((s) => !machineId || s.machine_id === machineId)) return null;
+  // The sessions a run can start in: this computer's, in the Dev view.
+  const here = machineId ? project.sessions.filter((s) => s.machine_id === machineId) : project.sessions;
+  if (!run && here.length === 0) return null;
   const going = run !== null && active(run);
   const label = run?.label_id ? project.labels.find((l) => l.id === run.label_id)?.name : null;
 
@@ -112,7 +114,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
           </Dialog>
         </>
       ) : (
-        project.sessions.length > 0 && (
+        here.length > 0 && (
           <Button size="sm" variant="outline" className="gap-1" onClick={() => setStarting(true)}>
             <Play className="h-3.5 w-3.5" aria-hidden /> Start a run
           </Button>
@@ -129,7 +131,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
             </DialogDescription>
           </DialogHeader>
           <StartForm
-            project={project}
+            project={{ ...project, sessions: here }}
             onStart={(sessionId, labelId) =>
               act(async () => {
                 const s = project.sessions.find((x) => x.id === sessionId)!;

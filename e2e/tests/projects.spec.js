@@ -579,7 +579,10 @@ test("a run: started from the page, followed, paused after its task", async ({ p
   try {
     omicron.cli("machines", "owner", robin.login);
     daemon = await omicron.daemon();
+    // Runs are on the Dev side (#192), not the Tasks view.
     await page.reload();
+    await expect(page.getByRole("button", { name: "Start a run" })).toHaveCount(0);
+    await page.goto(`${page.url().split("?")[0]}?view=dev`);
     await page.getByRole("button", { name: "Start a run" }).click();
     // On its own computer a run needs no gate, so nothing about one (#152).
     await expect(page.getByRole("dialog").getByRole("button", { name: "Start", exact: true })).toBeVisible();

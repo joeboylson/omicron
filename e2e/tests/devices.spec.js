@@ -192,13 +192,13 @@ for (const [kind, device] of [
         // and Show and Columns are in one View menu.
         const first = await todo.getByRole("button", { name: /^#\d+ / }).first().boundingBox();
         expect(first.y, "first card's top").toBeLessThan(page.viewportSize().height / 2);
-        await page.getByRole("button", { name: "View", exact: true }).tap();
+        await page.getByRole("button", { name: /^View and filters/ }).tap();
         await page.getByRole("menuitemradio", { name: "List" }).tap();
         await expect(page.getByRole("list", { name: statuses[0].name })).toBeVisible();
         await settled(page);
         await fits(page, "List");
         await tappable(page, "List");
-        await page.getByRole("button", { name: "View", exact: true }).tap();
+        await page.getByRole("button", { name: /^View and filters/ }).tap();
         await page.getByRole("menuitemradio", { name: "Board" }).tap();
         await expect(todo).toBeVisible();
       }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, CheckCircle2, ChevronLeft, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowUpDown, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -26,6 +26,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/base/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Input } from "@/components/base/input";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
@@ -79,6 +80,8 @@ export function ProjectPage({ id }: { id: string }) {
     [setTaskInAddress],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // On a phone: the Project's Claude sessions, in a sheet.
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const [notesFor, setNotesFor] = useState<number | null>(null);
   // The Dev view, for the owner of the computer serving the page (?view=dev).
   const [dev] = useDev(db);
@@ -408,6 +411,12 @@ export function ProjectPage({ id }: { id: string }) {
             </div>
           )}
           <GateButton />
+          {view !== "dev" && project.sessions.length > 0 && (
+            <Button variant="ghost" size="sm" className="gap-1 px-2 text-muted-foreground sm:hidden" aria-label={`Claude sessions: ${project.sessions.length}`} onClick={() => setSessionsOpen(true)}>
+              <TerminalSquare className="h-5 w-5" aria-hidden />
+              <span className="tabular-nums">{project.sessions.length}</span>
+            </Button>
+          )}
           <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
             <Settings />
           </Button>
@@ -437,8 +446,10 @@ export function ProjectPage({ id }: { id: string }) {
     // The board fills the screen and each column scrolls on its own.
     <main className="flex h-dvh min-h-0 flex-none flex-col">
       {nav}
-      <Sessions project={project} onChanged={reload} onOpenTask={(n) => setOpenTask(n)} />
-      <RunBar project={project} onChanged={reload} />
+      {/* Runs live on the Dev side (#192). On a phone, sessions are behind a button in the bar above. */}
+      <div className="max-sm:hidden">
+        <Sessions project={project} onChanged={reload} onOpenTask={(n) => setOpenTask(n)} />
+      </div>
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -455,8 +466,9 @@ export function ProjectPage({ id }: { id: string }) {
         {/* On a phone, Show and Columns fold into one menu beside the search. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="size-9 shrink-0 sm:hidden" aria-label="View">
+            <Button variant="outline" size="icon" className="relative size-9 shrink-0 sm:hidden" aria-label={filtering ? "View and filters (filtering)" : "View and filters"}>
               <SlidersHorizontal />
+              {filtering && <span aria-hidden className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--sys-blue)]" />}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -472,13 +484,58 @@ export function ProjectPage({ id }: { id: string }) {
               <DropdownMenuRadioItem value="topic">Topic</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="person">Person</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">Filter</div>
+            {(
+              [
+                ["mine", "Mine"],
+                ["review", "Needs review"],
+                ["due", "Due in 7 days"],
+              ] as const
+            )
+              .filter(([k]) => k !== "review" || filters.review || usesClaude(project) || project.tasks.some((t) => t.needs_review))
+              .map(([k, label]) => (
+                <DropdownMenuItem
+                  key={k}
+                  role="menuitemcheckbox"
+                  aria-checked={filters[k]}
+                  // Stays open, to pick more than one.
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setFilters({ ...filters, [k]: !filters[k] });
+                  }}
+                >
+                  <span className="flex-1">{label}</span>
+                  {filters[k] && <Check className="h-4 w-4" aria-hidden />}
+                </DropdownMenuItem>
+              ))}
+            {project.labels.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>{filters.label ? `Label: ${project.labels.find((l) => l.id === filters.label)?.name ?? ""}` : "Any label"}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup value={filters.label ?? "any"} onValueChange={(v) => setFilters({ ...filters, label: v === "any" ? null : v })}>
+                    <DropdownMenuRadioItem value="any">Any label</DropdownMenuRadioItem>
+                    {project.labels.map((l) => (
+                      <DropdownMenuRadioItem key={l.id} value={l.id}>
+                        {l.name}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            {filtering && (
+              <DropdownMenuItem className="text-link" onSelect={clearFilters}>
+                Clear filters
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         {/* One row that scrolls sideways on a phone; wraps on wider screens. */}
         <div
           role="group"
           aria-label="Filters"
-          className="-mx-[max(1rem,env(safe-area-inset-left))] flex w-[calc(100%_+_2*max(1rem,env(safe-area-inset-left)))] items-center gap-1.5 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] py-0.5 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:p-0 [&>*]:shrink-0"
+          className="flex flex-wrap items-center gap-1.5 max-sm:hidden"
         >
           {(
             [
@@ -655,6 +712,15 @@ export function ProjectPage({ id }: { id: string }) {
         }}
       />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
+      <Dialog open={sessionsOpen} onOpenChange={setSessionsOpen}>
+        <DialogContent className="max-h-[92dvh] gap-4 overflow-y-auto" onOpenAutoFocus={focusSheet}>
+          <DialogHeader className="text-left">
+            <DialogTitle>Claude sessions</DialogTitle>
+            <DialogDescription className="sr-only">This Project's Claude sessions.</DialogDescription>
+          </DialogHeader>
+          <Sessions project={project} onChanged={reload} onOpenTask={(n) => (setSessionsOpen(false), setOpenTask(n))} inSheet />
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

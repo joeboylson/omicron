@@ -45,7 +45,7 @@ async function escape(page) {
     const view = async (name) => {
       const radio = page.getByRole("radio", { name, exact: true });
       if (await radio.isVisible()) return radio.click();
-      await page.getByRole("button", { name: "View", exact: true }).click();
+      await page.getByRole("button", { name: /^View and filters/ }).click();
       await page.getByRole("menuitemradio", { name }).click();
       await page.getByRole("menu").waitFor({ state: "detached" });
     };
@@ -116,9 +116,19 @@ async function escape(page) {
     await page.getByRole("button", { name: /Fix the back gate/ }).waitFor();
     await shot("2-house");
     // Filters, a search that finds nothing, adding a task, a column's menu.
-    await page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Due in 7 days" }).click();
-    await shot("2c-filter-due-soon");
-    await page.getByRole("button", { name: "Clear", exact: true }).click();
+    // Filters: chips on wide screens, the View and filters menu on a phone.
+    const filters = page.getByRole("group", { name: "Filters" });
+    if (await filters.isVisible()) {
+      await filters.getByRole("button", { name: "Due in 7 days" }).click();
+      await shot("2c-filter-due-soon");
+      await page.getByRole("button", { name: "Clear", exact: true }).click();
+    } else {
+      await page.getByRole("button", { name: /^View and filters/ }).click();
+      await page.getByRole("menuitemcheckbox", { name: "Due in 7 days" }).click();
+      await shot("2c-filter-due-soon");
+      await page.getByRole("menuitem", { name: "Clear filters" }).click();
+      await page.getByRole("menu").waitFor({ state: "detached" });
+    }
     await page.getByLabel("Search tasks").fill("zzz");
     await shot("2d-search-nothing");
     await page.getByRole("button", { name: "Clear search" }).click();
@@ -173,34 +183,30 @@ async function escape(page) {
     await escape(page);
     await page.getByRole("button", { name: "Back to Projects" }).click();
     await page.getByRole("link", { name: /^Lumen/ }).click();
-    await page.getByRole("region", { name: "Claude sessions" }).waitFor();
+    await page.getByRole("button", { name: /Parse the change list/ }).waitFor();
     await shot("4-lumen");
-    await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /web-page/ }).click();
+    // The Claude sessions: a strip on wide screens, a sheet from the top bar on a phone.
+    const sessions = async () => {
+      if (kind === "phone") {
+        await page.getByRole("button", { name: /^Claude sessions: / }).click();
+        await page.getByRole("dialog", { name: "Claude sessions" }).waitFor();
+      }
+      return page.getByRole("region", { name: "Claude sessions" }).last();
+    };
+    await (await sessions()).getByRole("button", { name: /web-page/ }).click();
     await page.getByTestId("loop").waitFor();
     await shot("4g-session-loop");
     await escape(page);
+    // On a phone, the sessions sheet it came from is still open.
+    if (kind === "phone") await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /parser/ }).click();
-    await page.getByRole("dialog").waitFor();
+    await (await sessions()).getByRole("button", { name: /parser/ }).click();
+    await page.getByRole("dialog", { name: /parser/ }).waitFor();
     await shot("4h-parser-session");
     await escape(page);
+    // On a phone, the sessions sheet it came from is still open.
+    if (kind === "phone") await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    // A run: starting one, the bar while it goes, the night so far; then stopped.
-    await page.getByRole("button", { name: "Start a run" }).click();
-    await page.getByRole("heading", { name: "Start a run" }).waitFor();
-    await shot("4i-start-run");
-    await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
-    await page.getByTestId("run").getByText(/^Run/).waitFor();
-    await shot("4j-run");
-    await page.getByTestId("run").click();
-    await page.getByRole("dialog").getByRole("region", { name: "Notes after each task" }).waitFor();
-    await shot("4k-run-sheet");
-    await escape(page);
-    await page.getByRole("dialog").waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Stop now" }).click();
-    await shot("4l-run-stop");
-    await page.getByRole("dialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop now" }).click();
-    await page.getByTestId("run").getByText("Last run").waitFor();
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();
     await page.getByTestId("dispatch").waitFor();
@@ -297,6 +303,22 @@ async function escape(page) {
       await page.getByTestId("terminal-docs-site").locator(".xterm").click();
       await page.keyboard.type("hello from the Dev view");
       await shot("7c-dev-terminal");
+      // A run, on the Dev side (#192): starting one, the bar while it goes, the night so far; then stopped.
+      await page.getByRole("button", { name: "Start a run" }).click();
+      await page.getByRole("heading", { name: "Start a run" }).waitFor();
+      await shot("4i-start-run");
+      await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
+      await page.getByTestId("run").getByText(/^Run/).waitFor();
+      await shot("4j-run");
+      await page.getByTestId("run").click();
+      await page.getByRole("dialog").getByRole("region", { name: "Notes after each task" }).waitFor();
+      await shot("4k-run-sheet");
+      await escape(page);
+      await page.getByRole("dialog").waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Stop now" }).click();
+      await shot("4l-run-stop");
+      await page.getByRole("dialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop now" }).click();
+      await page.getByTestId("run").getByText("Last run").waitFor();
       // On a phone, one pane at a time.
       const panes = page.getByRole("radiogroup", { name: "Show" });
       const pane = panes.getByRole("radio", { name: "Tasks", exact: true });

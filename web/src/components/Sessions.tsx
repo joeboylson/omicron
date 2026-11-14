@@ -36,16 +36,30 @@ function folderName(path: string): string {
  * The Project's Claude sessions: only ones running now (a session's record
  * goes when it ends). Tap one for its handoff notes.
  */
-export function Sessions({ project, onChanged, onOpenTask }: { project: ProjectData; onChanged: () => void; onOpenTask?: (number: number) => void }) {
+export function Sessions({
+  project,
+  onChanged,
+  onOpenTask,
+  inSheet = false,
+}: {
+  project: ProjectData;
+  onChanged: () => void;
+  onOpenTask?: (number: number) => void;
+  /** Shown in a sheet (on a phone): wrapped, not a strip. */
+  inSheet?: boolean;
+}) {
   const { sessions, handoffs } = project;
   const [openId, setOpenId] = useState<string | null>(null);
   if (sessions.length === 0) return null;
   const sorted = [...sessions].sort((a, b) => a.name.localeCompare(b.name));
   const open = sessions.find((s) => s.id === openId) ?? null;
   return (
-    <section aria-label="Claude sessions" className="flex items-center gap-2 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-3 text-sm">
-      <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-      <ul className="flex gap-2">
+    <section
+      aria-label="Claude sessions"
+      className={cn("flex items-center gap-2 text-sm", inSheet ? "" : "overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-3")}
+    >
+      {!inSheet && <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
+      <ul className={cn("flex gap-2", inSheet && "flex-wrap")}>
         {sorted.map((s) => (
           <li key={s.id} title={s.folder ? `${s.folder} on ${s.machine}` : s.machine}>
             <button type="button" className="flex min-h-11 items-center sm:min-h-0" onClick={() => setOpenId(s.id)}>
