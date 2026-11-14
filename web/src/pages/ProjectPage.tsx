@@ -222,12 +222,14 @@ export function ProjectPage({ id }: { id: string }) {
     }
     return true;
   };
-  const remember = (step: Step) => {
+  const remember = (step: Step, onGone?: () => void) => {
     const id = steps.push(step);
-    toast({ message: step.label, seconds: 10, action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => undone(steps.undo(id)) } });
+    toast({ message: step.label, action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => undone(steps.undo(id)) }, onGone });
   };
-  // Deleted tasks hide at once and are deleted for good 10 seconds later,
-  // or when the page is closed or hidden, whatever toasts come meanwhile.
+  // Deleted tasks hide at once. They're deleted for good 10 seconds after
+  // their message goes (closed, or another change's message took its
+  // place: Cmd+Z still reaches it meanwhile), or when the page is closed or
+  // hidden.
   const { hidden, deletes } = useUndoableDelete<Task>((t) => act(() => deleteTask(db, t)).then(reload));
   const removeTask = (t: Task) => {
     // Focus goes to the card after it in its column (or before it), not
@@ -237,8 +239,9 @@ export function ProjectPage({ id }: { id: string }) {
     closedTask.current = (group?.tasks[i + 1] ?? group?.tasks[i - 1])?.number ?? null;
     setOpenTask(null);
     deletes.delete(t);
-    setTimeout(() => deletes.finish(t.id), 10_000);
-    remember({ label: `Deleted #${t.number} ${t.title}`, undone: `Brought back #${t.number} ${t.title}`, task: t.number, undo: () => deletes.undo(t.id) });
+    remember({ label: `Deleted #${t.number} ${t.title}`, undone: `Brought back #${t.number} ${t.title}`, task: t.number, undo: () => deletes.undo(t.id) }, () =>
+      setTimeout(() => deletes.finish(t.id), 10_000),
+    );
   };
   useEffect(() => {
     const away = () => document.visibilityState === "hidden" && deletes.finishAll();

@@ -1792,14 +1792,13 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
     .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&number=eq.1&select=statuses(name)`))[0].statuses.name)
     .toBe("To do");
 
-  // Not undone: deleted in the database 10 seconds later, even when
-  // another message has come meanwhile.
+  // A message with Undo stays until it's closed (#211). Not undone:
+  // deleted in the database 10 seconds after it goes.
   await del();
+  await page.waitForTimeout(11000);
   await expect(toast).toBeVisible();
-  await page.keyboard.press("ControlOrMeta+z");
-  await expect(card).toBeVisible();
-  await del();
-  await expect(toast).toHaveCount(0, { timeout: 15000 });
+  await toast.getByRole("button", { name: "Close message" }).click();
+  await expect(toast).toHaveCount(0);
   await expect
     .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&select=title`)).map((t) => t.title), { timeout: 10000 })
     .toEqual(["Paint the fence"]);

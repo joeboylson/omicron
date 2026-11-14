@@ -1,11 +1,15 @@
 // Short messages at the bottom of the screen, with an optional action
-// (like Undo). One at a time; a new one replaces the last.
+// (like Undo). One at a time; a new one replaces the last. One with an
+// action stays until it's closed or replaced, so there's always time to
+// reach it (HIG accessibility #17); the rest go after a few seconds.
 
+import { X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 export type Toast = {
   message: string;
   action?: { label: string; run: () => void; keys?: string };
+  /** How long one without an action stays. */
   seconds?: number;
   /** Called once it's gone without its action: timed out, replaced, or the page closed. */
   onGone?: () => void;
@@ -32,7 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const wait = useCallback(() => {
     clearTimeout(timer.current);
     const t = now.current;
-    if (t) timer.current = setTimeout(() => now.current?.key === t.key && end(false), (t.seconds ?? 6) * 1000);
+    if (t && !t.action) timer.current = setTimeout(() => now.current?.key === t.key && end(false), (t.seconds ?? 6) * 1000);
   }, [end]);
   const show = useCallback(
     (t: Toast) => {
@@ -72,6 +76,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 }}
               >
                 {toast.action.label}
+              </button>
+            )}
+            {toast.action && (
+              <button
+                type="button"
+                aria-label="Close message"
+                className="relative -my-1 -mr-2 rounded-md p-1 text-background/70 after:absolute after:-inset-2 hover:bg-background/10 hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => end(false)}
+              >
+                <X className="h-4 w-4" aria-hidden />
               </button>
             )}
           </div>
