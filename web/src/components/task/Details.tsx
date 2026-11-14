@@ -134,7 +134,7 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
           <span data-testid="ended-session" className="flex-1">
             {task.ended_session} has ended.
           </span>
-          <Button variant="ghost" size="sm" className="h-8 shrink-0 text-link" onClick={() => setPickingWho(true)}>
+          <Button variant="ghost" size="sm" className="h-11 shrink-0 text-link sm:h-8" onClick={() => setPickingWho(true)}>
             Give to…
           </Button>
         </Row>

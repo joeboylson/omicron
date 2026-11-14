@@ -128,7 +128,7 @@ export function DevView({
                 </span>
                 <button
                   type="button"
-                  className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs text-link hover:bg-muted"
+                  className="flex min-h-11 shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs text-link hover:bg-muted lg:min-h-0"
                   aria-label={`Open a new session in ${f.path}`}
                   onClick={() => openIn(f.id)}
                 >
@@ -202,7 +202,7 @@ export function DevView({
                 <TerminalIcon className="h-3.5 w-3.5" aria-hidden />
                 {name}
               </button>
-              <button type="button" className="mr-1 rounded p-1 hover:bg-accent" aria-label={`Close ${name}'s tab (it keeps running)`} onClick={() => close(name)}>
+              <button type="button" className="relative mr-1 rounded p-1 hover:bg-accent after:absolute after:-inset-2.5 after:content-[''] lg:after:inset-0" aria-label={`Close ${name}'s tab (it keeps running)`} onClick={() => close(name)}>
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -218,7 +218,7 @@ export function DevView({
           <div className="flex shrink-0 items-center gap-1 border-b bg-background px-2 py-1 text-xs text-muted-foreground">
             <button
               type="button"
-              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent hover:text-foreground"
+              className="flex min-h-11 items-center gap-1 rounded px-3 py-1 hover:bg-accent hover:text-foreground lg:min-h-0 lg:px-2"
               onClick={() => handOff(active)}
               title="Ask it for its handoff note, then clear: a fresh conversation picks up from the note"
             >
@@ -226,7 +226,7 @@ export function DevView({
             </button>
             <button
               type="button"
-              className="flex items-center gap-1 rounded px-2 py-1 text-destructive hover:bg-destructive/10"
+              className="ml-4 flex min-h-11 items-center gap-1 rounded px-3 py-1 text-destructive hover:bg-destructive/10 lg:ml-2 lg:min-h-0 lg:px-2"
               onClick={() => setEnding(active)}
               title="Quit Claude, which ends the session"
             >
@@ -315,7 +315,7 @@ export function DevView({
                       ) : !isDone && here.length > 0 ? (
                         <select
                           aria-label={`Hand #${t.number} to a session here`}
-                          className="mt-0.5 max-w-24 shrink-0 truncate rounded border-0 bg-transparent text-[11px] text-link"
+                          className="mt-0.5 min-h-11 max-w-28 shrink-0 truncate rounded border-0 bg-transparent text-sm text-link lg:min-h-0 lg:text-[11px]"
                           value=""
                           onChange={(e) => e.target.value && give(t, e.target.value)}
                         >

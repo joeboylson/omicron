@@ -62,7 +62,7 @@ export function DateField({
         ))}
         <label className="grid gap-1 px-1 pt-1 text-xs text-muted-foreground">
           Another day
-          <Input type="date" aria-label="Pick a date" value={value ?? ""} onChange={(e) => e.target.value && pick(e.target.value)} className="h-9" />
+          <Input type="date" aria-label="Pick a date" value={value ?? ""} onChange={(e) => e.target.value && pick(e.target.value)} className="h-11 sm:h-9" />
         </label>
         {value && (
           <Button variant="ghost" className="justify-start font-normal text-destructive hover:text-destructive" onClick={() => pick(null)}>

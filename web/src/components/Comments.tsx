@@ -225,7 +225,7 @@ export function Comments({
                   type="button"
                   aria-label={`Remove ${p.name}`}
                   onClick={() => setPending((all) => all.filter((x) => x.key !== p.key))}
-                  className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full after:absolute after:-inset-2.5 after:content-[''] border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden />
                 </button>

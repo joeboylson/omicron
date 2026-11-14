@@ -36,7 +36,7 @@ export function TaskHeader({ project, task, save, onDelete }: SectionProps & { o
         </DialogDescription>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="More for this task">
+            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label="More for this task">
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
@@ -104,7 +104,7 @@ export function TaskHeader({ project, task, save, onDelete }: SectionProps & { o
       {(task.checklist.length > 0 || task.comments.length > 0) && (
         <div className="flex gap-1 text-sm">
           {task.checklist.length > 0 && (
-            <button type="button" className="flex items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent" onClick={() => jump("task-checklist")}>
+            <button type="button" className="flex min-h-11 items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent sm:min-h-0" onClick={() => jump("task-checklist")}>
               <ListChecks className="h-4 w-4" aria-hidden />
               <span className="tabular-nums">
                 {task.checklist.filter((c) => c.done).length} of {task.checklist.length} done
@@ -112,7 +112,7 @@ export function TaskHeader({ project, task, save, onDelete }: SectionProps & { o
             </button>
           )}
           {task.comments.length > 0 && (
-            <button type="button" className="flex items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent" onClick={() => jump("task-comments")}>
+            <button type="button" className="flex min-h-11 items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent sm:min-h-0" onClick={() => jump("task-comments")}>
               <MessageSquare className="h-4 w-4" aria-hidden />
               <span className="tabular-nums">
                 {task.comments.length} {task.comments.length === 1 ? "comment" : "comments"}

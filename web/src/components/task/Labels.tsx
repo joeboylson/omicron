@@ -31,7 +31,7 @@ export function AddLabel({
   return (
     <Popover open={open} onOpenChange={(o) => (setOpen(o), o || setTyped(""))}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-link">
+        <Button variant="ghost" size="sm" className="h-11 gap-1 px-2 text-link sm:h-9">
           <Plus /> Add label
         </Button>
       </PopoverTrigger>
@@ -75,7 +75,7 @@ export function TaskLabels({ project, task, change }: SectionProps) {
                 <button
                   type="button"
                   aria-label={`Take off ${l.name}`}
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="relative flex h-7 w-7 items-center justify-center rounded-full after:absolute after:-inset-2 after:content-[''] text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => change(() => setLabel(db, task, l.id, false))}
                 >
                   <X className="h-3.5 w-3.5" />

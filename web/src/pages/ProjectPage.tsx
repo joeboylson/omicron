@@ -471,13 +471,13 @@ export function ProjectPage({ id }: { id: string }) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search tasks"
             aria-label="Search tasks"
-            className="h-9 pl-8"
+            className="h-11 pl-8 sm:h-9"
           />
         </div>
         {/* On a phone, Show and Columns fold into one menu beside the search. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="relative size-9 shrink-0 sm:hidden" aria-label={filtering ? "View and filters (filtering)" : "View and filters"}>
+            <Button variant="outline" size="icon" className="relative size-11 shrink-0 sm:hidden" aria-label={filtering ? "View and filters (filtering)" : "View and filters"}>
               <SlidersHorizontal />
               {filtering && <span aria-hidden className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--sys-blue)]" />}
             </Button>
@@ -991,7 +991,7 @@ function Column({
               value={due}
               onChange={setDue}
               none="No date"
-              className="h-8 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground"
+              className="h-11 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground sm:h-8"
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1248,7 +1248,7 @@ function WhoChip({ project, value, onChange }: { project: ProjectData; value: Wh
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" className="h-8 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground" aria-label={`For: ${name}`}>
+        <Button type="button" variant="ghost" className="h-11 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground sm:h-8" aria-label={`For: ${name}`}>
           <User className="h-3.5 w-3.5" aria-hidden /> {name}
           <ChevronDown className="h-4 w-4 opacity-50" aria-hidden />
         </Button>

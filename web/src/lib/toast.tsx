@@ -65,7 +65,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 aria-keyshortcuts={toast.action.keys}
-                className="-my-1 rounded-md px-2 py-1 font-semibold text-link-inverse hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-my-1 min-h-11 rounded-md px-3 py-1 font-semibold text-link-inverse sm:min-h-0 hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   toast.action!.run();
                   end(true);
