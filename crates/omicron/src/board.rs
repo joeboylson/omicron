@@ -297,7 +297,7 @@ const TASK_ROW: &str = "id,number,title,status_id,assignee_person_id,assignee_se
 
 /// A task as a run looks at it: where it is, who has it, its labels and
 /// whether a team has it.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TaskRow {
     pub id: String,
     pub number: i64,
@@ -314,7 +314,7 @@ pub struct TaskRow {
     task_jobs: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct LabelRef {
     label_id: String,
 }
@@ -330,7 +330,7 @@ impl TaskRow {
 }
 
 /// A task linked to a job of a team on this machine.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TeamTask {
     pub task: TaskRow,
     pub job_number: i64,

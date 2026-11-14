@@ -1612,6 +1612,20 @@ fn a_run_works_down_to_do_one_task_at_a_time() {
     wait_for("stopped after #2", || ok(&pat, None, &["runs", "list", &project]).contains("stopped\t2 done\tpaused after #2"));
     assert!(!read(&mac, "run.typed").contains("write your handoff note now\nOmicron: write"), "no second handoff");
 
+    // Paused while it hands off: it stops once the note is saved, with
+    // nothing new typed in (the hand-off runs apart from the run's steps).
+    ok(&pat, None, &["tasks", "add", &project, "Third thing"]);
+    ok(&pat, None, &["tasks", "add", &project, "Fourth thing"]);
+    ok(&mac, None, &["runs", "start", &project, "--session", "runner"]);
+    wait_for("the third task typed in", || read(&mac, "run.typed").contains("your next task is #3 \"Third thing\""));
+    ok(&pat, None, &["tasks", "done", &project, "3"]);
+    wait_for("asked for its note again", || read(&mac, "run.typed").matches("write your handoff note now").count() == 2);
+    ok(&pat, None, &["runs", "pause", &project]);
+    ok(&mac, Some(pid), &["handoff", "write", "# Third thing done"]);
+    wait_for("stopped after #3", || ok(&pat, None, &["runs", "list", &project]).lines().next().unwrap_or("").contains("stopped\t1 done\tpaused after #3"));
+    assert!(!read(&mac, "run.typed").contains("Fourth thing"), "nothing new after the pause");
+    ok(&pat, None, &["tasks", "done", &project, "4"]);
+
     // A new run with nothing left in To do finishes at once.
     ok(&mac, None, &["runs", "start", &project, "--session", "runner"]);
     wait_for("finished", || ok(&pat, None, &["runs", "list", &project]).lines().next().unwrap_or("").contains("finished\t0 done\tfinished: To do is empty (0 done)"));

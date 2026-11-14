@@ -18,7 +18,7 @@ use clap::Subcommand;
 use omicron::board::{Board, Run};
 use omicron::supa::{MachineKey, Supabase};
 use serde_json::Value;
-use omicron::board::{in_progress, TaskRow};
+use omicron::board::{in_progress, TaskRow, TeamTask};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -159,6 +159,14 @@ fn signed_in(supabase: &Supabase, key: &MachineKey) -> Result<Board> {
 /// Runs being stepped now, and ones to step again once that's done.
 static BUSY: Mutex<Option<(HashSet<String>, HashSet<String>)>> = Mutex::new(None);
 
+/// Runs handing off now (asking for the note, then clearing): their steps
+/// wait until it's done, and the hand-off steps them again after.
+static HANDING_OFF: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+fn handing_off(id: &str) -> bool {
+    HANDING_OFF.lock().unwrap().get_or_insert_with(Default::default).contains(id)
+}
+
 /// One step at a time per run: a change heard mid-step steps it again after.
 fn step_soon(supabase: &Supabase, key: &MachineKey, id: &str) {
     {
@@ -170,7 +178,7 @@ fn step_soon(supabase: &Supabase, key: &MachineKey, id: &str) {
         }
     }
     loop {
-        if let Err(e) = signed_in(supabase, key).and_then(|b| step(supabase, &b, id)) {
+        if let Err(e) = signed_in(supabase, key).and_then(|b| step(supabase, key, &b, id)) {
             eprintln!("omicron daemon: run: {e:#}");
             if let Ok(b) = signed_in(supabase, key) {
                 let _ = b.stop_run(id, &format!("stopped: {e:#}"));
@@ -182,6 +190,86 @@ fn step_soon(supabase: &Supabase, key: &MachineKey, id: &str) {
             now.remove(id);
             return;
         }
+    }
+}
+
+/// What a run does next.
+#[derive(Debug, PartialEq)]
+enum Action<'a> {
+    /// Nothing now: its task is still being worked on, or it's handing off.
+    Wait,
+    /// It stops, saying why.
+    Stop(String),
+    /// Its task is finished and it was asked to pause: it stops there.
+    PauseDone { number: i64 },
+    /// Its task is finished: hand off (note, then clear), then go on.
+    HandOff { number: i64 },
+    /// A team here finished a big task's job: the session checks it.
+    CheckTeamTask(&'a TeamTask),
+    /// The next task, after giving `to_team` to the team on the way.
+    Start { to_team: Vec<&'a TaskRow>, task: &'a TaskRow },
+    /// Nothing to start, but team jobs are still going: wait for them.
+    WaitForTeam { to_team: Vec<&'a TaskRow>, note: String },
+    /// To do is empty and nothing's waiting: it's finished.
+    Finish { to_team: Vec<&'a TaskRow> },
+}
+
+/// What a step looks at, loaded.
+struct Seen<'a> {
+    run: &'a omicron::board::Run,
+    /// Why it can't go on at all (its session ended, the gate, not running).
+    blocked: Option<String>,
+    handing_off: bool,
+    session_id: &'a str,
+    statuses: &'a [omicron::board::Status],
+    /// The task it's on (when it's on one), if it's still there.
+    current: Option<&'a TaskRow>,
+    team_tasks: &'a [TeamTask],
+    /// To do's tasks, in order.
+    to_do: &'a [TaskRow],
+    /// The team label's id, when a team runs here for the Project.
+    team_label: Option<&'a str>,
+}
+
+/// The run's next move, decided from what was seen; nothing is read or written.
+fn next_action<'a>(seen: &Seen<'a>) -> Action<'a> {
+    let run = seen.run;
+    if !run.active() || seen.handing_off {
+        return Action::Wait;
+    }
+    if let Some(why) = &seen.blocked {
+        return Action::Stop(why.clone());
+    }
+    if run.task_id.is_some() {
+        let t = seen.current;
+        if t.is_some_and(|t| t.assignee_session_id.as_deref() == Some(seen.session_id) && in_progress(seen.statuses, &t.status_id)) {
+            return Action::Wait;
+        }
+        let number = t.map(|t| t.number).unwrap_or(0);
+        return if run.state == "pausing" { Action::PauseDone { number } } else { Action::HandOff { number } };
+    }
+    // A big task a team here finished: the session checks it, reports, and
+    // moves it to Review, before anything new (#92).
+    if let Some(tt) = seen.team_tasks.iter().find(|tt| {
+        tt.job_state == "done" && in_progress(seen.statuses, &tt.task.status_id) && tt.task.assignee_session_id.as_deref() != Some(seen.session_id)
+    }) {
+        return Action::CheckTeamTask(tt);
+    }
+    let (to_team, next) = choose(seen.to_do, seen.session_id, run.label_id.as_deref(), seen.team_label);
+    if let Some(task) = next {
+        return Action::Start { to_team, task };
+    }
+    let waiting: Vec<String> = seen
+        .team_tasks
+        .iter()
+        .filter(|tt| !matches!(tt.job_state.as_str(), "done" | "cancelled") && in_progress(seen.statuses, &tt.task.status_id))
+        .map(|tt| format!("#{} ({} job #{})", tt.task.number, tt.team, tt.job_number))
+        .chain(to_team.iter().map(|t| format!("#{} (just given to the team)", t.number)))
+        .collect();
+    if waiting.is_empty() {
+        Action::Finish { to_team }
+    } else {
+        Action::WaitForTeam { to_team, note: format!("waiting for the team: {}", waiting.join(", ")) }
     }
 }
 
@@ -206,123 +294,149 @@ fn choose<'a>(rows: &'a [TaskRow], session: &str, run_label: Option<&str>, team_
     (for_team, None)
 }
 
-/// Do the next thing a run needs, if anything.
-fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
+/// Do the next thing a run needs, if anything: read what it needs, decide
+/// (`next_action`), and carry it out.
+fn step(supabase: &Supabase, key: &MachineKey, board: &Board, id: &str) -> Result<()> {
     let Some(run) = board.run(id)? else { return Ok(()) };
-    if !run.active() {
+    if !run.active() || handing_off(id) {
         return Ok(());
     }
-    let stop = |note: String| board.stop_run(id, &note);
-    let Some(session) = run.session_id.as_deref().and_then(|s| board.session_by_id(s).ok()) else {
-        return stop("stopped: its session ended".into());
+    let session = run.session_id.as_deref().and_then(|s| board.session_by_id(s).ok());
+    let blocked = match &session {
+        None => Some("stopped: its session ended".to_string()),
+        Some(s) => match omicron::gate::refusal(board, &s.machine, Some(&run.started_by))? {
+            Some(why) => Some(format!("stopped: {why}")),
+            None if !omicron::host::is_running(&s.name) => Some(format!("stopped: {} isn't running (`omicron open {}`)", s.name, s.name)),
+            None => None,
+        },
     };
-    if let Some(why) = omicron::gate::refusal(board, &session.machine, Some(&run.started_by))? {
-        return stop(format!("stopped: {why}"));
+    if blocked.is_some() || session.is_none() {
+        let seen = Seen { run: &run, blocked, handing_off: false, session_id: "", statuses: &[], current: None, team_tasks: &[], to_do: &[], team_label: None };
+        return match next_action(&seen) {
+            Action::Stop(why) => board.stop_run(id, &why),
+            _ => Ok(()),
+        };
     }
-    if !omicron::host::is_running(&session.name) {
-        return stop(format!("stopped: {} isn't running (`omicron open {}`)", session.name, session.name));
-    }
+    let session = session.expect("checked just above");
     let project = board.projects()?.into_iter().find(|p| p.id == run.project_id).context("the run's Project is gone")?;
     let statuses = board.statuses(&project)?;
-
-    // On a task: still at it, or finished with it.
-    if let Some(task_id) = &run.task_id {
-        let task = board.task_row(task_id)?;
-        let mine = task.as_ref().is_some_and(|t| t.assignee_session_id.as_deref() == Some(session.id.as_str()));
-        if let Some(t) = &task {
-            if mine && in_progress(&statuses, &t.status_id) {
-                return Ok(());
-            }
-        }
-        let number = task.as_ref().map(|t| t.number).unwrap_or(0);
-        let done = run.done + 1;
-        if run.state == "pausing" {
-            return board.run_task_finished(id, done, true, &format!("paused after #{number}"));
-        }
-        board.run_task_finished(id, done, false, &format!("handing off after #{number}"))?;
-        if !omicron::handover::hand_off_and_clear(supabase, board, &session)? {
-            return stop(format!("stopped: {} didn't write its handoff note after #{number}", session.name));
-        }
-        // Paused or stopped meanwhile?
-        match board.run(id)? {
-            Some(r) if r.state == "running" => {}
-            Some(r) if r.state == "pausing" => return board.stop_run(id, &format!("paused after #{number}")),
-            _ => return Ok(()),
-        }
-    }
-
-    // A big task a team here finished: the session checks it, reports, and
-    // moves it to Review, before anything new (#92).
-    let team_tasks = board.team_tasks_here(&run.project_id)?;
-    if let Some(tt) = team_tasks.iter().find(|tt| {
-        tt.job_state == "done" && in_progress(&statuses, &tt.task.status_id) && tt.task.assignee_session_id.as_deref() != Some(session.id.as_str())
-    }) {
-        let (team, job) = (&tt.team, tt.job_number);
-        let (task_id, number, title) = (tt.task.id.as_str(), tt.task.number, tt.task.title.as_str());
-        board.give_anew(task_id, Some(&session.id))?;
-        board.run_on(id, task_id, &format!("checking #{number}: {team} finished job #{job}"))?;
-        omicron::handover::wait_until_free(&session.id);
-        omicron::host::say(
-            &session.name,
-            &format!(
-                "Omicron run: the team {team} finished job #{job} for task #{number} \"{}\" in {}. Run `omicron tasks mine` to get the task with the Project's run rules, check the job's work (`omicron teams jobs {team}`, its branch is merged), then report on the task and move it to Review. Then stop; the run hands off and gives you the next one.",
-                omicron::text::line(title),
-                project.name
-            ),
-        )?;
-        return Ok(());
-    }
-
-    // The next task: the top of To do (only the run's label, if it has one),
-    // not given to anyone else, not already with a team. A task labelled
-    // "team" goes to a team running here for this Project as a linked job,
-    // and the run carries on with the next (#92).
-    let first = omicron::board::to_do(&statuses).context("the Project has no status that isn't done")?;
-    let team_label = board.labels(&project)?.into_iter().map(|(n, _)| n).find(|n| n.eq_ignore_ascii_case("team"));
-    let team_label_id = match team_label {
-        Some(n) => Some(board.label_id(&project, &n)?),
+    let current = match &run.task_id {
+        Some(t) => board.task_row(t)?,
         None => None,
     };
-    let me = board.me();
-    let team = board.teams()?.into_iter().find(|t| t.machine_id == me && t.project_id == run.project_id && t.state == "running");
-    let rows = board.task_rows_in(&run.project_id, &first.id)?;
-    let team_label = team.as_ref().and(team_label_id.as_deref());
-    let (for_team, next) = choose(&rows, &session.id, run.label_id.as_deref(), team_label);
-    if let Some(team) = &team {
-        for t in for_team {
-            let number = t.number;
-            let task = board.task(&project, number)?;
-            let job = board.add_job(team, &t.title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
+    let first = omicron::board::to_do(&statuses).context("the Project has no status that isn't done")?;
+    // Only what the decision needs: To do and teams only once it's off a task.
+    let (team_tasks, to_do, team, team_label_id) = if run.task_id.is_some() {
+        (Vec::new(), Vec::new(), None, None)
+    } else {
+        let me = board.me();
+        let team = board.teams()?.into_iter().find(|t| t.machine_id == me && t.project_id == run.project_id && t.state == "running");
+        let label = match board.labels(&project)?.into_iter().map(|(n, _)| n).find(|n| n.eq_ignore_ascii_case("team")) {
+            Some(n) if team.is_some() => Some(board.label_id(&project, &n)?),
+            _ => None,
+        };
+        (board.team_tasks_here(&run.project_id)?, board.task_rows_in(&run.project_id, &first.id)?, team, label)
+    };
+    let seen = Seen {
+        run: &run,
+        blocked: None,
+        handing_off: false,
+        session_id: &session.id,
+        statuses: &statuses,
+        current: current.as_ref(),
+        team_tasks: &team_tasks,
+        to_do: &to_do,
+        team_label: team_label_id.as_deref(),
+    };
+    let give_to_team = |to_team: &[&TaskRow]| -> Result<()> {
+        let Some(team) = &team else { return Ok(()) };
+        for t in to_team {
+            let task = board.task(&project, t.number)?;
+            let job = board.add_job(team, &t.title, &format!("Task #{} in {}.\n\n{}", t.number, project.name, task.notes))?;
             board.link_job(&task, team, job.number)?;
-            board.run_note(id, &format!("gave #{number} to the team {} as job #{}", team.name, job.number))?;
+            board.run_note(id, &format!("gave #{} to the team {} as job #{}", t.number, team.name, job.number))?;
+        }
+        Ok(())
+    };
+    match next_action(&seen) {
+        Action::Wait => Ok(()),
+        Action::Stop(why) => board.stop_run(id, &why),
+        Action::PauseDone { number } => board.run_task_finished(id, run.done + 1, true, &format!("paused after #{number}")),
+        Action::HandOff { number } => {
+            board.run_task_finished(id, run.done + 1, false, &format!("handing off after #{number}"))?;
+            hand_off(supabase, key, id, session, number);
+            Ok(())
+        }
+        Action::CheckTeamTask(tt) => {
+            let (team, job, number) = (&tt.team, tt.job_number, tt.task.number);
+            board.give_anew(&tt.task.id, Some(&session.id))?;
+            board.run_on(id, &tt.task.id, &format!("checking #{number}: {team} finished job #{job}"))?;
+            omicron::handover::wait_until_free(&session.id);
+            omicron::host::say(
+                &session.name,
+                &format!(
+                    "Omicron run: the team {team} finished job #{job} for task #{number} \"{}\" in {}. Run `omicron tasks mine` to get the task with the Project's run rules, check the job's work (`omicron teams jobs {team}`, its branch is merged), then report on the task and move it to Review. Then stop; the run hands off and gives you the next one.",
+                    omicron::text::line(&tt.task.title),
+                    project.name
+                ),
+            )
+        }
+        Action::Start { to_team, task } => {
+            give_to_team(&to_team)?;
+            board.give_anew(&task.id, Some(&session.id))?;
+            board.run_on(id, &task.id, &format!("on #{}: {}", task.number, omicron::text::line(&task.title)))?;
+            omicron::handover::wait_until_free(&session.id);
+            omicron::host::say(
+                &session.name,
+                &format!(
+                    "Omicron run: your next task is #{} \"{}\" in {}. Run `omicron tasks mine` to get it with the Project's run rules, and work on it as they say: move it to Doing, do it, report on it, and move it to Review. Then stop; the run hands off and gives you the next one.",
+                    task.number,
+                    omicron::text::line(&task.title),
+                    project.name
+                ),
+            )
+        }
+        // Comes back when a job finishes (the daemon steps runs then).
+        Action::WaitForTeam { to_team, note } => {
+            give_to_team(&to_team)?;
+            board.run_note(id, &note)
+        }
+        Action::Finish { to_team } => {
+            give_to_team(&to_team)?;
+            let done = board.run(id)?.map(|r| r.done).unwrap_or(run.done);
+            board.finish_run(id, &format!("finished: {} is empty ({done} done)", first.name))
         }
     }
-    let Some(next) = next else {
-        let waiting: Vec<String> = team_tasks
-            .iter()
-            .filter(|tt| !matches!(tt.job_state.as_str(), "done" | "cancelled") && in_progress(&statuses, &tt.task.status_id))
-            .map(|tt| format!("#{} ({} job #{})", tt.task.number, tt.team, tt.job_number))
-            .collect();
-        if !waiting.is_empty() {
-            // Comes back when a job finishes (the daemon steps runs then).
-            return board.run_note(id, &format!("waiting for the team: {}", waiting.join(", ")));
+}
+
+/// Hand off on a thread of its own (asking for the note can take up to 20
+/// minutes), then step the run again, unless it was paused or stopped
+/// meanwhile. Its other steps wait until then.
+fn hand_off(supabase: &Supabase, key: &MachineKey, id: &str, session: omicron::board::SessionRecord, number: i64) {
+    HANDING_OFF.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string());
+    let (supabase, key, id) = (supabase.clone(), key.clone(), id.to_string());
+    std::thread::spawn(move || {
+        let result = signed_in(&supabase, &key).and_then(|board| {
+            let saved = omicron::handover::hand_off_and_clear(&supabase, &board, &session)?;
+            if !saved {
+                return board.stop_run(&id, &format!("stopped: {} didn't write its handoff note after #{number}", session.name));
+            }
+            match board.run(&id)? {
+                Some(r) if r.state == "pausing" => board.stop_run(&id, &format!("paused after #{number}")),
+                _ => Ok(()),
+            }
+        });
+        HANDING_OFF.lock().unwrap().get_or_insert_with(Default::default).remove(&id);
+        match result {
+            Err(e) => {
+                eprintln!("omicron daemon: run: {e:#}");
+                if let Ok(b) = signed_in(&supabase, &key) {
+                    let _ = b.stop_run(&id, &format!("stopped: {e:#}"));
+                }
+            }
+            Ok(()) => step_soon(&supabase, &key, &id),
         }
-        let done = board.run(id)?.map(|r| r.done).unwrap_or(run.done);
-        return board.finish_run(id, &format!("finished: {} is empty ({done} done)", first.name));
-    };
-    let (task_id, number, title) = (next.id.as_str(), next.number, next.title.as_str());
-    board.give_anew(task_id, Some(&session.id))?;
-    board.run_on(id, task_id, &format!("on #{number}: {}", omicron::text::line(title)))?;
-    omicron::handover::wait_until_free(&session.id);
-    omicron::host::say(
-        &session.name,
-        &format!(
-            "Omicron run: your next task is #{number} \"{}\" in {}. Run `omicron tasks mine` to get it with the Project's run rules, and work on it as they say: move it to Doing, do it, report on it, and move it to Review. Then stop; the run hands off and gives you the next one.",
-            omicron::text::line(title),
-            project.name
-        ),
-    )?;
-    Ok(())
+    });
 }
 
 #[cfg(test)]
@@ -338,6 +452,79 @@ mod tests {
             "task_jobs": if job { json!([{ "job_id": "j" }]) } else { json!([]) },
         }))
         .unwrap()
+    }
+
+    fn run(state: &str, task: Option<&str>) -> omicron::board::Run {
+        serde_json::from_value(json!({
+            "id": "r", "project_id": "p", "machine_id": "m", "session_id": "mine", "label_id": null, "state": state,
+            "task_id": task, "done": 0, "note": null, "started_by": "m", "started_at": "now",
+        }))
+        .unwrap()
+    }
+
+    fn statuses() -> Vec<omicron::board::Status> {
+        let st = |id: &str, position: f64, is_done: bool| omicron::board::Status { id: id.into(), name: id.into(), position, is_done, color: None };
+        vec![st("todo", 0.0, false), st("Doing", 1.0, false), st("Review", 2.0, false), st("Done", 3.0, true)]
+    }
+
+    fn team_task(n: i64, status: &str, state: &str) -> TeamTask {
+        let mut task = row(n, &["team"], None, None, true);
+        task.status_id = status.into();
+        TeamTask { task, job_number: 7, job_state: state.into(), team: "web".into() }
+    }
+
+    fn seen<'a>(run: &'a omicron::board::Run, st: &'a [omicron::board::Status], current: Option<&'a TaskRow>, team_tasks: &'a [TeamTask], to_do: &'a [TaskRow]) -> Seen<'a> {
+        Seen { run, blocked: None, handing_off: false, session_id: "mine", statuses: st, current, team_tasks, to_do, team_label: Some("team") }
+    }
+
+    #[test]
+    fn what_a_run_does_next() {
+        let st = statuses();
+        let mut on_it = row(1, &[], None, Some("mine"), false);
+        // Not running, or handing off: nothing. Can't go on: it stops.
+        let stopped = run("stopped", None);
+        assert_eq!(next_action(&seen(&stopped, &st, None, &[], &[])), Action::Wait);
+        let r = run("running", None);
+        assert_eq!(next_action(&Seen { handing_off: true, ..seen(&r, &st, None, &[], &[]) }), Action::Wait);
+        assert_eq!(next_action(&Seen { blocked: Some("stopped: its session ended".into()), ..seen(&r, &st, None, &[], &[]) }), Action::Stop("stopped: its session ended".into()));
+
+        // On a task: still at it (To do or Doing, still its own) waits.
+        let r = run("running", Some("t1"));
+        assert_eq!(next_action(&seen(&r, &st, Some(&on_it), &[], &[])), Action::Wait);
+        on_it.status_id = "Doing".into();
+        assert_eq!(next_action(&seen(&r, &st, Some(&on_it), &[], &[])), Action::Wait);
+        // In Review, given away, or gone: finished with it.
+        on_it.status_id = "Review".into();
+        assert_eq!(next_action(&seen(&r, &st, Some(&on_it), &[], &[])), Action::HandOff { number: 1 });
+        let given_away = row(1, &[], Some("pat"), None, false);
+        assert_eq!(next_action(&seen(&r, &st, Some(&given_away), &[], &[])), Action::HandOff { number: 1 });
+        assert_eq!(next_action(&seen(&r, &st, None, &[], &[])), Action::HandOff { number: 0 });
+        // Pausing: it stops there instead.
+        let p = run("pausing", Some("t1"));
+        assert_eq!(next_action(&seen(&p, &st, Some(&on_it), &[], &[])), Action::PauseDone { number: 1 });
+    }
+
+    #[test]
+    fn what_a_run_picks_once_its_free() {
+        let st = statuses();
+        let r = run("running", None);
+        let to_do = [row(2, &["team"], None, None, false), row(3, &[], None, None, false)];
+        // A team task done: checked first, before anything new.
+        let tts = [team_task(5, "todo", "done")];
+        assert_eq!(next_action(&seen(&r, &st, None, &tts, &to_do)), Action::CheckTeamTask(&tts[0]));
+        // Otherwise the next task, giving the team task on the way to the team.
+        assert_eq!(next_action(&seen(&r, &st, None, &[], &to_do)), Action::Start { to_team: vec![&to_do[0]], task: &to_do[1] });
+        // Only team tasks left: given, then wait for the team.
+        match next_action(&seen(&r, &st, None, &[], &to_do[..1])) {
+            Action::WaitForTeam { to_team, note } => assert_eq!((to_team.len(), note.as_str()), (1, "waiting for the team: #2 (just given to the team)")),
+            other => panic!("{other:?}"),
+        }
+        // A team job still going, nothing else: wait.
+        let going = [team_task(5, "todo", "working")];
+        assert_eq!(next_action(&seen(&r, &st, None, &going, &[])), Action::WaitForTeam { to_team: vec![], note: "waiting for the team: #5 (web job #7)".into() });
+        // Nothing at all (a team job done but its task already in Review): finished.
+        let reviewed = [team_task(5, "Review", "done")];
+        assert_eq!(next_action(&seen(&r, &st, None, &reviewed, &[])), Action::Finish { to_team: vec![] });
     }
 
     fn numbers(v: &[&TaskRow]) -> Vec<i64> {
