@@ -838,6 +838,22 @@ function Column({
     }
   }, [addSignal]);
   const { setNodeRef, isOver } = useDroppable({ id: column });
+  // Whether the list has more below what's shown.
+  const list = useRef<HTMLUListElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const check = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    const seen = new ResizeObserver(check);
+    seen.observe(el);
+    return () => {
+      el.removeEventListener("scroll", check);
+      seen.disconnect();
+    };
+  }, [tasks.length]);
 
   // One add at a time: while it's on its way (it may wait for the
   // connection), pressing Add again mustn't add it twice.
@@ -870,9 +886,12 @@ function Column({
 
   return (
     <section
+      // The whole column takes a drop, header to Add a task (the list itself
+      // is only as tall as its cards).
+      ref={setNodeRef}
       aria-label={label}
       data-group={groupKey}
-      className="flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
+      className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", isOver && "bg-accent/80")}
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
         {status && <ColorDot color={statusColor(status)} />}
@@ -951,11 +970,16 @@ function Column({
       </h2>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <ul
-          ref={setNodeRef}
-          // Scrolls up and down on its own when the column is taller than
-          // the screen. Only up and down is kept in: a sideways swipe over
-          // the cards passes to the board, to move between columns (#190).
-          className={cn("-m-0.5 flex min-h-2 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-lg p-0.5 transition-colors", isOver && "bg-accent/60")}
+          ref={list}
+          // As tall as its cards, so Add a task follows the last one; when
+          // the column is taller than the screen it scrolls up and down on
+          // its own, with a fade at the bottom while there's more (#205).
+          // Only up and down is kept in: a sideways swipe over the cards
+          // passes to the board, to move between columns (#190).
+          className={cn(
+            "-m-0.5 flex min-h-2 flex-initial flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-lg p-0.5",
+            more && "[mask-image:linear-gradient(to_bottom,black_calc(100%-2rem),transparent)]",
+          )}
         >
           {tasks.map((t) => (
             <SortableTask key={t.id} project={project} task={t} column={column} showStatus={!status} onOpen={() => onOpen(t)} />
