@@ -42,43 +42,71 @@ pub fn put(claude_id: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// Take the waiting messages, oldest first. Each is claimed by renaming it,
-/// so two followers never both take the same one.
-pub fn take(claude_id: &str) -> Result<Vec<String>> {
-    let d = dir(claude_id)?;
-    let mut names: Vec<String> = match std::fs::read_dir(&d) {
+/// The waiting messages' file names, oldest first.
+fn waiting(d: &std::path::Path) -> Result<Vec<String>> {
+    let mut names: Vec<String> = match std::fs::read_dir(d) {
         Ok(entries) => entries.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".msg")).collect(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(e.into()),
     };
     names.sort();
-    let mut taken = Vec::new();
-    for n in names {
+    Ok(names)
+}
+
+/// Claim the oldest waiting message by renaming it (so two followers never
+/// both take it). Returns its text and the claimed file, to delete once
+/// it's handed over or rename back if it couldn't be.
+fn claim_next(d: &std::path::Path) -> Result<Option<(String, PathBuf)>> {
+    for n in waiting(d)? {
         let claimed = d.join(format!("{n}.taken"));
         if std::fs::rename(d.join(&n), &claimed).is_err() {
             continue;
         }
-        taken.push(std::fs::read_to_string(&claimed)?);
+        return Ok(Some((std::fs::read_to_string(&claimed)?, claimed)));
+    }
+    Ok(None)
+}
+
+/// Take the waiting messages, oldest first, removing them.
+pub fn take(claude_id: &str) -> Result<Vec<String>> {
+    let d = dir(claude_id)?;
+    let mut taken = Vec::new();
+    while let Some((text, claimed)) = claim_next(&d)? {
         std::fs::remove_file(&claimed)?;
+        taken.push(text);
     }
     Ok(taken)
 }
 
 /// Follow the inbox: say this process is listening, then hand each message
-/// to `each` as it arrives, until `each` says stop (returns false). The
-/// newest follower of a conversation wins; an older one stops once it sees
-/// it's been replaced.
+/// to `each` as it arrives. `each` returns false when it couldn't hand the
+/// message over (the window stopped reading): that message is put back,
+/// for the next follower, and following stops. A message is removed only
+/// once it's been handed over. The newest follower of a conversation wins;
+/// an older one stops once it sees it's been replaced.
 pub fn follow(claude_id: &str, mut each: impl FnMut(&str) -> bool) -> Result<()> {
     let d = dir(claude_id)?;
     std::fs::create_dir_all(&d)?;
+    // Messages a follower had claimed when it died: never handed over for
+    // sure, so they're handed over again (once more rather than never).
+    for e in std::fs::read_dir(&d)?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if let Some(msg) = name.strip_suffix(".taken") {
+            let _ = std::fs::rename(e.path(), d.join(msg));
+        }
+    }
     let me = std::process::id();
     std::fs::write(d.join("listener"), me.to_string())?;
     let result = (|| -> Result<()> {
         while listener(&d) == Some(me) {
-            for text in take(claude_id)? {
+            while let Some((text, claimed)) = claim_next(&d)? {
                 if !each(&text) {
+                    // Not handed over: back it goes, as it was.
+                    let name = claimed.file_name().unwrap().to_string_lossy().trim_end_matches(".taken").to_string();
+                    std::fs::rename(&claimed, d.join(name))?;
                     return Ok(());
                 }
+                std::fs::remove_file(&claimed)?;
             }
             std::thread::sleep(FOLLOW_EVERY);
         }
@@ -136,11 +164,13 @@ mod tests {
     }
 
     #[test]
-    fn follow_hands_over_messages_then_stops_when_told() {
+    fn a_message_that_couldnt_be_handed_over_stays_for_the_next_follower() {
         with_home(|| {
             let id = uuid::Uuid::new_v4().to_string();
             put(&id, "one").unwrap();
             put(&id, "two").unwrap();
+            put(&id, "three").unwrap();
+            // Hands over "one", then the window stops reading at "two".
             let mut got = Vec::new();
             follow(&id, |t| {
                 got.push(t.to_string());
@@ -150,6 +180,30 @@ mod tests {
             assert_eq!(got, ["one", "two"]);
             // Stopped: it no longer says it's listening.
             assert!(!listening(&id));
+            // "two" wasn't handed over: it's still there, with "three", in order.
+            assert_eq!(take(&id).unwrap(), ["two", "three"]);
+        })
+    }
+
+    #[test]
+    fn a_message_a_dead_follower_had_claimed_is_handed_over_again() {
+        with_home(|| {
+            let id = uuid::Uuid::new_v4().to_string();
+            put(&id, "one").unwrap();
+            put(&id, "two").unwrap();
+            put(&id, "stop").unwrap();
+            // A follower claimed "one" and died before handing it over.
+            let d = dir(&id).unwrap();
+            let (text, _) = claim_next(&d).unwrap().unwrap();
+            assert_eq!(text, "one");
+            // The next follower hands it over, then the rest (stopping at "stop").
+            let mut got = Vec::new();
+            follow(&id, |t| {
+                got.push(t.to_string());
+                t != "stop"
+            })
+            .unwrap();
+            assert_eq!(got, ["one", "two", "stop"]);
         })
     }
 
