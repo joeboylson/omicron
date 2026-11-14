@@ -20,8 +20,9 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// How long the machine has to take the request (the database stops it
-/// being taken after this too).
+/// How long `omicron tasks dispatch` waits for the machine to take the
+/// request before reading back how it went. Only a wait: the database
+/// decides when a request can't be taken any more (dispatches.claim_by).
 pub const CLAIM_TIME: Duration = Duration::from_secs(20);
 /// How long the machine has, once it took it, to say how it went.
 pub const FINISH_TIME: Duration = Duration::from_secs(60);

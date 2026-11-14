@@ -19,7 +19,6 @@ import {
   addChecklistItem,
   addLabel,
   deleteChecklistItem,
-  DISPATCH_CLAIM_SECONDS,
   giveUpDispatch,
   requestDispatch,
   linkJob,
@@ -516,15 +515,25 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
   const [asking, setAsking] = useState(false);
   const session = project.sessions.find((s) => s.id === task.assignee_session_id);
   const latest = task.dispatches[0];
-  // A request its asker never gave up on (the tab closed) or a machine took
-  // but never finished: over, whatever its state says; give up on it now.
+  // A request nobody took by the time the database allows (claim_by), or
+  // one a machine took but never finished: over, whatever its state says;
+  // give up on it. Drawn again at claim_by, so this is seen in time.
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    if (latest?.state !== "pending") return;
+    const wait = new Date(latest.claim_by).getTime() - Date.now() + 1000;
+    if (wait <= 0) return;
+    const t = window.setTimeout(() => redraw((n) => n + 1), wait);
+    return () => window.clearTimeout(t);
+  }, [latest?.id, latest?.state, latest?.claim_by]);
   const stale =
     !!latest &&
-    ((latest.state === "pending" && Date.now() - new Date(latest.created_at).getTime() > (DISPATCH_CLAIM_SECONDS + 5) * 1000) ||
+    ((latest.state === "pending" && Date.now() > new Date(latest.claim_by).getTime()) ||
       (latest.state === "claimed" && !!latest.claimed_at && Date.now() - new Date(latest.claimed_at).getTime() > 125_000));
   useEffect(() => {
     if (!stale || !latest) return;
-    const why = latest.state === "pending" ? `${session?.machine ?? "Its machine"} didn't pick it up in time.` : "Its machine took it but never said how it went.";
+    const why =
+      latest.state === "pending" ? `${session?.machine ?? "Its machine"} didn't pick it up in time. Is Omicron running on it?` : "Its machine took it but never said how it went.";
     giveUpDispatch(db, latest.id, why).catch(() => {}).finally(onChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stale, latest?.id]);
@@ -534,16 +543,11 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
   async function dispatch() {
     if (!session) return;
     setAsking(true);
+    // If the machine doesn't take it in time, it's given up once its time
+    // is past (above), or by the next Dispatch of the task (the database).
     const asked = await act(async () => {
-      const id = await requestDispatch(db, task);
+      await requestDispatch(db, task);
       onChanged();
-      // If the machine hasn't taken it in time, it fails. Kept even if the
-      // dialog closes, so the request never stays waiting.
-      setTimeout(() => {
-        giveUpDispatch(db, id, `${session.machine} didn't pick it up in time. Is Omicron running on it?`)
-          .catch(() => {})
-          .finally(onChanged);
-      }, DISPATCH_CLAIM_SECONDS * 1000);
     });
     setAsking(false);
     if (!asked) onChanged();

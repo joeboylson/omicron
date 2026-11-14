@@ -79,6 +79,8 @@ export type Dispatch = {
   error: string | null;
   created_at: string;
   claimed_at: string | null;
+  /** When it can no longer be taken (the database's 20 seconds). */
+  claim_by: string;
 };
 export type HandoffNote = {
   id: string;
@@ -195,7 +197,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       db
         .from("tasks")
         .select(
-          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at,claimed_at),task_jobs(jobs(id,number,title,state,step,teams(name))),team_requests(worker,state,created_at,answer_comment_id,answered_at,teams(name,machines(name,gate_until)))",
+          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at,claimed_at,claim_by),task_jobs(jobs(id,number,title,state,step,teams(name))),team_requests(worker,state,created_at,answer_comment_id,answered_at,teams(name,machines(name,gate_until)))",
         )
         .eq("project_id", id)
         .order("position")
@@ -509,9 +511,6 @@ export async function listMachineAccounts(db: SupabaseClient): Promise<MachineSu
   ) as any[];
   return rows.map((r) => ({ id: r.id, name: r.name, active: r.active, accounts: r.claude_accounts }));
 }
-
-/** How long a machine has to take a Dispatch before it fails (the database agrees). */
-export const DISPATCH_CLAIM_SECONDS = 20;
 
 /**
  * Ask for a task to be handed to its session. Returns the request's id.

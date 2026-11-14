@@ -845,7 +845,7 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     assert_eq!(req[0]["machine_id"], json!(key.machine_id));
 
     // Too old to take.
-    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{id}"), Some(json!({ "created_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{id}"), Some(json!({ "created_at": "2020-01-01T00:00:00Z", "claim_by": "2020-01-01T00:00:20Z" }))).unwrap();
     let claimed = s.request_as(&login, "POST", "/rest/v1/rpc/claim_dispatch", Some(json!({ "dispatch": id }))).unwrap();
     assert_eq!(claimed, json!([]));
     // Only the functions change a request: a direct edit changes nothing
@@ -865,7 +865,7 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     // them, so the task never shows an old one as still going.
     let make = || s.request_as(&login, "POST", "/rest/v1/dispatches", Some(json!({ "task_id": task_id }))).unwrap()[0]["id"].as_str().unwrap().to_string();
     let (waiting, taken) = (make(), make());
-    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{waiting}"), Some(json!({ "created_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{waiting}"), Some(json!({ "created_at": "2020-01-01T00:00:00Z", "claim_by": "2020-01-01T00:00:20Z" }))).unwrap();
     s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{taken}"), Some(json!({ "state": "claimed", "claimed_at": "2020-01-01T00:00:00Z" }))).unwrap();
     let fresh = make();
     let states = s.admin_request("GET", &format!("/rest/v1/dispatches?id=in.({waiting},{taken},{fresh})&select=id,state,error"), None).unwrap();

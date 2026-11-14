@@ -708,7 +708,7 @@ test("a dispatch left waiting by an asker who went away shows as failed, and Dis
     const res = await request.fetch(`${need("OMICRON_SUPABASE_URL")}/rest/v1/dispatches?id=eq.${d.id}`, {
       method: "PATCH",
       headers: { apikey: need("OMICRON_SUPABASE_SECRET_KEY"), Authorization: `Bearer ${need("OMICRON_SUPABASE_SECRET_KEY")}` },
-      data: { created_at: "2020-01-01T00:00:00Z" },
+      data: { created_at: "2020-01-01T00:00:00Z", claim_by: "2020-01-01T00:00:20Z" },
     });
     expect(res.ok()).toBe(true);
     await page.reload();
