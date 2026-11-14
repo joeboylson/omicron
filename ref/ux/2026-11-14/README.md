@@ -1,0 +1,111 @@
+# Screenshots, 14 Nov 2026
+
+Taken by `scripts/shots.sh` (made-up data from dev/seed/seed.js) for the Apple Human Interface Guidelines review (#194, `/hig-review`, guidelines summarized in ref/hig/). Desktop in light, phone (iPhone 13) in dark. Visiting as Joe; the 7-* pictures and the run (4i-4l) are the owner-only Dev side.
+
+## Pictures
+
+### Desktop
+
+- `desktop-0-not-found.png`: An address that isn't a page ("Nothing here").
+- `desktop-0b-sign-in-failed.png`: Signing in failed (the server refused the visit): the error and Try again.
+- `desktop-1-projects.png`: Projects: the table of Joe's Projects (tasks, people, machines, sessions), top menu.
+- `desktop-1b-people.png`: People: everyone, their logins and Projects.
+- `desktop-1c-machines.png`: Machines: keys, status, Projects, and the Claude accounts machines report.
+- `desktop-1d-command-menu.png`: The command menu (Cmd/Ctrl+K): Projects, Go to, Appearance.
+- `desktop-1e-new-project.png`: New Project dialog: name, people, machines.
+- `desktop-1f-projects-no-match.png`: Projects search that finds nothing.
+- `desktop-1g-settings.png`: Settings: signed in as, machines, Remote control (a token for this browser), appearance, keyboard shortcuts.
+- `desktop-1h-people-delete.png`: People filtered to one Project, with a delete waiting to be confirmed.
+- `desktop-1i-new-key.png`: New key dialog: machine name and its Projects.
+- `desktop-1j-remove-machine.png`: Remove a machine: the confirm dialog.
+- `desktop-1k-people-menu.png`: People: a person's ⋯ menu (take out of a Project, delete).
+- `desktop-1l-add-person.png`: People: Add person, the sheet.
+- `desktop-1m-machine-menu.png`: Machines: a machine's ⋯ menu (switch off, remove).
+- `desktop-1n-me-menu.png`: The avatar menu in the top bar: Settings, appearance.
+- `desktop-2-house.png`: House and garden board, grouped by status.
+- `desktop-2b-house-topics.png`: House and garden grouped by status and topic (rows per person).
+- `desktop-2c-filter-due-soon.png`: Filtered to Due in 7 days (the chips on desktop; the View and filters menu on a phone).
+- `desktop-2d-search-nothing.png`: A task search that finds nothing.
+- `desktop-2e-add-task.png`: Adding a task at the bottom of To do.
+- `desktop-2f-column-menu.png`: A column's ⋯ menu: Add a task here, Sort by.
+- `desktop-2g-house-list.png`: The household board as a list, grouped by status.
+- `desktop-2h-house-people.png`: The household board with columns by person.
+- `desktop-3-task.png`: A task's sheet: status, date, given to, labels, notes, checklist, comments.
+- `desktop-3a-task-menu.png`: A task's ⋯ menu: Mark done, Move to, Copy link, Delete.
+- `desktop-3b-settings.png`: Project settings, top: name, run rules, statuses.
+- `desktop-3c-given-to.png`: The Given to picker: people and Claude sessions.
+- `desktop-3c-task-focus.png`: A task sheet with the keyboard focus showing.
+- `desktop-3d-settings-lower.png`: Project settings, lower: members, machines, folders, delete.
+- `desktop-4-lumen.png`: Lumen, a coding Project: the board, with the Claude sessions (a strip on desktop, a button in the top bar on a phone).
+- `desktop-4b-dispatched.png`: A task handed to its session by Dispatch, and how it went.
+- `desktop-4c-ended-session.png`: A task given to a session that has ended: flagged, to give to someone else.
+- `desktop-4d-comment-images.png`: Comments with images, and a task marked Needs review.
+- `desktop-4e-image-full-size.png`: A comment image opened full size.
+- `desktop-4g-session-loop.png`: A session's sheet: its loop, open tasks, handoff notes.
+- `desktop-4h-parser-session.png`: Another session's sheet (no loop).
+- `desktop-4i-start-run.png`: Dev side: Start a run, the sheet (this computer's sessions).
+- `desktop-4j-run.png`: Dev side: the run bar while a run goes.
+- `desktop-4k-run-sheet.png`: Dev side: the run's sheet: what it's on, up next, notes after each task.
+- `desktop-4l-run-stop.png`: Dev side: Stop now asks first.
+- `desktop-6-lisbon.png`: Lisbon trip: a holiday board.
+- `desktop-6b-no-topics.png`: Grouped by topic in a Project that has none yet.
+- `desktop-6c-missing-task.png`: A link to a task that isn't there (toast).
+- `desktop-6d-project-not-found.png`: A Project that doesn't exist or isn't yours.
+- `desktop-7-gate.png`: Remote control (the old "gate"): the button in the top bar and its popover, off, with the command to turn it on.
+- `desktop-7b-dev-view.png`: Dev view (owner only): folders and sessions on this computer, terminals, tasks by column.
+- `desktop-7c-dev-terminal.png`: Dev view with a session's terminal open, typed into.
+- `desktop-7d-this-computer.png`: This computer: setup checks, loops, Claude accounts, teams.
+- `desktop-7f-team-question.png`: A team's question: a task waiting on Joe, its question and where the answer goes.
+
+### Phone
+
+- `phone-0-not-found.png`: An address that isn't a page ("Nothing here").
+- `phone-1-projects.png`: Projects: the table of Joe's Projects (tasks, people, machines, sessions), top menu.
+- `phone-1b-people.png`: People: everyone, their logins and Projects.
+- `phone-1c-machines.png`: Machines: keys, status, Projects, and the Claude accounts machines report.
+- `phone-1d-command-menu.png`: The command menu (Cmd/Ctrl+K): Projects, Go to, Appearance.
+- `phone-1e-new-project.png`: New Project dialog: name, people, machines.
+- `phone-1f-projects-no-match.png`: Projects search that finds nothing.
+- `phone-1g-settings.png`: Settings: signed in as, machines, Remote control (a token for this browser), appearance, keyboard shortcuts.
+- `phone-1h-people-delete.png`: People filtered to one Project, with a delete waiting to be confirmed.
+- `phone-1i-new-key.png`: New key dialog: machine name and its Projects.
+- `phone-1j-remove-machine.png`: Remove a machine: the confirm dialog.
+- `phone-1k-people-menu.png`: People: a person's ⋯ menu (take out of a Project, delete).
+- `phone-1l-add-person.png`: People: Add person, the sheet.
+- `phone-1m-machine-menu.png`: Machines: a machine's ⋯ menu (switch off, remove).
+- `phone-1n-me-menu.png`: The avatar menu in the top bar: Settings, appearance.
+- `phone-2-house.png`: House and garden board, grouped by status.
+- `phone-2b-house-topics.png`: House and garden grouped by status and topic (rows per person).
+- `phone-2c-filter-due-soon.png`: Filtered to Due in 7 days (the chips on desktop; the View and filters menu on a phone).
+- `phone-2d-search-nothing.png`: A task search that finds nothing.
+- `phone-2e-add-task.png`: Adding a task at the bottom of To do.
+- `phone-2f-column-menu.png`: A column's ⋯ menu: Add a task here, Sort by.
+- `phone-2g-house-list.png`: The household board as a list, grouped by status.
+- `phone-2h-house-people.png`: The household board with columns by person.
+- `phone-3-task.png`: A task's sheet: status, date, given to, labels, notes, checklist, comments.
+- `phone-3a-task-menu.png`: A task's ⋯ menu: Mark done, Move to, Copy link, Delete.
+- `phone-3b-settings.png`: Project settings, top: name, run rules, statuses.
+- `phone-3c-given-to.png`: The Given to picker: people and Claude sessions.
+- `phone-3c-task-focus.png`: A task sheet with the keyboard focus showing.
+- `phone-3d-settings-lower.png`: Project settings, lower: members, machines, folders, delete.
+- `phone-4-lumen.png`: Lumen, a coding Project: the board, with the Claude sessions (a strip on desktop, a button in the top bar on a phone).
+- `phone-4b-dispatched.png`: A task handed to its session by Dispatch, and how it went.
+- `phone-4c-ended-session.png`: A task given to a session that has ended: flagged, to give to someone else.
+- `phone-4d-comment-images.png`: Comments with images, and a task marked Needs review.
+- `phone-4e-image-full-size.png`: A comment image opened full size.
+- `phone-4g-session-loop.png`: A session's sheet: its loop, open tasks, handoff notes.
+- `phone-4h-parser-session.png`: Another session's sheet (no loop).
+- `phone-4i-start-run.png`: Dev side: Start a run, the sheet (this computer's sessions).
+- `phone-4j-run.png`: Dev side: the run bar while a run goes.
+- `phone-4k-run-sheet.png`: Dev side: the run's sheet: what it's on, up next, notes after each task.
+- `phone-4l-run-stop.png`: Dev side: Stop now asks first.
+- `phone-6-lisbon.png`: Lisbon trip: a holiday board.
+- `phone-6b-no-topics.png`: Grouped by topic in a Project that has none yet.
+- `phone-6c-missing-task.png`: A link to a task that isn't there (toast).
+- `phone-6d-project-not-found.png`: A Project that doesn't exist or isn't yours.
+- `phone-7-gate.png`: Remote control (the old "gate"): the button in the top bar and its popover, off, with the command to turn it on.
+- `phone-7b-dev-view.png`: Dev view (owner only): folders and sessions on this computer, terminals, tasks by column.
+- `phone-7c-dev-terminal.png`: Dev view with a session's terminal open, typed into.
+- `phone-7d-this-computer.png`: This computer: setup checks, loops, Claude accounts, teams.
+- `phone-7e-dev-tasks.png`: Dev side on a phone: the Tasks pane.
+- `phone-7f-team-question.png`: A team's question: a task waiting on Joe, its question and where the answer goes.
