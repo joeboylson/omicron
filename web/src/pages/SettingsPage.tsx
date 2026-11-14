@@ -118,7 +118,7 @@ function RemoteControl() {
     await askDevAgain(db);
   };
   return (
-    <Group title={<label htmlFor="remote-token">Remote control</label>}>
+    <Group title="Remote control">
       {saved ? (
         <Row>
           <span className="flex-1 text-[15px] sm:text-sm">{dev ? `This browser can control ${dev.machine}.` : "This browser's token no longer works."}</span>
@@ -134,11 +134,14 @@ function RemoteControl() {
           }}
         >
           <Row>
+            <label htmlFor="remote-token" className="shrink-0 text-sm">
+              Token
+            </label>
             <Input
               id="remote-token"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder="Paste a token"
+              placeholder="Paste it here"
               autoComplete="off"
               spellCheck={false}
               className="flex-1 border-0 bg-transparent px-0 font-mono shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"

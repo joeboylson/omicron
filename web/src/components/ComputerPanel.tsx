@@ -184,10 +184,14 @@ function LoopForm({ session, onStart }: { session: string; onStart: (prompt: str
       }}
     >
       <span className="w-full font-medium">{session}</span>
+      <label htmlFor={`loop-${session}`} className="w-full text-muted-foreground">
+        Message
+      </label>
       <Input
+        id={`loop-${session}`}
         aria-label={`What to type into ${session}`}
         required
-        placeholder="What to type, like: Keep going with the next task"
+        placeholder="Keep going with the next task"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         className="h-9 min-w-40 flex-1"

@@ -2014,7 +2014,7 @@ test("a remote control token lets the computer's owner in from a visit Tailscale
     route.continue({ headers: { ...route.request().headers(), "tailscale-user-login": "someone-else@example.com", "tailscale-user-name": "Someone" } }),
   );
   await page.goto(`${omicron.url}/settings`);
-  const box = page.getByLabel("Remote control");
+  const box = page.getByLabel("Token", { exact: true });
   await box.fill("omr_not-a-token");
   await page.getByRole("button", { name: "Use token" }).click();
   await expect(page.getByRole("alert")).toContainText("That token doesn't work on this computer");
@@ -2024,7 +2024,7 @@ test("a remote control token lets the computer's owner in from a visit Tailscale
   await page.reload();
   await expect(page.getByText(/^This browser can control /)).toBeVisible();
   await page.getByRole("button", { name: "Forget token" }).click();
-  await expect(page.getByLabel("Remote control")).toBeVisible();
+  await expect(page.getByLabel("Token", { exact: true })).toBeVisible();
 
   // Taken back on the computer: it stops working at once.
   const id = omicron.cli("remote", "list").split("\t")[0];

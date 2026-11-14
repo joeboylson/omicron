@@ -189,7 +189,7 @@ export function MachinesPage() {
           <ClaudeAccounts machines={accounts} />
         </div>
       </main>
-      <NewKey open={making} onOpenChange={setMaking} projects={projects} onMade={reload} />
+      <NewKey open={making} onOpenChange={setMaking} projects={projects} loading={machines === null} onMade={reload} />
       <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
         <DialogContent className="gap-4 sm:max-w-md">
           {removing && (
@@ -218,11 +218,14 @@ function NewKey({
   open,
   onOpenChange,
   projects,
+  loading,
   onMade,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projects: ProjectSummary[];
+  /** The Projects haven't come yet. */
+  loading: boolean;
   onMade: () => void;
 }) {
   const { db, act } = useApp();
@@ -292,9 +295,13 @@ function NewKey({
               <DialogDescription className="sr-only">A key for a new computer.</DialogDescription>
             </DialogHeader>
             <form onSubmit={make} className="grid gap-4">
-              <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Machine name, like mac-mini" aria-label="Machine name" />
+              <div className="grid gap-1.5">
+                <Label htmlFor="key-name">Machine name</Label>
+                <Input id="key-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="mac-mini" />
+              </div>
               <fieldset className="grid gap-2">
-                <legend className="mb-1 text-sm text-muted-foreground">Projects it can use</legend>
+                <legend className="mb-1 text-sm font-medium">Projects it can use</legend>
+                {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
                 {projects.map((p) => (
                   <div key={p.id} className="flex min-h-9 items-center gap-2">
                     <Checkbox
