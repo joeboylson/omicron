@@ -50,15 +50,16 @@ export function GateButton() {
           <span className="hidden sm:inline">{open ? `Open until ${time(dev.gate_until!)}` : "Gate closed"}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="grid gap-3 text-sm">
+      <PopoverContent align="end" className="grid w-80 max-w-[calc(100vw-2rem)] gap-3 text-sm">
+        {/* This page is served by the computer: here it always takes your orders. */}
         <p>
-          <span className="font-mono">{dev.machine}</span>{" "}
+          You can always use <span className="font-mono">{dev.machine}</span> from this page.{" "}
           {open
-            ? `takes work from elsewhere (from you only) until ${time(dev.gate_until!)}, then closes by itself.`
-            : "takes no work from elsewhere. Open its gate to hand it work from other devices."}
+            ? `Until ${time(dev.gate_until!)} it also takes your work from other computers and their pages, then stops by itself.`
+            : "It takes no work from other computers or their pages."}
         </p>
         {!dev.local ? (
-          <p className="text-muted-foreground">A computer's gate is opened only on it.</p>
+          open ? null : <OpenOnIt machine={dev.machine} until={until} />
         ) : open ? (
           <Button variant="outline" onClick={() => change({ close: true })}>
             Close the gate
@@ -78,8 +79,37 @@ export function GateButton() {
             <Button type="submit">Open</Button>
           </form>
         )}
-        <p className="text-xs text-muted-foreground">At most 24 hours. Only you can hand it work, and only while it’s open.</p>
+        <p className="text-xs text-muted-foreground">Only you can hand it work, never anyone else. At most 24 hours at a time.</p>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** Opening it from elsewhere isn't allowed: the command to run on it, to copy. */
+function OpenOnIt({ machine, until }: { machine: string; until: string }) {
+  const [copied, setCopied] = useState(false);
+  const command = `omicron gate open --until ${until}`;
+  return (
+    <div className="grid gap-1.5">
+      <p>
+        To let it take work from elsewhere, run this on <span className="font-mono">{machine}</span>:
+      </p>
+      <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
+        <code className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs">{command}</code>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 shrink-0"
+          onClick={() =>
+            navigator.clipboard?.writeText(command).then(
+              () => setCopied(true),
+              () => {},
+            )
+          }
+        >
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -272,11 +272,21 @@ test("the computer's owner sees its gate on its own page; nobody else does", asy
   omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
   await page.reload();
   await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s gate: open until`));
-  // Through the tailnet, it can't be opened or closed from the page.
+  // Through the tailnet, it can't be opened or closed from the page. It
+  // says plainly that this page can always use the computer (#151).
   await gate.click();
-  await expect(page.getByRole("dialog")).toContainText("A computer's gate is opened only on it.");
+  const said = page.getByRole("dialog");
+  await expect(said).toContainText(`You can always use ${machineName} from this page.`);
+  await expect(said).toContainText("also takes your work from other computers");
   await expect(page.getByRole("button", { name: "Close the gate" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // Closed: how to open it, to copy and run on the computer.
   omicron.cli("gate", "close");
+  await page.reload();
+  await gate.click();
+  await expect(said).toContainText("takes no work from other computers");
+  await expect(said.locator("code")).toHaveText(/^omicron gate open --until \d{2}:\d{2}$/);
+  await expect(said.getByRole("button", { name: "Copy" })).toBeVisible();
 });
 
 test("on the computer itself, its owner opens and closes its gate from the page", async ({ page }) => {

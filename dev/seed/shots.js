@@ -266,7 +266,7 @@ async function escape(page) {
       await page.getByRole("link", { name: /^Lumen/ }).click();
       await page.getByTestId("gate").waitFor();
       await page.getByTestId("gate").click();
-      await page.getByText(/A computer's gate is opened only on it/).waitFor();
+      await page.getByText(/You can always use/).waitFor();
       await shot("7-gate");
       await page.keyboard.press("Escape");
       await page.getByRole("radio", { name: "Dev" }).click();
