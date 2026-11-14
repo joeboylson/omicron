@@ -164,3 +164,24 @@ Repeated steps, in `scripts/` (run on the Mac):
 - Git pushes to my personal GitHub (`joeboylson/omicron`) with my personal key
   and email. This is set in this repo's local git config. Don't change it, and
   don't use the work `gh` login for this repo.
+
+## Agent skills
+
+Matt Pocock's engineering skills (the `mattpocock-skills` plugin, like
+`/improve-codebase-architecture`, `/to-tickets`, `/triage`) read these.
+
+### Issue tracker
+
+The Omicron board: tasks in the Omicron Project, through the `omicron`
+command. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five triage roles mapped to the board's columns and labels (Waiting on
+Joe, To do, `needs-triage`, ...). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: the glossary is `DEFINITIONS.txt` (`GLOSSARY.md` points to
+it), decisions are in `ref/BRAINSTORM.md` and `docs/adr/`. See
+`docs/agents/domain.md`.
