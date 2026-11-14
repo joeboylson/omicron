@@ -277,6 +277,14 @@ async function escape(page) {
       await page.getByTestId("terminal-docs-site").locator(".xterm").click();
       await page.keyboard.type("hello from the Dev view");
       await shot("7c-dev-terminal");
+      // On a phone, one pane at a time.
+      const panes = page.getByRole("radiogroup", { name: "Show" });
+      const pane = panes.getByRole("radio", { name: "Tasks", exact: true });
+      if (await pane.isVisible()) {
+        await pane.click();
+        await shot("7e-dev-tasks");
+        await panes.getByRole("radio", { name: "Sessions", exact: true }).click();
+      }
       await page.getByRole("button", { name: "This computer" }).click();
       await page.getByRole("dialog").getByRole("region", { name: "Setup checks" }).waitFor();
       await page.waitForTimeout(1500);

@@ -436,8 +436,21 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
   try {
     omicron.cli("machines", "owner", robin.login);
     await page.goto(`${page.url().split("?")[0]}?view=dev`);
+    // One pane at a time, all of it on screen (#149): the sessions and This
+    // computer first, and nothing says "on the left".
     const sessions = page.getByRole("list", { name: "Sessions" });
+    const panes = page.getByRole("radiogroup", { name: "Show" });
+    await expect(panes.getByRole("radio", { name: "Sessions" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("button", { name: "This computer" })).toBeInViewport();
+    await expect(page.getByRole("region", { name: "Terminals" })).toBeHidden();
+    await panes.getByRole("radio", { name: /^Terminal/ }).click();
+    await expect(page.getByText("Pick a session to open its terminal here.")).toBeVisible();
+    await panes.getByRole("radio", { name: "Tasks" }).click();
+    await expect(page.getByRole("complementary", { name: "Tasks by column" })).toContainText("Write the parser");
+    await panes.getByRole("radio", { name: "Sessions" }).click();
+    // Opening a session shows its terminal.
     await sessions.getByRole("button", { name: /parser/ }).click();
+    await expect(panes.getByRole("radio", { name: /^Terminal/ })).toHaveAttribute("aria-checked", "true");
     const term = page.getByTestId("terminal-parser");
     await expect(term.getByRole("status")).toHaveCount(0);
     // The terminal fits the screen: nothing scrolls sideways.

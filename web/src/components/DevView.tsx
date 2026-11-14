@@ -23,9 +23,12 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  // On a phone, one pane at a time: the list, the terminal, or the tasks.
+  const [pane, setPane] = useState<"sessions" | "terminal" | "tasks">("sessions");
   const open = (name: string) => {
     setTabs((t) => (t.includes(name) ? t : [...t, name]));
     setActive(name);
+    setPane("terminal");
   };
   const close = (name: string) => {
     const rest = tabs.filter((t) => t !== name);
@@ -62,8 +65,33 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
   const sessionName = (id: string | null) => project.sessions.find((s) => s.id === id)?.name;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(20rem,1fr)_auto] gap-px border-t bg-border lg:grid-cols-[15rem_minmax(0,1fr)_19rem] lg:grid-rows-1">
-      <aside aria-label="Folders and sessions" className="overflow-y-auto bg-background p-3 text-sm">
+    <>
+    <div role="radiogroup" aria-label="Show" className="mx-[max(1rem,env(safe-area-inset-left))] mb-2 grid grid-cols-3 rounded-lg bg-muted p-0.5 lg:hidden">
+      {(
+        [
+          ["sessions", "Sessions"],
+          ["terminal", "Terminal"],
+          ["tasks", "Tasks"],
+        ] as const
+      ).map(([p, label]) => (
+        <button
+          key={p}
+          type="button"
+          role="radio"
+          aria-checked={pane === p}
+          onClick={() => setPane(p)}
+          className={cn(
+            "min-h-9 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            pane === p ? "bg-background font-medium shadow-sm" : "text-foreground/75",
+          )}
+        >
+          {label}
+          {p === "terminal" && tabs.length > 0 && <span className="ml-1 font-mono text-muted-foreground">{tabs.length}</span>}
+        </button>
+      ))}
+    </div>
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-px border-t bg-border lg:grid-cols-[15rem_minmax(0,1fr)_19rem] lg:grid-rows-1">
+      <aside aria-label="Folders and sessions" className={cn("overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
         <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Folders on {dev.machine}</h2>
         {folders.length === 0 ? (
           <p className="px-1 pb-3 text-muted-foreground">
@@ -133,7 +161,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
         <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
       </aside>
 
-      <section aria-label="Terminals" className="flex min-h-0 min-w-0 flex-col bg-background">
+      <section aria-label="Terminals" className={cn("flex min-h-0 min-w-0 flex-col bg-background", pane !== "terminal" && "max-lg:hidden")}>
         <div role="tablist" aria-label="Open sessions" className="flex shrink-0 overflow-x-auto border-b bg-muted">
           {tabs.map((name) => (
             <div key={name} className={cn("flex items-center", active === name ? "bg-background text-foreground" : "text-muted-foreground")}>
@@ -179,14 +207,14 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
           </p>
         )}
         {tabs.length === 0 && (
-          <p className="m-auto max-w-xs p-6 text-center text-sm text-muted-foreground">Pick a session on the left to open its terminal here. Closing a tab leaves it running.</p>
+          <p className="m-auto max-w-xs p-6 text-center text-sm text-muted-foreground">Pick a session to open its terminal here. Closing a tab leaves it running.</p>
         )}
         {tabs.map((name) => (
           <Terminal key={name} session={name} active={active === name} />
         ))}
       </section>
 
-      <aside aria-label="Tasks by column" className="overflow-y-auto bg-background p-3 text-sm">
+      <aside aria-label="Tasks by column" className={cn("overflow-y-auto bg-background p-3 text-sm", pane !== "tasks" && "max-lg:hidden")}>
         {project.statuses.map((st) => {
           const tasks = project.tasks.filter((t) => t.status_id === st.id).sort((a, b) => a.position - b.position);
           return (
@@ -233,6 +261,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
         })}
       </aside>
     </div>
+    </>
   );
 }
 
