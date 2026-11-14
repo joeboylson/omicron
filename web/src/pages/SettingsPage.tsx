@@ -2,11 +2,10 @@
 // saved with you so it follows you between devices.
 
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { go, useApp } from "@/lib/app";
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from "@/lib/theme";
-import { NavBar } from "@/components/NavBar";
-import { Button } from "@/components/base/button";
+import { TopBar } from "@/components/TopBar";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
@@ -32,15 +31,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <NavBar
-        title="Settings"
-        titleClassName="mx-auto w-full max-w-3xl"
-        left={
-          <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
-            <ChevronLeft /> Projects
-          </Button>
-        }
-      />
+      <TopBar here="/settings" title="Settings" />
       <main className="mx-auto grid w-full max-w-3xl gap-6 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
         <Group title="Signed in as">
           <div className="grid gap-0.5 px-4 py-3">
@@ -54,7 +45,7 @@ export function SettingsPage() {
             onClick={() => go("/machines")}
             className="flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
           >
-            <span className="flex-1">Machines and API keys</span>
+            <span className="flex-1">Machines and their keys</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
           </button>
         </Group>

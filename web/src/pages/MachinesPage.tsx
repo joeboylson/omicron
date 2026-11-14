@@ -295,7 +295,7 @@ function NewKey({
           <>
             <DialogHeader className="text-left">
               <DialogTitle>New key</DialogTitle>
-              <DialogDescription>A key registers a new machine, in the Projects you pick.</DialogDescription>
+              <DialogDescription>A key lets a computer join Omicron, in the Projects you pick. It's shown once, with the one command to run on that computer.</DialogDescription>
             </DialogHeader>
             <form onSubmit={make} className="grid gap-4">
               <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Machine name, like mac-mini" aria-label="Machine name" />

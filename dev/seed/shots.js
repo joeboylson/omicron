@@ -70,7 +70,10 @@ async function escape(page) {
     await page.getByText(/Nothing matches/).waitFor();
     await shot("1f-projects-no-match");
     await page.getByLabel("Search Projects").fill("");
-    await page.goto(`${url}/settings`);
+    await page.getByTestId("me").click();
+    await page.getByRole("menuitem", { name: "Settings" }).waitFor();
+    await shot("1n-me-menu");
+    await page.getByRole("menuitem", { name: "Settings" }).click();
     await page.getByRole("heading", { level: 1, name: "Settings" }).waitFor();
     await shot("1g-settings", true);
     await page.goto(`${url}/people`);
