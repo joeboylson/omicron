@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { errorWords, OFFLINE_WORDS, signIn, SignInError, type Me } from "@/lib/omicron";
 import { Button } from "@/components/base/button";
@@ -35,9 +35,16 @@ export default function App() {
   const [signInError, setSignInError] = useState<{ words: string; who: boolean; detail: string } | null>(null);
   // Where the error came from: a later action that works clears an
   // action's error, but not one from elsewhere (that stays until dismissed).
-  const [error, setError] = useState<{ message: string; from: "action" | "uncaught"; started?: number } | null>(null);
-  // Each action's place in line: one that started before a failure doesn't clear it by succeeding.
-  const started = useRef(0);
+  // What went wrong, until it's dealt with: dismissed, tried again and done,
+  // or (when it was only the connection) the connection coming back. A later
+  // reload or another change never clears it, so a failed change can't
+  // quietly undo itself (#197).
+  const [error, setError] = useState<{ message: string; from: "action" | "uncaught"; retry?: () => Promise<unknown> } | null>(null);
+  useEffect(() => {
+    const back = () => setError((e) => (e?.message === OFFLINE_WORDS ? null : e));
+    window.addEventListener("online", back);
+    return () => window.removeEventListener("online", back);
+  }, []);
   const path = usePath();
 
   useEffect(() => {
@@ -69,19 +76,31 @@ export default function App() {
   }, []);
 
   const act = useCallback(async (work: () => Promise<unknown>) => {
-    const n = ++started.current;
     try {
       await work();
-      setError((current) => (current?.from === "action" && (current.started ?? 0) < n ? null : current));
       return true;
     } catch (e) {
       // Not reported when it's only the connection: nothing to fix.
       const words = errorWords(e);
       if (words !== OFFLINE_WORDS) reportError("action", e);
-      setError({ message: words, from: "action", started: n });
+      setError({ message: words, from: "action", retry: work });
       return false;
     }
   }, []);
+  const [retrying, setRetrying] = useState(false);
+  const retry = async () => {
+    const work = error?.retry;
+    if (!work) return;
+    setRetrying(true);
+    try {
+      await work();
+      setError(null);
+    } catch (e) {
+      setError({ message: errorWords(e), from: "action", retry: work });
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const app: AppState | null = useMemo(() => (session ? { ...session, act } : null), [session, act]);
 
@@ -148,11 +167,19 @@ export default function App() {
           <NotFound />
         )}
         {error && (
+          // Above any open sheet (they're z-50 and block the page), so an
+          // error made in one is seen and can be tried again from there.
           <div
             role="alert"
-            className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2 border-t bg-background px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-sm shadow-lg"
+            data-error-bar
+            className="pointer-events-auto fixed inset-x-0 bottom-0 z-[60] flex items-center gap-2 border-t bg-background px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-sm shadow-lg"
           >
             <span className="flex-1 text-destructive">{error.message}</span>
+            {error.retry && (
+              <Button variant="outline" size="sm" className="h-11 shrink-0 sm:h-9" disabled={retrying} onClick={retry}>
+                {retrying ? "Trying…" : "Try again"}
+              </Button>
+            )}
             <button aria-label="Dismiss" className="flex h-11 w-11 items-center justify-center" onClick={() => setError(null)}>
               <X className="h-4 w-4" />
             </button>

@@ -55,8 +55,13 @@ export const OFFLINE_WORDS = "Couldn't reach Omicron. Check your connection, the
 export function errorWords(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
   if (OFFLINE.test(m) || (typeof navigator !== "undefined" && navigator.onLine === false)) return OFFLINE_WORDS;
+  // A slip in the page's own code ("Cannot read properties of undefined"):
+  // nothing a person can act on, so plain words (the error report has it).
+  if (e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError || e instanceof SyntaxError) return SOMETHING_WRONG;
   return m;
 }
+
+export const SOMETHING_WRONG = "Something went wrong. Try again, or reload the page.";
 
 /** What the database said, in words a person can act on (as the CLI says it). */
 export function plainError(e: { message: string; code?: string }): string {

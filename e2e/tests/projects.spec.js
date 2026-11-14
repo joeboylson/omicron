@@ -1964,3 +1964,30 @@ test("a remote control token lets the computer's owner in from a visit Tailscale
   omicron.cli("remote", "revoke", id);
   expect((await dev(token)).dev).toBe(false);
 });
+
+test("a change that fails says so, stays said through reloads, and can be tried again (#197)", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("House"));
+  await addTaskIn(page, "To do", "Fix the gate");
+  // The next save of a task is refused.
+  let refuse = true;
+  await page.route(/\/rest\/v1\/tasks\?/, (route) =>
+    route.request().method() === "PATCH" && refuse
+      ? route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "42501", message: "new row violates row-level security policy" }) })
+      : route.continue(),
+  );
+  await column(page, "To do").getByRole("button", { name: /Fix the gate/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Mark done" }).click();
+  const alert = page.getByRole("alert").filter({ has: page.getByRole("button", { name: "Try again" }) });
+  await expect(alert).toBeVisible();
+  // Later reloads of the board don't wipe it away.
+  await page.waitForTimeout(3000);
+  await expect(alert).toBeVisible();
+  // Tried again once it can work: saved, and the message goes.
+  refuse = false;
+  await alert.getByRole("button", { name: "Try again" }).click();
+  await expect(alert).toHaveCount(0);
+  await escape(page);
+  await expect(column(page, "Done")).toContainText("Fix the gate");
+});

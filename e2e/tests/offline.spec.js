@@ -52,7 +52,7 @@ test("offline and back: failures say so, nothing is lost or doubled, and the boa
   await page.waitForTimeout(1500);
   const titles = await rest(request, me, "GET", `/rest/v1/tasks?project_id=eq.${project.id}&select=title&order=number`);
   expect(titles.map((t) => t.title).sort()).toEqual(["Added elsewhere", "Already here", "Water the beans"]);
-  // Working again: the error goes once something succeeds.
+  // Working again: the error goes once the connection is back (#197).
   await page.getByLabel(`New task in ${todo.name}`).fill("One more");
   await page.getByRole("button", { name: "Add task", exact: true }).click();
   await expect(column.getByRole("button", { name: /One more/ })).toHaveCount(1);
