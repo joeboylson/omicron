@@ -17,6 +17,9 @@ test_db_config() {
 }
 
 clean() {
+  # Sessions and daemons the tests left going (a failed test skips its own
+  # tidying up), then what they made in Supabase.
+  python3 "$test_run_lib/stop_test_hosts.py" "$test_run_lib/../.." "$1" || true
   OMICRON_CONFIG=$(test_db_config) python3 "$test_run_lib/clean.py" "$1"
 }
 
