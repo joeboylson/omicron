@@ -32,7 +32,7 @@ export function TaskChecklist({ task, change }: SectionProps) {
         <>
           Checklist
           {task.checklist.length > 0 && (
-            <span className="ml-2 font-mono normal-case">
+            <span className="ml-2 tabular-nums normal-case">
               {task.checklist.filter((c) => c.done).length}/{task.checklist.length}
             </span>
           )}

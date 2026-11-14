@@ -250,7 +250,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
           {runQueue(project, run.label_id, run.task_id).length === 0 && <Row className="text-sm text-muted-foreground">Nothing after this.</Row>}
           {runQueue(project, run.label_id, run.task_id).map((t) => (
             <Row key={t.id} className="py-2 text-sm">
-              <span className="font-mono text-xs text-muted-foreground">#{t.number}</span> {t.title}
+              <span className="tabular-nums text-xs text-muted-foreground">#{t.number}</span> {t.title}
             </Row>
           ))}
         </Group>
@@ -260,7 +260,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
         {diary.map((n) => (
           <details key={n.id} className="px-4 py-2 text-sm">
             <summary className="cursor-pointer">
-              <span className="font-mono text-xs">#{n.number}</span> {when(n.written_at)}
+              <span className="tabular-nums text-xs">#{n.number}</span> {when(n.written_at)}
             </summary>
             <Markdown text={n.body} className="mt-2" />
           </details>
@@ -271,7 +271,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
           {waitingTasks.length === 0 && <Row className="text-sm text-muted-foreground">Nothing.</Row>}
           {waitingTasks.map((t) => (
             <Row key={t.id} className="py-2 text-sm">
-              <span className="font-mono text-xs text-muted-foreground">#{t.number}</span> {t.title}
+              <span className="tabular-nums text-xs text-muted-foreground">#{t.number}</span> {t.title}
             </Row>
           ))}
         </Group>

@@ -101,7 +101,7 @@ export function MachinesPage() {
             className={cn("h-2 w-2 shrink-0 rounded-full", !up(m) && "border border-muted-foreground")}
             style={up(m) ? { background: "var(--sys-green)" } : undefined}
           />
-          <span className="font-mono font-medium">{m.name}</span>
+          <span className="tabular-nums font-medium">{m.name}</span>
         </div>
       ),
       meta: { phone: "main" },

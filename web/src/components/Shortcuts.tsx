@@ -15,7 +15,7 @@ export const SHORTCUTS: [string, string][] = [
   ["Enter (adding a task)", "Add it and start the next"],
   ["Shift+Enter (adding a task)", "Add it and open it"],
   ["Enter (a task's title)", "Save the title"],
-  ["⌘Z or Ctrl-Z", "Bring back the task just deleted"],
+  ["⌘Z or Ctrl-Z", "Undo the last change"],
   ["Arrows (in a menu)", "Go up and down it; Enter picks"],
   ["Escape", "Close what's open, or stop adding"],
 ];
@@ -26,12 +26,43 @@ export function ShortcutList() {
       {SHORTCUTS.map(([k, what]) => (
         <div key={k} className="flex min-h-11 items-center gap-3 px-4 py-1.5">
           <dt className="w-44 shrink-0">
-            <kbd className="rounded border px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+            <span className="sr-only">{k}</span>
+            <Keys keys={k} />
           </dt>
           <dd className="text-muted-foreground">{what}</dd>
         </div>
       ))}
     </dl>
+  );
+}
+
+/** A shortcut's keys, one box per key, with the joining words ("or",
+ *  "then") and any "(when)" as plain text. */
+export function keyParts(keys: string): { text: string; key: boolean }[] {
+  const [main, when] = keys.split(/\s*(?=\()/);
+  const parts = main
+    .split(/\s+/)
+    .map((w) => w.replace(/,$/, ""))
+    .filter(Boolean)
+    .map((w) => ({ text: w, key: !/^(or|then|and)$/.test(w) }));
+  return when ? [...parts, { text: when, key: false }] : parts;
+}
+
+function Keys({ keys }: { keys: string }) {
+  return (
+    <span aria-hidden className="flex flex-wrap items-center gap-1 text-xs">
+      {keyParts(keys).map((p, i) =>
+        p.key ? (
+          <kbd key={i} className="whitespace-nowrap rounded border px-1.5 py-0.5">
+            {p.text}
+          </kbd>
+        ) : (
+          <span key={i} className="text-muted-foreground">
+            {p.text}
+          </span>
+        ),
+      )}
+    </span>
   );
 }
 

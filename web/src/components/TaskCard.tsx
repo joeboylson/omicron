@@ -50,7 +50,7 @@ export function TaskCard({
       )}
       <div className="flex items-start gap-2">
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
-        <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
+        <span className="tabular-nums text-xs text-muted-foreground">#{task.number}</span>
       </div>
       {((showStatus && status) || task.needs_review || task.question?.open || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
@@ -81,7 +81,7 @@ export function TaskCard({
           {task.checklist.length > 0 && (
             <span className="flex items-center gap-1">
               <CheckSquare className="h-3.5 w-3.5" />
-              <span className="font-mono">
+              <span className="tabular-nums">
                 {ticked}/{task.checklist.length}
               </span>
             </span>
@@ -98,14 +98,14 @@ export function TaskCard({
               title={task.picked_up_at ? `${session.name} picked it up` : `Waiting for ${session.name}`}
             >
               <Terminal className="h-3.5 w-3.5" />
-              <span className="font-mono">{session.name}</span>
+              <span className="tabular-nums">{session.name}</span>
               {!task.picked_up_at && <span>hasn't started it</span>}
             </span>
           )}
           {ended && (
             <span className="ml-auto flex items-center gap-1 text-[var(--orange-text)]" title={`${task.ended_session} has ended: give it to someone else`}>
               <AlertCircle className="h-3.5 w-3.5" />
-              <span className="font-mono">{task.ended_session}</span>
+              <span className="tabular-nums">{task.ended_session}</span>
               <span>has ended</span>
             </span>
           )}

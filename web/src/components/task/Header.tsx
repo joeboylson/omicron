@@ -48,7 +48,7 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
     <DialogHeader>
       <div className="flex items-center gap-2 pr-8">
         <DialogDescription className="flex-1 text-left">
-          <span className="font-mono">#{task.number}</span> in {project.name}
+          <span className="tabular-nums">#{task.number}</span> in {project.name}
         </DialogDescription>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

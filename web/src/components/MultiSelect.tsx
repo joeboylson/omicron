@@ -55,7 +55,7 @@ export function MultiSelect({
                 return (
                   <CommandItem key={c.id} value={`${c.name} ${c.id}`} data-checked={on} onSelect={() => toggle(c.id, !on)}>
                     <Check className={cn(on ? "opacity-100" : "opacity-0")} aria-hidden />
-                    <span className={cn("truncate", c.mono && "font-mono")}>{c.name}</span>
+                    <span className={cn("truncate", c.mono && "tabular-nums")}>{c.name}</span>
                   </CommandItem>
                 );
               })}

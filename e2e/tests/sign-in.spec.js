@@ -149,6 +149,8 @@ test("each machine's Claude accounts show on the Machines page, live", async ({ 
   await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Machines" }).click();
   const machines = page.getByRole("list", { name: "Machines" });
   await expect(machines).toContainText(name);
-  await expect(machines).toContainText("on work");
-  await expect(machines).toContainText("93%");
+  // In words (#220).
+  await expect(machines).toContainText("Using work");
+  await expect(machines).toContainText("93% of the 5-hour limit used");
+  await expect(machines).toContainText("20% of the weekly limit used");
 });

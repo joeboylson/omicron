@@ -259,3 +259,8 @@ code,
 kbd {
   font-variant-ligatures: none;
 }
+
+/* Keys are read, not typed into a terminal: the page's own font (#220). */
+kbd {
+  font-family: inherit;
+}

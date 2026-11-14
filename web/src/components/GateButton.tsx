@@ -54,7 +54,7 @@ export function GateButton() {
       <PopoverContent align="end" className="grid w-80 max-w-[calc(100vw-2rem)] gap-3 text-sm">
         {/* This page is served by the computer: here it always takes your orders. */}
         <p>
-          You can always use <span className="font-mono">{dev.machine}</span> from this page.{" "}
+          You can always use <span className="tabular-nums">{dev.machine}</span> from this page.{" "}
           {open
             ? `Until ${time(dev.gate_until!)} it also takes your work from other computers and their pages, then stops by itself.`
             : "It takes no work from other computers or their pages."}
@@ -92,7 +92,7 @@ function OpenOnIt({ machine, until }: { machine: string; until: string }) {
   return (
     <div className="grid gap-1.5">
       <p>
-        To turn on remote control, run this on <span className="font-mono">{machine}</span>:
+        To turn on remote control, run this on <span className="tabular-nums">{machine}</span>:
       </p>
       <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
         <code className="min-w-0 flex-1 font-mono text-xs">{command}</code>

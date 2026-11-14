@@ -37,7 +37,7 @@ export function TeamJobs({ project, task, onChanged }: { project: ProjectData; t
         <ul aria-label="Linked jobs" className="divide-y">
           {task.jobs.map((j) => (
             <li key={j.id} className="flex items-center gap-2 px-4 py-2.5 text-[15px] sm:text-sm">
-              <span className="font-mono text-xs text-muted-foreground">
+              <span className="tabular-nums text-xs text-muted-foreground">
                 {j.team} #{j.number}
               </span>
               <span className="flex-1 truncate">{j.title}</span>

@@ -42,7 +42,7 @@ export function TaskRow({
           {summary}
         </span>
       )}
-      <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">#{task.number}</span>
+      <span className="w-10 shrink-0 tabular-nums text-xs text-muted-foreground">#{task.number}</span>
       <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
       {(showStatus || task.needs_review || labels.length > 0) && (
         <span className="flex flex-wrap gap-1 max-sm:basis-full max-sm:pl-[3.25rem]">
@@ -69,13 +69,13 @@ export function TaskRow({
           {session && (
             <span className="flex items-center gap-1" title={task.picked_up_at ? `${session.name} picked it up` : `Waiting for ${session.name}`}>
               <Terminal className="h-3.5 w-3.5" />
-              <span className="font-mono">{session.name}</span>
+              <span className="tabular-nums">{session.name}</span>
             </span>
           )}
           {ended && (
             <span className="flex items-center gap-1 text-[var(--orange-text)]" title={`${ended} has ended: give it to someone else`}>
               <AlertCircle className="h-3.5 w-3.5" />
-              <span className="font-mono">{ended}</span>
+              <span className="tabular-nums">{ended}</span>
             </span>
           )}
           {assignee && (

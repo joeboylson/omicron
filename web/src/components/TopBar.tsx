@@ -63,7 +63,7 @@ export function TopBar({ here, title, actions }: { here: (typeof PAGES)[number][
             <DropdownMenuContent align="end" className="w-56">
               <div className="grid gap-0.5 px-2 py-1.5">
                 <span className="truncate text-sm font-medium">{me.displayName}</span>
-                <span className="truncate font-mono text-xs text-muted-foreground">{me.login}</span>
+                <span className="truncate tabular-nums text-xs text-muted-foreground">{me.login}</span>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => go("/settings")}>

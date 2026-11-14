@@ -179,7 +179,7 @@ export function DevView({
                       {sessionDoing(project, s, done)}
                     </span>
                   </span>
-                  <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
+                  <span className="ml-auto shrink-0 tabular-nums text-[11px] text-muted-foreground">
                     {project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id)).length || ""}
                   </span>
                 </button>
@@ -294,7 +294,7 @@ export function DevView({
                         aria-label={`#${t.number} ${t.title}`}
                       >
                         <span className={cn("break-words", isDone && "text-muted-foreground line-through")}>
-                          <span className="mr-1 font-mono text-[11px] text-muted-foreground">#{t.number}</span>
+                          <span className="mr-1 tabular-nums text-[11px] text-muted-foreground">#{t.number}</span>
                           {t.title}
                         </span>
                         {(t.needs_review || labels.length > 0 || t.due_on) && (
@@ -309,7 +309,7 @@ export function DevView({
                       </button>
                       {/* Who has it, as a chip; or, if nobody here, Give to… (not on Done). */}
                       {session && here.some((h) => h.id === session.id) ? (
-                        <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-mono text-[11px]">
+                        <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 tabular-nums text-[11px]">
                           <TerminalIcon className="h-3 w-3" aria-hidden /> {session.name}
                         </span>
                       ) : !isDone && here.length > 0 ? (
@@ -357,9 +357,9 @@ function Notes({ notes }: { notes: ProjectData["handoffs"] }) {
           <li key={n.id}>
             <details>
               <summary className="cursor-pointer py-0.5">
-                <span className="font-mono">#{n.number}</span> {new Date(n.written_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} · {n.state.replace("_", " ")}
+                <span className="tabular-nums">#{n.number}</span> {new Date(n.written_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} · {n.state.replace("_", " ")}
               </summary>
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] text-foreground">{n.body}</pre>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-sans text-xs text-foreground">{n.body}</pre>
             </details>
           </li>
         ))}

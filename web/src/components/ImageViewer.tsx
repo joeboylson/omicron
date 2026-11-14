@@ -47,7 +47,7 @@ export function ImageViewer({
               The image at full size. Tap it or press Z to zoom; arrow keys or swipe for the others.
             </DialogPrimitive.Description>
             {images.length > 1 && at !== null && (
-              <span className="shrink-0 font-mono text-xs text-white/70">
+              <span className="shrink-0 tabular-nums text-xs text-white/70">
                 {at + 1} of {images.length}
               </span>
             )}

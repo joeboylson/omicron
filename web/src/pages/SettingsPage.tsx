@@ -42,7 +42,7 @@ export function SettingsPage() {
         <Group title="Signed in as">
           <div className="grid gap-0.5 px-4 py-3">
             <span className="text-[15px] font-medium sm:text-sm">{me.displayName}</span>
-            <span className="font-mono text-xs text-muted-foreground">{me.login}</span>
+            <span className="tabular-nums text-xs text-muted-foreground">{me.login}</span>
           </div>
         </Group>
         <Group title="Machines">
@@ -144,7 +144,7 @@ function RemoteControl() {
               placeholder="Paste it here"
               autoComplete="off"
               spellCheck={false}
-              className="flex-1 border-0 bg-transparent px-0 font-mono shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="flex-1 border-0 bg-transparent px-0 font-mono shadow-none placeholder:font-sans focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <Button type="submit" size="sm" disabled={!typed.trim() || checking}>
               {checking ? "Checking…" : "Use token"}

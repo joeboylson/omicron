@@ -12,10 +12,10 @@ export function FoldersSection({ project }: { project: ProjectData }) {
       ) : (
         project.folders.map((f) => (
           <Row key={f.id} className="py-2">
-            <span className="min-w-0 flex-1 truncate font-mono text-sm" title={f.path}>
+            <span className="min-w-0 flex-1 truncate tabular-nums text-sm" title={f.path}>
               {f.path}
             </span>
-            <span className="shrink-0 font-mono text-xs text-muted-foreground">{f.machine}</span>
+            <span className="shrink-0 tabular-nums text-xs text-muted-foreground">{f.machine}</span>
           </Row>
         ))
       )}

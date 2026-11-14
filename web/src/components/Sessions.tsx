@@ -71,7 +71,7 @@ export function Sessions({
                   <Repeat className="h-3 w-3 text-[var(--sys-blue)]" aria-label="looping" />
                 )}
                 <span className="text-muted-foreground">
-                  <span className="font-mono text-[11px]">{s.machine}</span>
+                  <span className="tabular-nums text-[11px]">{s.machine}</span>
                 </span>
               </Badge>
             </button>
@@ -143,11 +143,11 @@ function SessionNotes({
             {doing}
           </span>
           <span>
-            on <span className="font-mono">{session.machine}</span>
+            on <span className="tabular-nums">{session.machine}</span>
             {session.folder && (
               <>
                 {" in "}
-                <span className="font-mono" title={session.folder}>
+                <span className="tabular-nums" title={session.folder}>
                   {folderName(session.folder)}
                 </span>
               </>
@@ -168,7 +168,7 @@ function SessionNotes({
                   disabled={!onOpenTask}
                   onClick={() => onOpenTask?.(t.number)}
                 >
-                  <span className="font-mono text-muted-foreground">#{t.number}</span>
+                  <span className="tabular-nums text-muted-foreground">#{t.number}</span>
                   <span className="min-w-0 flex-1 truncate">{t.title}</span>
                 </button>
                 <GiveTo
@@ -204,7 +204,7 @@ function SessionNotes({
             {notes.map((n) => (
               <li key={n.id} className="grid gap-1.5 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:flex-nowrap">
-                  <span className="whitespace-nowrap font-mono">#{n.number}</span>
+                  <span className="whitespace-nowrap tabular-nums">#{n.number}</span>
                   <Badge
                     variant="outline"
                     className={cn("whitespace-nowrap font-normal", n.state === "waiting" && "border-transparent text-white")}
@@ -212,7 +212,7 @@ function SessionNotes({
                   >
                     {NOTE_STATE[n.state]}
                   </Badge>
-                  <time className="whitespace-nowrap font-mono" dateTime={n.written_at}>
+                  <time className="whitespace-nowrap tabular-nums" dateTime={n.written_at}>
                     {new Date(n.written_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   </time>
                   <Button
@@ -279,7 +279,7 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
       <div className="grid gap-1.5 px-4 py-3" data-testid="loop">
         <p className="flex items-center gap-2 text-[15px] sm:text-sm">
           <Repeat className="h-4 w-4 shrink-0 text-[var(--sys-blue)]" aria-hidden />
-          <span className="font-mono">every {sayEvery(loop.every_seconds)}</span>
+          <span className="tabular-nums">every {sayEvery(loop.every_seconds)}</span>
           <span className="text-muted-foreground">· {end}</span>
         </p>
         <blockquote className="whitespace-pre-wrap break-words border-l-2 pl-3 text-[15px] sm:text-sm">{loop.prompt}</blockquote>

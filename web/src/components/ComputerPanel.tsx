@@ -50,7 +50,7 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           <DialogHeader>
-            <DialogTitle className="font-mono">{dev.machine}</DialogTitle>
+            <DialogTitle className="tabular-nums">{dev.machine}</DialogTitle>
             <DialogDescription className="sr-only">This computer</DialogDescription>
           </DialogHeader>
           {said && (
@@ -148,7 +148,7 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
                       <ul aria-label={`${name}'s jobs`} className="grid gap-1 px-4 pb-2 text-xs">
                         {mine.map((j) => (
                           <li key={j.id} className="flex gap-2">
-                            <span className="font-mono text-muted-foreground">#{j.number}</span>
+                            <span className="tabular-nums text-muted-foreground">#{j.number}</span>
                             <span className="min-w-0 flex-1 truncate">{j.title}</span>
                             <span className={j.state === "blocked" ? "text-[var(--orange-text)]" : "text-muted-foreground"}>
                               {j.state === "blocked" ? "waiting on an answer" : j.step ? `${j.state}, ${j.step}` : j.state}

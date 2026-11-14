@@ -66,7 +66,7 @@ export function PeoplePage() {
             {p.display_name}
             {p.id === me.personId && <span className="font-normal text-muted-foreground"> (you)</span>}
             {/* On a phone, the login sits under the name. */}
-            <span className="block max-w-[calc(100vw-8rem)] truncate font-mono text-xs font-normal text-muted-foreground sm:hidden" title={p.logins.join(", ")}>{p.logins.join(", ")}</span>
+            <span className="block max-w-[calc(100vw-8rem)] truncate tabular-nums text-xs font-normal text-muted-foreground sm:hidden" title={p.logins.join(", ")}>{p.logins.join(", ")}</span>
           </span>
         </div>
       ),
@@ -76,7 +76,7 @@ export function PeoplePage() {
       id: "login",
       accessorFn: (p) => p.logins.join(", "),
       header: ({ column }) => <SortHeader column={column} label="Login" />,
-      cell: ({ getValue }) => <span className="font-mono text-xs text-muted-foreground">{getValue()}</span>,
+      cell: ({ getValue }) => <span className="tabular-nums text-xs text-muted-foreground">{getValue()}</span>,
       meta: { className: "hidden md:table-cell", phone: "hide" },
     },
     {
@@ -225,7 +225,7 @@ function AddPerson({ open, onOpenChange }: { open: boolean; onOpenChange: (open:
         </DialogHeader>
         {!here && (
           <div className="flex items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
-            <code className="min-w-0 flex-1 break-all font-mono text-sm">{address}</code>
+            <code className="min-w-0 flex-1 break-all tabular-nums text-sm">{address}</code>
             <Button
               variant="ghost"
               size="sm"

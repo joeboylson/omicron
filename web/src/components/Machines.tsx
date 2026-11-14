@@ -12,21 +12,21 @@ export function Machines({ machines }: { machines: MachineSummary[] }) {
         {machines.map((m) => (
           <li key={m.id} className="grid gap-2 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm font-medium">{m.name}</span>
+              <span className="tabular-nums text-sm font-medium">{m.name}</span>
               {m.accounts.in_use ? (
                 <Badge variant="secondary" className="font-normal">
-                  on {m.accounts.in_use}
+                  Using {m.accounts.in_use}
                 </Badge>
               ) : (
                 <Badge variant="outline" className="font-normal text-muted-foreground">
-                  on an unsaved account
+                  Using an account that isn't saved
                 </Badge>
               )}
               {m.accounts.auto && (
                 <span className="text-xs text-muted-foreground">
                   {m.accounts.auto.held
-                    ? `held on ${m.accounts.auto.held}`
-                    : `switches ${m.accounts.auto.primary} → ${m.accounts.auto.secondary} at a limit`}
+                    ? `Stays on ${m.accounts.auto.held} for now`
+                    : `Moves to ${m.accounts.auto.secondary} when ${m.accounts.auto.primary} runs out`}
                 </span>
               )}
             </div>
@@ -51,10 +51,9 @@ function Meter({ label, w, className }: { label: string; w: UsageWindow; classNa
   return (
     <div className={className}>
       <div className="flex items-baseline justify-between text-xs text-muted-foreground">
-        <span>{label}</span>
-        <span className="font-mono">
-          {percent === null ? "–" : `${percent}%`}
-          {w?.resets_at && <span className="ml-1">· {resetsIn(w.resets_at)}</span>}
+        <span className="tabular-nums">
+          {percent === null ? `${label} limit: not known yet` : `${percent}% of the ${label.toLowerCase()} limit used`}
+          {w?.resets_at && `, ${resetsIn(w.resets_at)}`}
         </span>
       </div>
       <Progress
@@ -69,7 +68,8 @@ function Meter({ label, w, className }: { label: string; w: UsageWindow; classNa
 
 function resetsIn(iso: string): string {
   const mins = Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60000));
-  if (mins >= 1440) return `resets in ${Math.floor(mins / 1440)}d`;
-  if (mins >= 60) return `resets in ${Math.floor(mins / 60)}h ${mins % 60}m`;
-  return `resets in ${mins}m`;
+  const days = Math.floor(mins / 1440);
+  if (days >= 1) return `resets in ${days} ${days === 1 ? "day" : "days"}`;
+  if (mins >= 60) return `resets in ${Math.floor(mins / 60)} hr ${mins % 60} min`;
+  return `resets in ${mins} min`;
 }

@@ -142,7 +142,7 @@ export function Comments({
                 {c.session ? (
                   <span className="flex items-center gap-1" data-testid="comment-author">
                     <Terminal className="h-3 w-3 self-center" aria-hidden />
-                    <span className="font-mono font-medium text-foreground">{c.session}</span>
+                    <span className="tabular-nums font-medium text-foreground">{c.session}</span>
                     <span>on {c.author}</span>
                   </span>
                 ) : (
@@ -150,7 +150,7 @@ export function Comments({
                     {c.author}
                   </span>
                 )}
-                <time className="ml-auto font-mono" dateTime={c.created_at} title={new Date(c.created_at).toLocaleString()}>
+                <time className="ml-auto tabular-nums" dateTime={c.created_at} title={new Date(c.created_at).toLocaleString()}>
                   {when(c.created_at)}
                 </time>
               </div>
