@@ -556,6 +556,7 @@ impl WebMachine {
         let s = |k: &str| input[k].as_str().unwrap_or("").trim().to_string();
         let args: Vec<String> = match s("action").as_str() {
             "accounts-use" => vec!["accounts".into(), "use".into(), s("name")],
+            "start-at-login" => vec!["daemon".into(), "start-at-login".into()],
             "teams-stop" => vec!["teams".into(), "stop".into(), s("team"), "--as-machine".into()],
             "loops-start" => {
                 let mut a = vec!["loops".into(), "start".into(), s("prompt"), "--every".into(), s("every")];

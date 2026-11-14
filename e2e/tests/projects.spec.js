@@ -468,12 +468,17 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     const sheet = page.getByRole("dialog");
     await expect(sheet.getByRole("heading", { name: machineName })).toBeVisible();
     await expect(sheet.getByRole("region", { name: "Setup checks" })).toContainText(`This computer: ${machineName}`);
-    // Plain words, and what to run as its own line to copy (#179).
+    // Plain words, no commands, and a button where the page can fix it
+    // (#179, #207). Not pressed here: it would set up this Mac for real.
     const checks = sheet.getByRole("region", { name: "Setup checks" });
     await expect(checks).not.toContainText("Daemon");
     await expect(checks).not.toContainText("supabase.co");
-    await expect(checks.getByRole("button", { name: "Copy" }).first()).toBeVisible();
-    await expect(sheet.getByRole("region", { name: "Claude accounts" })).toContainText("No saved accounts yet");
+    await expect(checks).not.toContainText("omicron ");
+    await expect(checks.getByRole("button", { name: "Start with this computer" })).toHaveCount(1);
+    const accounts = sheet.getByRole("region", { name: "Claude accounts" });
+    await expect(accounts).toContainText("No Claude accounts saved on this computer.");
+    await expect(accounts).not.toContainText("<name>");
+    await expect(accounts.getByRole("button", { name: "Copy" })).toBeVisible();
     await expect(sheet.getByRole("region", { name: "Teams" })).toBeVisible();
 
     // A loop for a session here: started and stopped from the page.

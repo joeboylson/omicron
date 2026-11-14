@@ -61,7 +61,9 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
 
           <Group title="Setup checks">
             {!info && <Row className="py-2 text-sm text-muted-foreground">Checking…</Row>}
-            {info?.setup.filter((l) => /^(ok|fix|skip)\s/.test(l)).map((l, i) => <SetupCheck key={i} line={l} />)}
+            {setupLines(info?.setup ?? []).map((l, i) => (
+              <SetupCheck key={i} line={l} onFix={(action) => run({ action })} />
+            ))}
           </Group>
 
           <Group title="Loops here" label="Loops here">
@@ -87,8 +89,13 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
 
           <Group title="Claude accounts" label="Claude accounts">
             {!info && <Row className="py-2 text-sm text-muted-foreground">Loading…</Row>}
-            {info && info.accounts.length === 0 && <Row className="py-2 text-sm text-muted-foreground">No Claude accounts saved on this computer.</Row>}
-            {(info?.accounts ?? []).map((l, i) => {
+            {info && !info.accounts.some((l) => l.includes("\t")) && (
+              <>
+                <Row className="py-2 text-sm text-muted-foreground">No Claude accounts saved on this computer.</Row>
+                <CopyRow intro="To save the one Claude is logged in to, open Terminal on this computer and paste:" command="omicron accounts add personal" />
+              </>
+            )}
+            {(info?.accounts ?? []).filter((l) => l.includes("\t")).map((l, i) => {
               const [name, rest] = l.split("\t");
               const inUse = rest?.includes("(in use)");
               return (
@@ -211,6 +218,30 @@ function LoopForm({ session, onStart }: { session: string; onStart: (prompt: str
   );
 }
 
+/** Something only a terminal can do: what it's for, and the words to paste. */
+function CopyRow({ intro, command }: { intro: string; command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="grid gap-1.5 px-4 py-2 text-sm">
+      <span>{intro}</span>
+      <span className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1">
+        <code className="flex-1 break-all font-mono text-xs">{command}</code>
+        <Button variant="ghost" size="sm" className="h-8" onClick={() => navigator.clipboard?.writeText(command).then(() => setCopied(true), () => {})}>
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </span>
+    </div>
+  );
+}
+
+/** The checks to show: one line each, and the same fix only once (Omicron
+ * not running and not starting with the computer have one fix). */
+export function setupLines(lines: string[]): string[] {
+  const checks = lines.filter((l) => /^(ok|fix|skip)\s/.test(l));
+  const notRunning = checks.some((l) => /^fix\s+Daemon: not running/.test(l));
+  return checks.filter((l) => !(notRunning && /^fix\s+Start at login:/.test(l)));
+}
+
 /** Setup checks' subjects in plain words (the command says them its own way). */
 const SETUP_WORDS: Record<string, string> = {
   Settings: "Database",
@@ -221,41 +252,47 @@ const SETUP_WORDS: Record<string, string> = {
   "Claude hooks and add-on": "Claude sessions",
 };
 
-/** One setup check: ✓ or what to do, with any command to run made copyable. */
-function SetupCheck({ line }: { line: string }) {
+/** What a failed setup check means, in plain words, and what the page can
+ * do about it. Checks that pass or don't apply keep their own words. */
+export function setupFix(subject: string, said: string): { said: string; fix?: "start-at-login" } {
+  if (subject === "Start at login" || (subject === "Daemon" && /^not running/.test(said)))
+    return { said: subject === "Daemon" ? "Omicron isn't running in the background." : "Omicron won't start again after a restart.", fix: "start-at-login" };
+  if (subject === "Machine" && /isn't added|record is missing/.test(said)) return { said: "This computer isn't added to Omicron yet." };
+  if (subject === "Machine" && /switched off/.test(said)) return { said: "This computer is switched off. Switch it on from another computer's Settings." };
+  if (subject === "Machine" && /can't use any Project/.test(said)) return { said: "This computer can't use any Project yet. Add it to one in the Project's Settings." };
+  if (subject === "Machine" && /no owner/.test(said)) return { said: "This computer has no owner, so it only takes orders from itself." };
+  if (subject === "You" && /hasn't been used here|isn't in any Project/.test(said))
+    return { said: "Your login on this computer isn't in any Project yet. Ask someone in a Project to add you." };
+  return {
+    said: said
+      .replace(/[,.]?\s*(?:then )?[Rr]un `[^`]+`(?:\s*\([^)]*\))?[^.]*\.?/, ".")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\bthe daemon\b/g, "Omicron")
+      .replace(/^Supabase at https?:\/\/\S+$/, "connected")
+      .replace(/^set up by omicron open when it starts a session$/, "set up when a session starts")
+      .replace(/\.\.$/, "."),
+  };
+}
+
+/** One setup check: ✓, or what's wrong with a button when the page can fix it. */
+function SetupCheck({ line, onFix }: { line: string; onFix: (action: string) => void }) {
   const [, kind, rest] = line.match(/^(ok|fix|skip)\s+(.*)$/) ?? [];
   const colon = rest.indexOf(": ");
   const subject = colon > 0 ? rest.slice(0, colon) : "";
-  let said = colon > 0 ? rest.slice(colon + 2) : rest;
-  const command = said.match(/`([^`]+)`/)?.[1];
-  said = said
-    // The command to run moves to its own Copy row; its sentence goes.
-    .replace(/[,.]?\s*(?:then )?[Rr]un `[^`]+`(?:\s*\([^)]*\))?[^.]*\.?/, ".")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\bthe daemon\b/g, "Omicron")
-    .replace(/^Supabase at https?:\/\/\S+$/, "connected")
-    .replace(/\.\.$/, ".");
-  const [copied, setCopied] = useState(false);
+  const raw = colon > 0 ? rest.slice(colon + 2) : rest;
+  const { said, fix } = kind === "fix" ? setupFix(subject, raw) : setupFix("", raw);
   return (
-    <div className={cn("grid gap-1.5 px-4 py-2 text-sm", kind === "fix" && "text-[var(--orange-text)]")}>
-      <span>
+    <Row className={cn("py-2 text-sm", kind === "fix" && "text-[var(--orange-text)]")}>
+      <span className="min-w-0 flex-1">
         <span aria-hidden>{kind === "ok" ? "✓ " : kind === "fix" ? "! " : "· "}</span>
-        {subject && <span className="font-medium">{SETUP_WORDS[subject] ?? subject}: </span>}
+        {kind !== "fix" && subject && <span className="font-medium">{SETUP_WORDS[subject] ?? subject}: </span>}
         {said}
       </span>
-      {command && kind === "fix" && (
-        <span className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1 text-foreground">
-          <code className="flex-1 break-all font-mono text-xs">{command}</code>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            onClick={() => navigator.clipboard?.writeText(command).then(() => setCopied(true), () => {})}
-          >
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </span>
+      {fix === "start-at-login" && (
+        <Button size="sm" variant="outline" onClick={() => onFix(fix)}>
+          Start with this computer
+        </Button>
       )}
-    </div>
+    </Row>
   );
 }
