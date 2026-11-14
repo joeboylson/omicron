@@ -307,16 +307,21 @@ export async function renameProject(db: SupabaseClient, id: string, name: string
   must(await db.from("projects").update({ name }).eq("id", id));
 }
 
+/** Who a task is given to: a person, a Claude session, or (both null) nobody. */
+export type Who = { person: string | null; session: string | null };
+
 export async function addTask(
   db: SupabaseClient,
   project: ProjectData,
   statusId: string,
   title: string,
   topicId: string | null = null,
+  who?: Who,
 ) {
   const position = after(project.tasks.filter((t) => t.status_id === statusId));
+  const given = who ? { assignee_person_id: who.person, assignee_session_id: who.session } : {};
   const row = must(
-    await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId }).select("number").single(),
+    await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId, ...given }).select("number").single(),
   ) as { number: number };
   return row.number;
 }
@@ -625,10 +630,11 @@ export async function renumberTasks(db: SupabaseClient, rows: { id: string; posi
 export async function moveTask(
   db: SupabaseClient,
   task: Task,
-  to: { statusId: string; topicId?: string | null; position: number },
+  to: { statusId: string; topicId?: string | null; position: number; who?: Who },
 ) {
   const row: Record<string, unknown> = { status_id: to.statusId, position: to.position };
   if (to.topicId !== undefined) row.topic_id = to.topicId;
+  if (to.who) Object.assign(row, { assignee_person_id: to.who.person, assignee_session_id: to.who.session });
   must(await db.from("tasks").update(row).eq("id", task.id));
 }
 

@@ -136,6 +136,9 @@ async function escape(page) {
     await view("Topic");
     await page.getByRole("region", { name: "Claire's to-do", exact: true }).waitFor();
     await shot("2b-house-topics", true);
+    await view("Person");
+    await page.getByRole("region", { name: "Nobody", exact: true }).waitFor();
+    await shot("2h-house-people", true);
     await view("Status");
     await view("List");
     await page.getByRole("list", { name: "To do" }).waitFor();

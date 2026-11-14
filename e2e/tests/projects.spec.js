@@ -946,6 +946,46 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
   await expect(page.getByRole("dialog")).toContainText("Claire's to-do");
 });
 
+test("the board's columns can be who each task is given to (#166)", async ({ page, request }) => {
+  await newPerson(page, request, "Robin Example");
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Water the plants");
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  await page.getByRole("radio", { name: "Person", exact: true }).click();
+  // You first, then Nobody (no other members yet).
+  const cols = page.locator("main section[aria-label]");
+  await expect(cols).toHaveCount(2);
+  await expect(cols.nth(0)).toHaveAttribute("aria-label", "Robin Example");
+  await expect(cols.nth(1)).toHaveAttribute("aria-label", "Nobody");
+  await expect(column(page, "Nobody")).toContainText("Water the plants");
+
+  // Added in your column: given to you.
+  await addTaskIn(page, "Robin Example", "Fix the gate");
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // Dragged from Nobody to you: given to you, status kept.
+  const card = page.getByRole("button", { name: /^#1 Water the plants/ });
+  const said = page.locator('[id^="DndLiveRegion"]');
+  const a = await card.boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
+  await expect(said).toContainText(/Picked up|is over/);
+  const b = await column(page, "Robin Example").boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 });
+  await page.waitForTimeout(150);
+  const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
+  await page.mouse.up();
+  await saved;
+  await expect(column(page, "Robin Example")).toContainText("Water the plants");
+  await expect(column(page, "Robin Example")).toContainText("Fix the gate");
+  await column(page, "Robin Example").getByRole("button", { name: /^#1 Water the plants/ }).click();
+  await expect(page.getByLabel("Given to", { exact: true })).toHaveText("Robin Example");
+  await expect(page.getByLabel("Status", { exact: true })).toHaveText("To do");
+});
+
 test("a list view shows every task in one grouped list", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("House");

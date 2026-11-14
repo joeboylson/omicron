@@ -82,7 +82,7 @@ export function ProjectPage({ id }: { id: string }) {
   const [dev] = useDev(db);
   const [viewInAddress, setViewInAddress] = useAddressValue("view");
   const view = dev && viewInAddress === "dev" ? "dev" : "tasks";
-  const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
+  const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
   const [layout, setLayout] = useStored<"board" | "list">(`omicron.layout.${id}`, "board");
   const [dragging, setDragging] = useState<Task | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
@@ -147,6 +147,7 @@ export function ProjectPage({ id }: { id: string }) {
           { id: "settings", label: "Project settings", group: ready.name, run: () => setSettingsOpen(true) },
           { id: "group-status", label: "Columns by status", group: ready.name, keywords: "group", run: () => setGroupBy("status") },
           { id: "group-topic", label: "Columns by topic", group: ready.name, keywords: "group", run: () => setGroupBy("topic") },
+          { id: "group-person", label: "Columns by person", group: ready.name, keywords: "group given to who", run: () => setGroupBy("person") },
           { id: "show-board", label: "Show as a board", group: ready.name, keywords: "view columns", run: () => setLayout("board") },
           { id: "show-list", label: "Show as a list", group: ready.name, keywords: "view rows", run: () => setLayout("list") },
           ...ready.tasks.map((t) => ({
@@ -284,18 +285,32 @@ export function ProjectPage({ id }: { id: string }) {
     groupBy === "status"
       ? project.statuses.map((s) => ({
           key: s.id,
+          kind: "s" as const,
+          ref: s.id,
           name: s.name,
           status: s,
           topicId: null,
           tasks: inOrder(project.tasks.filter((t) => t.status_id === s.id && matches(t))),
         }))
-      : topicColumns(project).map((c) => ({
-          key: c.key,
-          name: c.name,
-          status: null,
-          topicId: c.topicId,
-          tasks: byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t))),
-        }));
+      : groupBy === "topic"
+        ? topicColumns(project).map((c) => ({
+            key: c.key,
+            kind: "t" as const,
+            ref: c.topicId,
+            name: c.name,
+            status: null,
+            topicId: c.topicId,
+            tasks: byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t))),
+          }))
+        : personColumns(project, me.personId).map((c) => ({
+            key: c.key,
+            kind: c.kind,
+            ref: c.ref,
+            name: c.name,
+            status: null,
+            topicId: null,
+            tasks: byStatus(project, project.tasks.filter((t) => c.has(t) && matches(t))),
+          }));
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
 
@@ -315,16 +330,23 @@ export function ProjectPage({ id }: { id: string }) {
     if (overTask?.id === moved.id) return;
     const col = parseColumn(overTask ? String(e.over.data.current?.column) : String(e.over.id));
     if (!col) return;
-    // A status column sets the status; a topic column, the topic.
-    const statusId = "statusId" in col ? col.statusId : moved.status_id;
-    const topicId = "topicId" in col ? col.topicId : moved.topic_id;
-    const sameColumn = "statusId" in col ? moved.status_id === statusId : moved.topic_id === topicId;
+    // A status column sets the status; a topic column, the topic; a
+    // person's or session's column, who it's given to.
+    const byStatus = col.kind === "s";
+    const statusId = byStatus && col.ref ? col.ref : moved.status_id;
+    const topicId = col.kind === "t" ? col.ref : moved.topic_id;
+    const who = col.kind === "p" ? { person: col.ref, session: null } : col.kind === "c" ? { person: null, session: col.ref } : undefined;
+    const sameColumn = byStatus
+      ? moved.status_id === statusId
+      : col.kind === "t"
+        ? moved.topic_id === topicId
+        : moved.assignee_person_id === who!.person && moved.assignee_session_id === who!.session;
     // Places count within a status. In a topic column, a card lands next to
     // the one it's over only when that one has the same status.
     const anchor = overTask && overTask.status_id === statusId ? overTask : undefined;
     let position = moved.position;
     let renumber: { id: string; position: number }[] = [];
-    if ("statusId" in col || anchor) {
+    if (byStatus || anchor) {
       const inStatus = (t: Task) => t.status_id === statusId;
       const others = inOrder(project.tasks.filter((t) => inStatus(t) && t.id !== moved.id));
       const column = inOrder(project.tasks.filter(inStatus));
@@ -340,12 +362,16 @@ export function ProjectPage({ id }: { id: string }) {
     setProject({
       ...project,
       tasks: project.tasks.map((t) =>
-        t.id === moved.id ? { ...t, status_id: statusId, topic_id: topicId, position } : moves.has(t.id) ? { ...t, position: moves.get(t.id)! } : t,
+        t.id === moved.id
+          ? { ...t, status_id: statusId, topic_id: topicId, position, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) }
+          : moves.has(t.id)
+            ? { ...t, position: moves.get(t.id)! }
+            : t,
       ),
     });
     act(async () => {
       if (renumber.length) await renumberTasks(db, renumber);
-      await moveTask(db, moved, { statusId, topicId, position });
+      await moveTask(db, moved, { statusId, topicId, position, who });
     }).then(reload);
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
@@ -441,9 +467,10 @@ export function ProjectPage({ id }: { id: string }) {
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <div className="px-2 py-1.5 text-xs text-muted-foreground">{layout === "board" ? "Columns" : "Group by"}</div>
-            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as "status" | "topic")}>
+            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as "status" | "topic" | "person")}>
               <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="topic">Topic</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="person">Person</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -520,6 +547,7 @@ export function ProjectPage({ id }: { id: string }) {
           options={[
             ["status", "Status"],
             ["topic", "Topic"],
+            ["person", "Person"],
           ]}
           onChange={setGroupBy}
         />
@@ -545,7 +573,7 @@ export function ProjectPage({ id }: { id: string }) {
         <TaskList
           project={project}
           groups={groups}
-          showStatus={groupBy === "topic"}
+          showStatus={groupBy !== "status"}
           filtering={filtering}
           onOpen={(t) => setOpenTask(t.number)}
         />
@@ -576,6 +604,8 @@ export function ProjectPage({ id }: { id: string }) {
               addSignal={i === 0 ? addSignal : 0}
               onAddShown={() => setAddSignal(0)}
               project={project}
+              kind={g.kind}
+              refId={g.ref}
               status={g.status}
               topicId={g.topicId}
               label={g.name}
@@ -669,6 +699,8 @@ function byStatus(project: ProjectData, tasks: Task[]): Task[] {
 
 function Column({
   project,
+  kind,
+  refId,
   status,
   topicId,
   addSignal,
@@ -679,6 +711,9 @@ function Column({
   onAdded,
 }: {
   project: ProjectData;
+  /** What the column groups by, and which one (see Group). */
+  kind: Group["kind"];
+  refId: string | null;
   /** A status column, or (null) a topic column, by `topicId`. */
   status: Status | null;
   topicId: string | null;
@@ -703,7 +738,7 @@ function Column({
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [title, adding]);
-  const column = status ? `col|s|${status.id}` : `col|t|${topicId ?? "none"}`;
+  const column = `col|${kind}|${refId ?? "none"}`;
   // New tasks go into this status; in a topic column, the first status.
   const addTo = status ?? project.statuses[0];
   useEffect(() => {
@@ -724,7 +759,9 @@ function Column({
     setSaving(true);
     let number: number | undefined;
     const ok = await act(async () => {
-      number = await addTask(db, project, addTo.id, t, topicId);
+      // In a person's or session's column, it's given to them.
+      const who = kind === "p" ? { person: refId, session: null } : kind === "c" ? { person: null, session: refId } : undefined;
+      number = await addTask(db, project, addTo.id, t, topicId, who);
     });
     setSaving(false);
     if (ok) {
@@ -831,12 +868,10 @@ function Column({
 }
 
 /** What a column id names: a status (`col|s|<id>`) or a topic (`col|t|<id or none>`). */
-function parseColumn(id: string): { statusId: string } | { topicId: string | null } | null {
-  const [kind, by, which] = id.split("|");
-  if (kind !== "col" || !which) return null;
-  if (by === "s") return { statusId: which };
-  if (by === "t") return { topicId: which === "none" ? null : which };
-  return null;
+function parseColumn(id: string): { kind: Group["kind"]; ref: string | null } | null {
+  const [col, kind, which] = id.split("|");
+  if (col !== "col" || !which || !["s", "t", "p", "c"].includes(kind)) return null;
+  return { kind: kind as Group["kind"], ref: which === "none" ? null : which };
 }
 
 /** A card that can be dragged to another place or column. */
@@ -954,7 +989,22 @@ function TaskList({
 }
 
 /** A board column or list group: a status, or (status null) a topic. */
-type Group = { key: string; name: string; status: Status | null; topicId: string | null; tasks: Task[] };
+/** A board column or list group: a status (s), topic (t), person (p) or
+ *  Claude session (c); `ref` is its id (null: none of them). */
+type Group = { key: string; kind: "s" | "t" | "p" | "c"; ref: string | null; name: string; status: Status | null; topicId: string | null; tasks: Task[] };
+
+/** Columns by who it's given to: you first, the other members, Claude
+ *  sessions that have tasks, then Nobody. */
+function personColumns(project: ProjectData, me: string) {
+  const people = [...project.members].sort((a, b) => Number(b.id === me) - Number(a.id === me) || a.display_name.localeCompare(b.display_name));
+  return [
+    ...people.map((m) => ({ key: `p${m.id}`, kind: "p" as const, ref: m.id as string | null, name: m.display_name, has: (t: Task) => t.assignee_person_id === m.id })),
+    ...project.sessions
+      .filter((s) => project.tasks.some((t) => t.assignee_session_id === s.id))
+      .map((s) => ({ key: `c${s.id}`, kind: "c" as const, ref: s.id as string | null, name: s.name, has: (t: Task) => t.assignee_session_id === s.id })),
+    { key: "nobody", kind: "p" as const, ref: null, name: "Nobody", has: (t: Task) => !t.assignee_person_id && !t.assignee_session_id },
+  ];
+}
 
 /** Which column is at the board's left edge, and whether more are off to the right. */
 function useBoardScroll(board: React.RefObject<HTMLDivElement | null>) {
@@ -1028,7 +1078,7 @@ function sayMoves(project: ProjectData, groups: Group[]): Announcements {
     if (!over) return null;
     const col = parseColumn(String(over.data.current?.column ?? over.id));
     if (!col) return null;
-    const group = groups.find((g) => ("statusId" in col ? g.status?.id === col.statusId : !g.status && g.topicId === col.topicId));
+    const group = groups.find((g) => g.kind === col.kind && g.ref === col.ref);
     if (!group) return null;
     const others = group.tasks.filter((t) => t.id !== moved);
     const at = others.findIndex((t) => t.id === over.id);
