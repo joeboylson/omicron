@@ -473,6 +473,11 @@ impl Board {
         Ok(Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? })
     }
 
+    /// On a login already made (like the web page's, for the person using it).
+    pub fn on_login(supabase: &Supabase, session: &Session) -> Board {
+        Board { supabase: supabase.clone(), session: session.clone() }
+    }
+
     /// Read rows. The database hands back at most a page of rows per
     /// request (1,000 in Supabase's settings), so a list that fills a page
     /// is read on, page by page, until it's all there. (A request with its
@@ -1264,6 +1269,60 @@ impl Board {
         let rows = self.get(&format!("/rest/v1/tasks?id=eq.{id}&select={TASK_FIELDS},projects(name)"))?;
         let v = rows.get(0).context("the task is gone")?;
         Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?))
+    }
+
+    /// Signed in as a person (not a machine).
+    pub fn is_person(&self) -> Result<bool> {
+        let rows = self.get(&format!("/rest/v1/people?id=eq.{}&select=id", self.session.user.id))?;
+        Ok(rows.as_array().is_some_and(|a| !a.is_empty()))
+    }
+
+    /// The Projects the one signed in is a member of.
+    pub fn my_project_ids(&self) -> Result<Vec<String>> {
+        let rows = self.get(&format!("/rest/v1/project_members?person_id=eq.{}&select=project_id", self.session.user.id))?;
+        Ok(rows.as_array().into_iter().flatten().filter_map(|r| r["project_id"].as_str().map(String::from)).collect())
+    }
+
+    /// Whether the one signed in can see every one of these Projects.
+    pub fn sees_projects(&self, ids: &[String]) -> Result<bool> {
+        let rows = self.get(&format!("/rest/v1/projects?id=in.({})&select=id", ids.join(",")))?;
+        Ok(rows.as_array().map_or(0, |a| a.len()) == ids.len())
+    }
+
+    /// Add a machine to a Project, by ids.
+    pub fn add_machine_by_id(&self, project_id: &str, machine_id: &str) -> Result<()> {
+        self.send("POST", "/rest/v1/project_machines", json!({ "project_id": project_id, "machine_id": machine_id }))?;
+        Ok(())
+    }
+
+    /// Whether the one signed in shares a Project with this machine.
+    pub fn shares_a_project_with(&self, machine_id: &str) -> Result<bool> {
+        let rows = self.get(&format!("/rest/v1/project_machines?machine_id=eq.{machine_id}&select=project_id"))?;
+        Ok(rows.as_array().is_some_and(|a| !a.is_empty()))
+    }
+
+    /// Whether the one signed in can see this task.
+    pub fn sees_task(&self, task_id: &str) -> Result<bool> {
+        let rows = self.get(&format!("/rest/v1/tasks?id=eq.{task_id}&select=id"))?;
+        Ok(rows.as_array().is_some_and(|a| !a.is_empty()))
+    }
+
+    /// The machine a session is on.
+    pub fn session_machine(&self, session_id: &str) -> Result<Option<String>> {
+        let rows = self.get(&format!("/rest/v1/sessions?id=eq.{session_id}&select=machine_id"))?;
+        Ok(rows.get(0).and_then(|r| r["machine_id"].as_str()).map(String::from))
+    }
+
+    /// The machine of the session a task is given to, if it's given to one.
+    pub fn task_session_machine(&self, task_id: &str) -> Result<Option<String>> {
+        let rows = self.get(&format!("/rest/v1/tasks?id=eq.{task_id}&select=id,session:sessions(machine_id)"))?;
+        Ok(rows.get(0).and_then(|r| r["session"]["machine_id"].as_str()).map(String::from))
+    }
+
+    /// Ask for a task to be dispatched to its session, by id: the request's id.
+    pub fn request_dispatch_of(&self, task_id: &str) -> Result<String> {
+        let rows = self.send("POST", "/rest/v1/dispatches?select=id", json!({ "task_id": task_id }))?;
+        Ok(rows.get(0).and_then(|r| r["id"].as_str()).context("the dispatch wasn't saved")?.to_string())
     }
 
     /// Ask for a task to be dispatched to its session. The database fills in

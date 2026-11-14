@@ -353,6 +353,18 @@ impl Supabase {
         Ok(())
     }
 
+    /// Whether a person exists (seen past the rules).
+    pub fn person_exists(&self, id: Uuid) -> Result<bool> {
+        let rows = self.admin_request("GET", &format!("/rest/v1/people?id=eq.{id}&select=id"), None)?;
+        Ok(rows.as_array().is_some_and(|a| !a.is_empty()))
+    }
+
+    /// Every Project a person is in (seen past the rules).
+    pub fn person_projects(&self, id: Uuid) -> Result<Vec<String>> {
+        let rows = self.admin_request("GET", &format!("/rest/v1/project_members?person_id=eq.{id}&select=project_id"), None)?;
+        Ok(rows.as_array().into_iter().flatten().filter_map(|r| r["project_id"].as_str().map(String::from)).collect())
+    }
+
     /// Delete a person for good: their login, their identities and their
     /// place in every Project (the database follows their login). Tasks
     /// given to them are given to nobody; machines they owned have no owner.

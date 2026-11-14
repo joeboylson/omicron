@@ -215,8 +215,8 @@ impl WebMachine {
             return fail(401, "sign in first");
         };
         let Ok(login) = self.supabase.session_for_token(&token) else { return fail(401, "that login doesn't work any more; reload the page") };
-        let me = self.supabase.request_as(&login, "GET", &format!("/rest/v1/people?id=eq.{}&select=id", login.user.id), None)?;
-        if me.as_array().is_none_or(|a| a.is_empty()) {
+        let as_person = crate::board::Board::on_login(&self.supabase, &login);
+        if !as_person.is_person()? {
             return fail(403, "only people can delete people");
         }
         let Ok(id) = id.parse::<uuid::Uuid>() else { return fail(404, "no such person") };
@@ -224,15 +224,11 @@ impl WebMachine {
             return fail(400, "you can't delete yourself");
         }
         // Their Projects, all of them (as the database sees it), against the asker's.
-        let theirs = self.supabase.admin_request("GET", &format!("/rest/v1/project_members?person_id=eq.{id}&select=project_id"), None)?;
-        let mine = self.supabase.request_as(&login, "GET", &format!("/rest/v1/project_members?person_id=eq.{}&select=project_id", login.user.id), None)?;
-        let ids = |v: &serde_json::Value| -> Vec<String> { v.as_array().into_iter().flatten().filter_map(|r| r["project_id"].as_str().map(String::from)).collect() };
-        let mine = ids(&mine);
-        if ids(&theirs).iter().any(|p| !mine.contains(p)) {
+        let mine = as_person.my_project_ids()?;
+        if self.supabase.person_projects(id)?.iter().any(|p| !mine.contains(p)) {
             return fail(403, "they're in a Project you're not in, so you can't delete them");
         }
-        let exists = self.supabase.admin_request("GET", &format!("/rest/v1/people?id=eq.{id}&select=id"), None)?;
-        if exists.as_array().is_none_or(|a| a.is_empty()) {
+        if !self.supabase.person_exists(id)? {
             return fail(404, "no such person");
         }
         self.supabase.delete_person(id)?;
@@ -254,8 +250,8 @@ impl WebMachine {
             return fail(401, "sign in first");
         };
         let Ok(login) = self.supabase.session_for_token(&token) else { return fail(401, "that login doesn't work any more; reload the page") };
-        let me = self.supabase.request_as(&login, "GET", &format!("/rest/v1/people?id=eq.{}&select=id", login.user.id), None)?;
-        if me.as_array().is_none_or(|a| a.is_empty()) {
+        let as_person = crate::board::Board::on_login(&self.supabase, &login);
+        if !as_person.is_person()? {
             return fail(403, "only people can manage API keys");
         }
         let mut body = Vec::new();
@@ -275,8 +271,7 @@ impl WebMachine {
                     return fail(400, "pick at least one Project for the machine");
                 }
                 // Only Projects you're in (the rules hide the others).
-                let seen = self.supabase.request_as(&login, "GET", &format!("/rest/v1/projects?id=in.({})&select=id", projects.join(",")), None)?;
-                if seen.as_array().map_or(0, |a| a.len()) != projects.len() {
+                if !as_person.sees_projects(&projects)? {
                     return fail(403, "you can only add a machine to Projects you're in");
                 }
                 let key = match self.supabase.register_machine(&name, false, Some(login.user.id)) {
@@ -284,7 +279,7 @@ impl WebMachine {
                     Err(e) => return fail(409, &format!("{e:#}")),
                 };
                 for p in &projects {
-                    self.supabase.request_as(&login, "POST", "/rest/v1/project_machines", Some(json!({ "project_id": p, "machine_id": key.machine_id })))?;
+                    as_person.add_machine_by_id(p, &key.machine_id.to_string())?;
                 }
                 eprintln!("omicron serve: {} registered the machine {name}", login.user.id);
                 Ok((200, "application/json", json!({ "machine_id": key.machine_id, "name": name, "key": key.to_string() }).to_string().into_bytes()))
@@ -293,8 +288,7 @@ impl WebMachine {
                 let (id, what) = rest.split_once('/').unwrap_or((&rest, ""));
                 let Ok(id) = id.parse::<uuid::Uuid>() else { return fail(404, "no such machine") };
                 // A machine you share a Project with.
-                let shared = self.supabase.request_as(&login, "GET", &format!("/rest/v1/project_machines?machine_id=eq.{id}&select=project_id"), None)?;
-                if shared.as_array().is_none_or(|a| a.is_empty()) {
+                if !as_person.shares_a_project_with(&id.to_string())? {
                     return fail(403, "you can only manage machines in a Project you're in");
                 }
                 let this = crate::config::Config::load().ok().and_then(|c| c.machine_key().ok()).map(|k| k.machine_id);
@@ -592,13 +586,12 @@ impl WebMachine {
         if task.parse::<uuid::Uuid>().is_err() || session.parse::<uuid::Uuid>().is_err() {
             return Ok(Some(json_reply(400, json!({ "error": "which task, to which session?" }))));
         }
-        let seen = self.supabase.request_as(&visit.login, "GET", &format!("/rest/v1/tasks?id=eq.{task}&select=id"), None)?;
-        if seen.as_array().is_none_or(|a| a.is_empty()) {
+        let as_person = crate::board::Board::on_login(&self.supabase, &visit.login);
+        if !as_person.sees_task(task)? {
             return Ok(Some(json_reply(404, json!({ "error": "no such task" }))));
         }
         let me = visit.board.session.user.id.to_string();
-        let s = self.supabase.request_as(&visit.board.session, "GET", &format!("/rest/v1/sessions?id=eq.{session}&select=machine_id"), None)?;
-        if s.get(0).and_then(|r| r["machine_id"].as_str()) != Some(me.as_str()) {
+        if visit.board.session_machine(session)?.as_deref() != Some(me.as_str()) {
             return Ok(Some(json_reply(409, json!({ "error": "that session isn't on this computer" }))));
         }
         visit.board.give_anew(task, Some(session))?;
@@ -645,18 +638,16 @@ impl WebMachine {
             return answer(400, json!({ "error": "which task?" }));
         };
         // The person must see the task too (the rules say what they may see).
-        let seen = self.supabase.request_as(&login, "GET", &format!("/rest/v1/tasks?id=eq.{task_id}&select=id"), None)?;
-        if seen.as_array().is_none_or(|a| a.is_empty()) {
+        let as_person = crate::board::Board::on_login(&self.supabase, &login);
+        if !as_person.sees_task(&task_id.to_string())? {
             return answer(404, json!({ "error": "no such task" }));
         }
-        let rows = self.supabase.request_as(&board.session, "GET", &format!("/rest/v1/tasks?id=eq.{task_id}&select=id,session:sessions(machine_id)"), None)?;
-        if rows.get(0).and_then(|r| r["session"]["machine_id"].as_str()) != Some(key.machine_id.to_string().as_str()) {
+        if board.task_session_machine(&task_id.to_string())?.as_deref() != Some(key.machine_id.to_string().as_str()) {
             return elsewhere("its session isn't on the computer serving this page");
         }
         // Given again, by this computer: the session takes it as its own.
         board.give_anew(&task_id.to_string(), None)?;
-        let made = self.supabase.request_as(&board.session, "POST", "/rest/v1/dispatches?select=id", Some(json!({ "task_id": task_id })))?;
-        let id = made.get(0).and_then(|r| r["id"].as_str()).context("the dispatch wasn't saved")?.to_string();
+        let id = board.request_dispatch_of(&task_id.to_string())?;
         eprintln!("omicron serve: {} dispatched a task from this computer's own page", login.user.id);
         answer(200, json!({ "id": id }))
     }
