@@ -712,8 +712,9 @@ fn open_refused(c: &Computer, path: &str, args: &[&str]) -> String {
 }
 
 fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
-    // Generous: every request goes over the internet to the hosted Supabase.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    // Generous: every request goes over the internet to the hosted Supabase,
+    // with the other tests running at the same time.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while !done() {
         assert!(std::time::Instant::now() < deadline, "timed out waiting: {what}");
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -807,13 +808,30 @@ fn dispatch_reaches_the_session_and_fails_when_it_ended_or_its_machine_is_asleep
     ok(&pat, None, &["tasks", "send", &project, "1", "parser"]);
     d.kill().unwrap();
     d.wait().unwrap();
-    // The Supabase takes a moment to notice the daemon went away.
-    wait_for("the machine to show as asleep", || !ok(&mac, None, &["machines", "awake"]).lines().any(|l| l == mac_name));
-    let started = std::time::Instant::now();
-    let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
-    assert!(!o.status.success());
-    assert!(String::from_utf8_lossy(&o.stderr).contains(&format!("{mac_name} is asleep")), "{}", String::from_utf8_lossy(&o.stderr));
-    assert!(started.elapsed() < std::time::Duration::from_secs(15));
+    // The Supabase takes a moment to notice the daemon went away, and who's
+    // connected can still list it for a moment after one look says it's
+    // gone (#189): wait until three looks in a row agree.
+    let mut gone_for = 0;
+    wait_for("the machine to show as asleep", || {
+        gone_for = if ok(&mac, None, &["machines", "awake"]).lines().any(|l| l == mac_name) { 0 } else { gone_for + 1 };
+        gone_for >= 3
+    });
+    // A dispatch that still saw it awake fails anyway, once nobody takes it
+    // ("didn't pick it up in time"); then it's tried again. Seen asleep, it
+    // says so at once.
+    let mut said = String::new();
+    for _ in 0..3 {
+        let started = std::time::Instant::now();
+        let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
+        assert!(!o.status.success());
+        said = String::from_utf8_lossy(&o.stderr).to_string();
+        if said.contains(&format!("{mac_name} is asleep")) {
+            assert!(started.elapsed() < std::time::Duration::from_secs(15));
+            break;
+        }
+        assert!(said.contains("didn't pick it up in time"), "{said}");
+    }
+    assert!(said.contains(&format!("{mac_name} is asleep")), "{said}");
     close_window(&mac, w);
 }
 
