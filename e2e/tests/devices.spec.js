@@ -173,6 +173,16 @@ for (const [kind, device] of [
         await expect(jump.getByRole("button", { name: new RegExp(`^${last} `) })).toHaveAttribute("aria-current", "true");
         await jump.getByRole("button", { name: new RegExp(`^${statuses[0].name} `) }).tap();
         await expect(todo).toBeInViewport({ ratio: 0.9 });
+        // A sideways swipe over the cards moves to the next column; the
+        // column doesn't keep it (#190).
+        const strip = () => page.evaluate(() => document.querySelector("section[data-group]").parentElement.scrollLeft);
+        const before = await strip();
+        const card = await todo.getByRole("button", { name: /Fix the gate/ }).boundingBox();
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send("Input.synthesizeScrollGesture", { x: card.x + card.width / 2, y: card.y + card.height / 2, xDistance: -250, yDistance: 0, gestureSourceType: "touch", speed: 800 });
+        await expect.poll(strip).toBeGreaterThan(before + 100);
+        await jump.getByRole("button", { name: new RegExp(`^${statuses[0].name} `) }).tap();
+        await expect(todo).toBeInViewport({ ratio: 0.9 });
 
         // The header is compact (#143): the first card is in the top half,
         // and Show and Columns are in one View menu.

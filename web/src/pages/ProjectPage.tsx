@@ -873,8 +873,10 @@ function Column({
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <ul
           ref={setNodeRef}
-          // Scrolls on its own when the column is taller than the screen.
-          className={cn("-m-0.5 flex min-h-2 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-lg p-0.5 transition-colors", isOver && "bg-accent/60")}
+          // Scrolls up and down on its own when the column is taller than
+          // the screen. Only up and down is kept in: a sideways swipe over
+          // the cards passes to the board, to move between columns (#190).
+          className={cn("-m-0.5 flex min-h-2 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-lg p-0.5 transition-colors", isOver && "bg-accent/60")}
         >
           {tasks.map((t) => (
             <SortableTask key={t.id} project={project} task={t} column={column} showStatus={!status} onOpen={() => onOpen(t)} />
