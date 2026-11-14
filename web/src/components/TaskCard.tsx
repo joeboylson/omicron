@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { AlertCircle, CalendarDays, CheckSquare, MessageSquare, Terminal } from "lucide-react";
 import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
@@ -29,6 +30,8 @@ export function TaskCard({
   const done = status?.is_done ?? false;
   // Given to a session that has since ended, and not given out again.
   const ended = !assignee && !session && !done && task.ended_session ? task.ended_session : null;
+  const summaryId = useId();
+  const summary = cardSummary(project, task, showStatus);
   return (
     <Card
       role="button"
@@ -36,10 +39,15 @@ export function TaskCard({
       onClick={onOpen}
       // Enter opens it; Space picks it up to move it (on the board).
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), onOpen())}
-      className="cursor-pointer p-3 text-[15px] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="relative cursor-pointer p-3 text-[15px] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`#${task.number} ${task.title}`}
-      aria-describedby={describedBy}
+      aria-describedby={[summary ? summaryId : "", describedBy ?? ""].filter(Boolean).join(" ") || undefined}
     >
+      {summary && (
+        <span id={summaryId} className="sr-only">
+          {summary}
+        </span>
+      )}
       <div className="flex items-start gap-2">
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
         <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
@@ -102,7 +110,7 @@ export function TaskCard({
             </span>
           )}
           {assignee && (
-            <span className="ml-auto flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-secondary-foreground" title={assignee.display_name}>
+            <span className="ml-auto flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[11px] font-medium text-secondary-foreground" title={assignee.display_name}>
               {initials(assignee.display_name)}
             </span>
           )}
@@ -110,6 +118,30 @@ export function TaskCard({
       )}
     </Card>
   );
+}
+
+/**
+ * What a card shows besides its name, said in words for screen readers
+ * (the card's name is only its number and title) (#201).
+ */
+export function cardSummary(project: ProjectData, task: Task, showStatus: boolean): string {
+  const parts: string[] = [];
+  const status = project.statuses.find((s) => s.id === task.status_id);
+  const done = status?.is_done ?? false;
+  if (showStatus && status) parts.push(status.name);
+  if (task.question?.open) parts.push("Team is waiting on you");
+  if (task.needs_review) parts.push("Needs review");
+  const labels = project.labels.filter((l) => task.labelIds.includes(l.id)).map((l) => l.name);
+  if (labels.length) parts.push(`${labels.length === 1 ? "Label" : "Labels"}: ${labels.join(", ")}`);
+  if (task.due_on) parts.push(!done && isOverdue(task.due_on) ? `Overdue, was due ${formatDate(task.due_on)}` : `Due ${formatDate(task.due_on)}`);
+  if (task.checklist.length) parts.push(`Checklist: ${task.checklist.filter((c) => c.done).length} of ${task.checklist.length} done`);
+  if (task.comments.length) parts.push(task.comments.length === 1 ? "1 comment" : `${task.comments.length} comments`);
+  const person = project.members.find((m) => m.id === task.assignee_person_id);
+  const session = project.sessions.find((c) => c.id === task.assignee_session_id);
+  if (person) parts.push(`Given to ${person.display_name}`);
+  else if (session) parts.push(task.picked_up_at ? `Given to ${session.name}, which has it` : `Given to ${session.name}, waiting for it`);
+  else if (!done && task.ended_session) parts.push(`Was given to ${task.ended_session}, which has ended`);
+  return parts.join(". ");
 }
 
 export function formatDate(iso: string): string {
