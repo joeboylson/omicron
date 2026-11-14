@@ -18,7 +18,7 @@ pub fn open(name: Option<String>, project: Option<String>, resume: Option<String
     // Run from inside a Claude window: it can't start Claude in there, so
     // say exactly what to run once this window is closed.
     if let Some(here) = std::env::var("CLAUDE_CODE_SESSION_ID").ok().filter(|v| !v.is_empty()) {
-        if let Ok(session) = std::env::var("OMICRON_SESSION") {
+        if let Some(session) = std::env::var("OMICRON_SESSION").ok().filter(|s| !s.is_empty()) {
             bail!("this is already the session {session}. `omicron detach` lets go of it and leaves it running.");
         }
         let name = match name {
@@ -26,9 +26,19 @@ pub fn open(name: Option<String>, project: Option<String>, resume: Option<String
             None => std::env::current_dir()?.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "<name>".into()),
         };
         let project = project.map(|p| format!(" --project {}", shell_quote(&p))).unwrap_or_default();
+        let name = shell_quote(&name);
         bail!(
-            "this starts Claude itself, so it can't run inside a Claude window. Quit this window (/exit), then run:\n  omicron open {}{project} --resume {}",
-            shell_quote(&name),
+            "this is already a Claude Code window, and `omicron open` starts Claude Code itself, so it can't start one inside it.\n\
+             \n\
+             Two ways to make this conversation an Omicron session:\n\
+             \n\
+             - Keep this window as it is: type `! omicron link {name}{project}` in Claude.\n\
+             \x20 It becomes a session now, and ends when you quit this window.\n\
+             \n\
+             - Or have Omicron run it, so it keeps going in the background and gets\n\
+             \x20 messages from the web page: quit Claude (/exit), then in this terminal run\n\
+             \x20   omicron open {name}{project} --resume {}\n\
+             \x20 That reopens this same conversation.",
             resume.unwrap_or(here)
         );
     }

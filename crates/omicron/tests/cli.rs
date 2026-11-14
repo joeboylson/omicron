@@ -303,3 +303,39 @@ fn doctor_says_what_a_new_machine_still_needs_and_when_its_done() {
     assert!(out.contains(&format!("{name} can't use any Project yet")), "{out}");
     assert!(out.contains("fix   Daemon") && out.contains("fix   Start at login"), "{out}");
 }
+
+/// `omicron open` inside a Claude Code window can't start Claude in it:
+/// it says what's going on and the two ways forward (#193).
+#[test]
+fn open_inside_claude_says_what_to_do_instead() {
+    let home = new_home();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_omicron"));
+    for (k, _) in std::env::vars() {
+        if k.starts_with("OMICRON_") || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE" {
+            cmd.env_remove(k);
+        }
+    }
+    let o = cmd
+        .env("OMICRON_HOME", &home)
+        .env("CLAUDE_CODE_SESSION_ID", "84bdae7d-1c12-45c0-a877-e847feb2f1ac")
+        .args(["open", "parser", "--project", "Code"])
+        .output()
+        .unwrap();
+    assert!(!o.status.success());
+    let said = stderr(&o);
+    assert!(said.contains("this is already a Claude Code window"), "{said}");
+    assert!(said.contains("`! omicron link parser --project Code`"), "{said}");
+    assert!(said.contains("omicron open parser --project Code --resume 84bdae7d-1c12-45c0-a877-e847feb2f1ac"), "{said}");
+    // An empty OMICRON_SESSION isn't a session.
+    let o = Command::new(env!("CARGO_BIN_EXE_omicron"))
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap())
+        .env("HOME", std::env::var("HOME").unwrap())
+        .env("OMICRON_HOME", &home)
+        .env("OMICRON_SESSION", "")
+        .env("CLAUDE_CODE_SESSION_ID", "abc")
+        .args(["open", "parser"])
+        .output()
+        .unwrap();
+    assert!(stderr(&o).contains("this is already a Claude Code window"), "{}", stderr(&o));
+}
