@@ -90,7 +90,7 @@ fn rename(board: Board, session_id: &str, name: &str) {
     if session.name == name {
         return;
     }
-    if let Err(e) = board.update_session(session_id, serde_json::json!({ "name": name })) {
+    if let Err(e) = board.rename_session(session_id, name) {
         return eprintln!("omicron: couldn't rename {} to {name}: {e:#}", session.name);
     }
     // A hosted session keeps answering under its new name.

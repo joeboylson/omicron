@@ -246,7 +246,7 @@ pub fn teams(cmd: Teams, as_machine: bool) -> Result<()> {
         Teams::Stop { team } => {
             let board = sign_in(true)?;
             let t = board.team(&team)?;
-            board.update_team(&t.id, serde_json::json!({ "state": "stopped" }))?;
+            board.stop_team(&t.id)?;
             println!("Stopped {}. Its jobs are kept; start it again with `omicron teams start`.", t.name);
         }
         Teams::List => {

@@ -569,7 +569,7 @@ pub fn deliver(board: &omicron::board::Board, session: &omicron::board::SessionR
         None => {
             // Never opened yet: give it the conversation it'll start with.
             let c = uuid::Uuid::new_v4().to_string();
-            board.update_session(&session.id, json!({ "claude_session_id": c }))?;
+            board.session_conversation(&session.id, &c)?;
             c
         }
     };

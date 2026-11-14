@@ -423,7 +423,7 @@ fn launch(board: &Board, team: &TeamRow, name: &str, role: &str, job: &Job, part
     }
     omicron::host::start(&host, &folder, &claude_command(&host, &instructions, &first)?, &vars)?;
     board.set_worker(team, name, role, "busy", Some(&job.id))?;
-    board.update_job(job, serde_json::json!({ "state": "working", "step": role }))?;
+    board.job_at(job, role, None)?;
     Ok(())
 }
 
@@ -445,7 +445,7 @@ pub fn handoff(to: &str, note: &str) -> Result<String> {
     if to != "done" && !roles.iter().any(|r| r == to) {
         bail!("{} has no role {to} (roles: {}, or done)", team.name, roles.join(", "));
     }
-    board.update_job(&job, serde_json::json!({ "step": to, "note": note, "state": "working" }))?;
+    board.job_at(&job, to, Some(note))?;
     let role = board.workers(&team)?.into_iter().find(|w| w.name == me).map(|w| w.role).unwrap_or_default();
     board.set_worker(&team, &me, &role, "idle", Some(&job.id))?;
     let msg = if to == "done" {
@@ -553,7 +553,7 @@ pub fn ask(question: &str) -> Result<String> {
         Some(serde_json::json!({ "team_id": team.id, "job_id": asker, "worker": me, "task_id": task_id })),
     )?;
     if let Some(j) = &job {
-        board.update_job(j, serde_json::json!({ "state": "blocked", "note": format!("Asked: {question}") }))?;
+        board.block_job(j, &format!("Asked: {question}"))?;
     }
     if me != "lead" {
         tell_lead(&board, &team, &format!("{me} asked a person{about}: {question} (task #{number}). It'll come back to {me}."))?;
@@ -585,7 +585,7 @@ pub fn heads_up(text: &str) -> Result<String> {
 pub fn blocked(why: &str) -> Result<String> {
     let (board, team, me) = caller()?;
     let job = my_job(&board, &team, &me)?;
-    board.update_job(&job, serde_json::json!({ "state": "blocked", "note": why }))?;
+    board.block_job(&job, why)?;
     let msg = format!("{me} is blocked on job #{}: {why}", job.number);
     tell_lead(&board, &team, &msg)?;
     nudge_advisor(&team, &msg);
@@ -613,7 +613,7 @@ pub fn finish(number: i64) -> Result<String> {
                 if !clash {
                     bail!("couldn't merge job #{number}'s branch: {e:#}");
                 }
-                board.update_job(&job, serde_json::json!({ "state": "working", "step": "builder", "note": format!("Merging clashed: {e}") }))?;
+                board.job_at(&job, "builder", Some(&format!("Merging clashed: {e}")))?;
                 bail!("job #{number}'s branch clashes with the base: send it back to the builder to fix the clash, then finish it again");
             }
             for p in parts(&team, &job)? {
@@ -626,7 +626,7 @@ pub fn finish(number: i64) -> Result<String> {
             let _ = git(&folder, &["branch", "-d", &b]);
         }
     }
-    board.update_job(&job, serde_json::json!({ "state": "done" }))?;
+    board.finish_job(&job)?;
     for w in board.workers(&team)? {
         if w.job_id.as_deref() == Some(job.id.as_str()) && w.state != "stopped" {
             stop(&team, &w.name)?;
@@ -728,7 +728,7 @@ fn note_waiting(b: &Board, orders: &omicron::gate::Orders, job: &str, now: Optio
     let Some(why) = orders.refusal(who, &machine)? else { return Ok(()) };
     let note = format!("{WAITING} {why}");
     if now != Some(note.as_str()) && !job.is_empty() {
-        b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/jobs?id=eq.{job}&state=eq.waiting"), Some(serde_json::json!({ "note": note })))?;
+        b.waiting_job_note(job, Some(&note))?;
     }
     Ok(())
 }
@@ -736,7 +736,7 @@ fn note_waiting(b: &Board, orders: &omicron::gate::Orders, job: &str, now: Optio
 /// Clear that note once the job is taken.
 fn clear_waiting(b: &Board, job: &omicron::board::Job) -> Result<()> {
     if job.note.as_deref().is_some_and(|n| n.starts_with(WAITING)) {
-        b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/jobs?id=eq.{}&state=eq.waiting", job.id), Some(serde_json::json!({ "note": null })))?;
+        b.waiting_job_note(&job.id, None)?;
     }
     Ok(())
 }
@@ -758,12 +758,7 @@ fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &ser
             Some(serde_json::json!({ "state": "answered", "answer_comment_id": comment["id"], "answered_at": "now" })),
         )?;
         if let Some(job) = req["job_id"].as_str() {
-            b.supabase.request_as(
-                &b.session,
-                "PATCH",
-                &format!("/rest/v1/jobs?id=eq.{job}&state=eq.blocked"),
-                Some(serde_json::json!({ "state": "working", "note": format!("Answered by {who}: {body}") })),
-            )?;
+            b.unblock_job(job, &format!("Answered by {who}: {body}"))?;
         }
     }
     Ok(told)

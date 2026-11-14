@@ -569,6 +569,16 @@ impl Board {
     }
 
     /// Change a session's fields. Running it twice is fine.
+    pub fn rename_session(&self, id: &str, name: &str) -> Result<()> {
+        self.update_session(id, json!({ "name": name }))
+    }
+
+    /// The Claude conversation a session is in now.
+    pub fn session_conversation(&self, id: &str, claude_session_id: &str) -> Result<()> {
+        self.update_session(id, json!({ "claude_session_id": claude_session_id }))
+    }
+
+    /// Changes worked out from a window starting or ending (sessions_cmd).
     pub fn update_session(&self, id: &str, change: Value) -> Result<()> {
         self.send("PATCH", &format!("/rest/v1/sessions?id=eq.{id}"), change)?;
         Ok(())
@@ -1004,9 +1014,44 @@ impl Board {
     }
 
     /// Change a run (its machine: anything; anyone else: pausing or stopped).
-    pub fn set_run(&self, id: &str, fields: Value) -> Result<()> {
+    fn set_run(&self, id: &str, fields: Value) -> Result<()> {
         self.send("PATCH", &format!("/rest/v1/runs?id=eq.{id}"), fields)?;
         Ok(())
+    }
+
+    /// Ask a run to pause after its task ("pausing") or stop now ("stopped").
+    pub fn ask_run_to(&self, id: &str, state: &str) -> Result<()> {
+        self.set_run(id, json!({ "state": state }))
+    }
+
+    /// A run stops, saying why.
+    pub fn stop_run(&self, id: &str, note: &str) -> Result<()> {
+        self.set_run(id, json!({ "state": "stopped", "note": note }))
+    }
+
+    /// A run has nothing left: it's finished.
+    pub fn finish_run(&self, id: &str, note: &str) -> Result<()> {
+        self.set_run(id, json!({ "state": "finished", "note": note }))
+    }
+
+    /// A run is on a task now.
+    pub fn run_on(&self, id: &str, task_id: &str, note: &str) -> Result<()> {
+        self.set_run(id, json!({ "task_id": task_id, "note": note }))
+    }
+
+    /// A run's task is finished (`done` counts it), and the run carries on
+    /// or, with `stop`, stops there.
+    pub fn run_task_finished(&self, id: &str, done: i64, stop: bool, note: &str) -> Result<()> {
+        let mut change = json!({ "task_id": null, "done": done, "note": note });
+        if stop {
+            change["state"] = json!("stopped");
+        }
+        self.set_run(id, change)
+    }
+
+    /// What a run says it's doing, nothing else changed.
+    pub fn run_note(&self, id: &str, note: &str) -> Result<()> {
+        self.set_run(id, json!({ "note": note }))
     }
 
     /// A task by id, with its status id, assignees and labels (ids).
@@ -1329,8 +1374,8 @@ impl Board {
         }
     }
 
-    pub fn update_team(&self, id: &str, change: Value) -> Result<()> {
-        self.send("PATCH", &format!("/rest/v1/teams?id=eq.{id}"), change)?;
+    pub fn stop_team(&self, id: &str) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/teams?id=eq.{id}"), json!({ "state": "stopped" }))?;
         Ok(())
     }
 
@@ -1349,9 +1394,40 @@ impl Board {
         rows.into_iter().next().with_context(|| format!("{} has no job #{number}", team.name))
     }
 
-    pub fn update_job(&self, job: &Job, change: Value) -> Result<()> {
+    fn update_job(&self, job: &Job, change: Value) -> Result<()> {
         self.send("PATCH", &format!("/rest/v1/jobs?id=eq.{}", job.id), change)?;
         Ok(())
+    }
+
+    /// A job is being worked on, by the role `step`, with a note (or its
+    /// note kept, with None).
+    pub fn job_at(&self, job: &Job, step: &str, note: Option<&str>) -> Result<()> {
+        let mut change = json!({ "state": "working", "step": step });
+        if let Some(n) = note {
+            change["note"] = json!(n);
+        }
+        self.update_job(job, change)
+    }
+
+    /// A job can't go on until something's answered or fixed: why.
+    pub fn block_job(&self, job: &Job, why: &str) -> Result<()> {
+        self.update_job(job, json!({ "state": "blocked", "note": why }))
+    }
+
+    /// A waiting job's note (None clears it); left alone once it's started.
+    pub fn waiting_job_note(&self, job_id: &str, note: Option<&str>) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/jobs?id=eq.{job_id}&state=eq.waiting"), json!({ "note": note }))?;
+        Ok(())
+    }
+
+    /// A job blocked on a question goes back to work with its answer.
+    pub fn unblock_job(&self, job_id: &str, note: &str) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/jobs?id=eq.{job_id}&state=eq.blocked"), json!({ "state": "working", "note": note }))?;
+        Ok(())
+    }
+
+    pub fn finish_job(&self, job: &Job) -> Result<()> {
+        self.update_job(job, json!({ "state": "done" }))
     }
 
     /// A team's workers, by name.

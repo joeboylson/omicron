@@ -17,7 +17,7 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use omicron::board::{Board, Run};
 use omicron::supa::{MachineKey, Supabase};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -104,7 +104,7 @@ fn change(project: &str, session: Option<String>, state: &str, as_machine: bool)
         _ => bail!("{} has more than one run going: say which with --session", p.name),
     };
     let note = if state == "pausing" { "pausing: it stops after the task it's on" } else { "stopped" };
-    board.set_run(&run.id, json!({ "state": state }))?;
+    board.ask_run_to(&run.id, state)?;
     println!("{} the run in {}: {note}.", if state == "pausing" { "Paused" } else { "Stopped" }, p.name);
     Ok(())
 }
@@ -172,7 +172,7 @@ fn step_soon(supabase: &Supabase, key: &MachineKey, id: &str) {
         if let Err(e) = signed_in(supabase, key).and_then(|b| step(supabase, &b, id)) {
             eprintln!("omicron daemon: run: {e:#}");
             if let Ok(b) = signed_in(supabase, key) {
-                let _ = b.set_run(id, json!({ "state": "stopped", "note": format!("stopped: {e:#}") }));
+                let _ = b.stop_run(id, &format!("stopped: {e:#}"));
             }
         }
         let mut busy = BUSY.lock().unwrap();
@@ -196,7 +196,7 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     if !run.active() {
         return Ok(());
     }
-    let stop = |note: String| board.set_run(id, json!({ "state": "stopped", "note": note }));
+    let stop = |note: String| board.stop_run(id, &note);
     let Some(session) = run.session_id.as_deref().and_then(|s| board.session_by_id(s).ok()) else {
         return stop("stopped: its session ended".into());
     };
@@ -221,16 +221,16 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
         let number = task.as_ref().map(|t| t.number).unwrap_or(0);
         let done = run.done + 1;
         if run.state == "pausing" {
-            return board.set_run(id, json!({ "state": "stopped", "task_id": null, "done": done, "note": format!("paused after #{number}") }));
+            return board.run_task_finished(id, done, true, &format!("paused after #{number}"));
         }
-        board.set_run(id, json!({ "task_id": null, "done": done, "note": format!("handing off after #{number}") }))?;
+        board.run_task_finished(id, done, false, &format!("handing off after #{number}"))?;
         if !omicron::handover::hand_off_and_clear(supabase, board, &session)? {
             return stop(format!("stopped: {} didn't write its handoff note after #{number}", session.name));
         }
         // Paused or stopped meanwhile?
         match board.run(id)? {
             Some(r) if r.state == "running" => {}
-            Some(r) if r.state == "pausing" => return board.set_run(id, json!({ "state": "stopped", "note": format!("paused after #{number}") })),
+            Some(r) if r.state == "pausing" => return board.stop_run(id, &format!("paused after #{number}")),
             _ => return Ok(()),
         }
     }
@@ -244,7 +244,7 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
         let (team, job) = (&tt.team, tt.job_number);
         let (task_id, number, title) = (tt.task.id.as_str(), tt.task.number, tt.task.title.as_str());
         board.give_anew(task_id, Some(&session.id))?;
-        board.set_run(id, json!({ "task_id": task_id, "note": format!("checking #{number}: {team} finished job #{job}") }))?;
+        board.run_on(id, task_id, &format!("checking #{number}: {team} finished job #{job}"))?;
         omicron::handover::wait_until_free(&session.id);
         omicron::host::say(
             &session.name,
@@ -284,7 +284,7 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
                 let task = board.task(&project, number)?;
                 let job = board.add_job(team, &t.title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
                 board.link_job(&task, team, job.number)?;
-                board.set_run(id, json!({ "note": format!("gave #{number} to the team {} as job #{}", team.name, job.number) }))?;
+                board.run_note(id, &format!("gave #{number} to the team {} as job #{}", team.name, job.number))?;
                 continue;
             }
         }
@@ -299,14 +299,14 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
             .collect();
         if !waiting.is_empty() {
             // Comes back when a job finishes (the daemon steps runs then).
-            return board.set_run(id, json!({ "note": format!("waiting for the team: {}", waiting.join(", ")) }));
+            return board.run_note(id, &format!("waiting for the team: {}", waiting.join(", ")));
         }
         let done = board.run(id)?.map(|r| r.done).unwrap_or(run.done);
-        return board.set_run(id, json!({ "state": "finished", "note": format!("finished: {} is empty ({done} done)", first.name) }));
+        return board.finish_run(id, &format!("finished: {} is empty ({done} done)", first.name));
     };
     let (task_id, number, title) = (next.id.as_str(), next.number, next.title.as_str());
     board.give_anew(task_id, Some(&session.id))?;
-    board.set_run(id, json!({ "task_id": task_id, "note": format!("on #{number}: {}", omicron::text::line(title)) }))?;
+    board.run_on(id, task_id, &format!("on #{number}: {}", omicron::text::line(title)))?;
     omicron::handover::wait_until_free(&session.id);
     omicron::host::say(
         &session.name,
