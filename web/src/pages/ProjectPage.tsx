@@ -33,6 +33,7 @@ import { DateField, TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
+import { TopBar } from "@/components/TopBar";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -257,12 +258,15 @@ export function ProjectPage({ id }: { id: string }) {
   if (project === undefined) return <BoardSkeleton />;
   if (project === null) {
     return (
-      <main className="p-4">
-        <p>This Project doesn't exist, or you're not a member of it.</p>
-        <Button variant="link" className="px-0" onClick={() => go("/")}>
-          Back to Projects
-        </Button>
-      </main>
+      <>
+        <TopBar here="/" title="Can't open this Project" />
+        <main className="mx-auto grid w-full max-w-5xl justify-items-start gap-4 px-[max(1rem,env(safe-area-inset-left))]">
+          <p className="max-w-md text-muted-foreground">
+            It may have been deleted, or you haven't been added to it. Ask whoever sent you the link to add you.
+          </p>
+          <Button onClick={() => go("/")}>Back to Projects</Button>
+        </main>
+      </>
     );
   }
 

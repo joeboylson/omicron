@@ -736,7 +736,12 @@ test("a card dropped between tied cards lands there, and Organize while filtered
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);
-  await expect(page.getByText("This Project doesn't exist, or you're not a member of it.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Can't open this Project" })).toBeVisible();
+  // Why, what to do, and the way back, with the usual top bar (#168).
+  await expect(page.getByText("Ask whoever sent you the link to add you.")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to Projects" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
 });
 
 test("a Project's Claude sessions show, and follow the session live", async ({ page, request }) => {

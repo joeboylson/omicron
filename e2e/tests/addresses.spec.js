@@ -86,7 +86,7 @@ test("addresses, Back and Forward, reloading, and addresses that lead nowhere", 
 
   // A Project you're not in (or that doesn't exist).
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);
-  await expect(page.getByText("This Project doesn't exist, or you're not a member of it.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Can't open this Project" })).toBeVisible();
   await page.getByRole("button", { name: "Back to Projects" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
 
@@ -105,5 +105,5 @@ test("addresses, Back and Forward, reloading, and addresses that lead nowhere", 
   await page.goto(`${omicron.url}/p/${theirs.id}`);
   await expect(page.getByRole("heading", { level: 1, name: theirs.name })).toBeVisible();
   await rest(request, other, "DELETE", `/rest/v1/project_members?project_id=eq.${theirs.id}&person_id=eq.${me.person_id}`);
-  await expect(page.getByText("This Project doesn't exist, or you're not a member of it.")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Can't open this Project" })).toBeVisible({ timeout: 15_000 });
 });

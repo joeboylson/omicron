@@ -236,7 +236,7 @@ async function escape(page) {
     await page.getByText(/There's no task #999/).waitFor();
     await shot("6c-missing-task");
     await page.goto(`${url}/p/00000000-0000-0000-0000-000000000000`);
-    await page.getByText(/doesn't exist, or you're not a member/).waitFor();
+    await page.getByRole("heading", { level: 1, name: "Can't open this Project" }).waitFor();
     await shot("6d-project-not-found");
   }
 
