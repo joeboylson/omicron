@@ -28,10 +28,21 @@ export function Group({
   );
 }
 
-/** One row of a Group: at least 44pt tall. */
+/** One row of a Group: at least 44pt tall. When a plain (`bare`) control
+ *  in it has keyboard focus, the whole row fills and gets a ring instead. */
 export function Row({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex min-h-11 items-center gap-3 px-4 py-1", className)}>{children}</div>;
+  return (
+    <div
+      className={cn(
+        "flex min-h-11 items-center gap-3 px-4 py-1 transition-colors",
+        "has-[.bare:focus-visible,input.bare:focus,input.bare:focus-within]:bg-accent has-[.bare:focus-visible,input.bare:focus,input.bare:focus-within]:ring-2 has-[.bare:focus-visible,input.bare:focus,input.bare:focus-within]:ring-inset has-[.bare:focus-visible,input.bare:focus,input.bare:focus-within]:ring-ring",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
-/** A plain control inside a Row: no border of its own. */
-export const bare = "h-10 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0";
+/** A plain control inside a Row: no border or ring of its own (its Row shows focus). */
+export const bare = "bare h-10 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:ring-0 focus:ring-offset-0";

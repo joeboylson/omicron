@@ -133,6 +133,11 @@ async function escape(page) {
     await view("Board");
     await page.getByRole("button", { name: /Fix the back gate/ }).click();
     await shot("3-task");
+    // Tabbing to a field: its row shows where focus is.
+    await page.getByRole("dialog").getByLabel("Status").focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await shot("3c-task-focus");
     // Its ⋯ menu, and who it can be given to.
     await page.getByRole("button", { name: "More for this task" }).click();
     await page.getByRole("menuitem", { name: "Delete task" }).waitFor();

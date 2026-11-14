@@ -20,9 +20,18 @@ async function focused(page) {
     if (!el || el === document.body) return null;
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
-    const ring = (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || (s.boxShadow && s.boxShadow !== "none");
+    // A ring that shows: an outline, or a box shadow with some colour and
+    // size (Tailwind gives everything a transparent one). A plain control in
+    // a grouped row may show it on its row instead (#146).
+    const shows = (st) => {
+      if (st.outlineStyle !== "none" && parseFloat(st.outlineWidth) > 0) return true;
+      return (st.boxShadow || "none")
+        .split(/,(?![^(]*\))/)
+        .some((part) => !/rgba\([^)]*,\s*0\)/.test(part) && /\d+px/.test(part) && part.match(/-?\d+(\.\d+)?px/g).some((n) => parseFloat(n) !== 0));
+    };
+    const ring = shows(s) || [el.parentElement, el.parentElement?.parentElement].some((p) => p && shows(getComputedStyle(p)));
     return {
-      what: `${el.tagName.toLowerCase()} "${el.getAttribute("aria-label") || (el.textContent || "").trim().slice(0, 30)}"`,
+      what: `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""} "${el.getAttribute("aria-label") || el.getAttribute("placeholder") || (el.textContent || "").trim().slice(0, 30)}"`,
       onScreen: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth,
       ring,
       inDialog: !!el.closest('[role="dialog"]'),
