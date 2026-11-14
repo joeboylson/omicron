@@ -243,7 +243,26 @@ pub fn start_lead(board: &Board, team: &TeamRow) -> Result<bool> {
     Ok(started)
 }
 
+/// Tell the lead something. A lead that isn't running while its team is
+/// (it crashed, or was stopped) is started, with the message as the first
+/// thing it hears, so nothing said to it is lost. A stopped team's lead
+/// can't be told: that's an error, not silence.
+pub fn tell_lead(board: &Board, team: &TeamRow, text: &str) -> Result<()> {
+    if tell(&team.name, "lead", text)? {
+        return Ok(());
+    }
+    if team.state != "running" {
+        bail!("the team {} is stopped, so its lead couldn't be told. Start it with `omicron teams start`.", team.name);
+    }
+    launch_lead_told(board, team, None, Some(text))?;
+    Ok(())
+}
+
 fn launch_lead(board: &Board, team: &TeamRow, note: Option<&str>) -> Result<bool> {
+    launch_lead_told(board, team, note, None)
+}
+
+fn launch_lead_told(board: &Board, team: &TeamRow, note: Option<&str>, told: Option<&str>) -> Result<bool> {
     let name = host_name(&team.name, "lead");
     if omicron::host::is_running(&name) {
         return Ok(false);
@@ -262,7 +281,7 @@ fn launch_lead(board: &Board, team: &TeamRow, note: Option<&str>) -> Result<bool
     } else {
         format!("The team {} is running. Jobs waiting: {}. Start them.", team.name, waiting.join("; "))
     };
-    let first = first + &picked_up(note);
+    let first = first + &picked_up(note) + &told.map(|t| format!("\n\nWhile you weren't running, you were told: {t}")).unwrap_or_default();
     let cmd = claude_command(&name, &lead_instructions(team, &workflow, &role_texts(team)?), &first)?;
     omicron::host::start(&name, Path::new(&team.folder), &cmd, &env(team, "lead"))?;
     board.set_worker(team, "lead", "lead", "busy", None)?;
@@ -432,7 +451,7 @@ pub fn handoff(to: &str, note: &str) -> Result<String> {
     } else {
         format!("{me} handed job #{} to {to}: {note} Start or message the {to}.", job.number)
     };
-    tell(&team.name, "lead", &msg)?;
+    tell_lead(&board, &team, &msg)?;
     nudge_advisor(&team, &msg);
     Ok(format!("Handed job #{} to {to}. The lead has been told.", job.number))
 }
@@ -461,7 +480,7 @@ fn part_done(board: &Board, team: &TeamRow, me: &str, job: &Job, k: i64, note: &
         format!("Parts still going: {}.", left.iter().map(|p| p.number.to_string()).collect::<Vec<_>>().join(", "))
     };
     let msg = format!("{me} finished part {k} of job #{} ({}): {note} It's merged into the job's branch. {rest} Stop {me} with omicron teams stop-worker {me}.", job.number, part.text);
-    tell(&team.name, "lead", &msg)?;
+    tell_lead(board, team, &msg)?;
     nudge_advisor(team, &msg);
     Ok(format!("Your part is merged into job #{}'s branch, and the lead has been told. You're done.", job.number))
 }
@@ -525,7 +544,7 @@ pub fn ask(question: &str) -> Result<String> {
         board.update_job(j, serde_json::json!({ "state": "blocked", "note": format!("Asked: {question}") }))?;
     }
     if me != "lead" {
-        tell(&team.name, "lead", &format!("{me} asked a person{about}: {question} (task #{number}). It'll come back to {me}."))?;
+        tell_lead(&board, &team, &format!("{me} asked a person{about}: {question} (task #{number}). It'll come back to {me}."))?;
     }
     Ok(format!("Asked (task #{number}). The answer will come back to you here; carry on with anything that doesn't need it."))
 }
@@ -556,7 +575,7 @@ pub fn blocked(why: &str) -> Result<String> {
     let job = my_job(&board, &team, &me)?;
     board.update_job(&job, serde_json::json!({ "state": "blocked", "note": why }))?;
     let msg = format!("{me} is blocked on job #{}: {why}", job.number);
-    tell(&team.name, "lead", &msg)?;
+    tell_lead(&board, &team, &msg)?;
     nudge_advisor(&team, &msg);
     Ok(format!("Job #{} is blocked. The lead has been told.", job.number))
 }
@@ -697,7 +716,9 @@ fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &ser
     let worker = req["worker"].as_str().unwrap_or("lead");
     let who = comment["author_name"].as_str().unwrap_or("someone");
     let body = comment["body"].as_str().unwrap_or("");
-    let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))? || tell(&team.name, "lead", &format!("Answer for {worker} from {who}: {body}"))?;
+    // To who asked; failing that its lead (started if it must be), who passes it on.
+    let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))?
+        || (team.state == "running" && tell_lead(b, team, &format!("Answer for {worker} from {who}: {body}")).is_ok());
     if told {
         b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")), Some(serde_json::json!({ "state": "answered" })))?;
         if let Some(job) = req["job_id"].as_str() {
@@ -746,7 +767,7 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
         }
         for j in b.jobs(&team)?.into_iter().filter(|j| j.state == "waiting" && j.created_by.as_deref() != Some(me.as_str())) {
             if takes_orders_from(&b, j.created_by.as_deref())? {
-                tell(&team.name, "lead", &format!("Job #{} is waiting: {}. Start it if nobody has.", j.number, j.title))?;
+                tell_lead(&b, &team, &format!("Job #{} is waiting: {}. Start it if nobody has.", j.number, j.title))?;
             }
         }
     }

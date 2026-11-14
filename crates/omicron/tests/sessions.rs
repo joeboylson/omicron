@@ -1174,6 +1174,14 @@ fn a_team_runs_a_job_from_start_to_finish() {
     wait_for("the lead got the heads-up", || read(&mac, "lead.typed").contains("Heads-up from planner: npm test takes 3 minutes"));
     assert!(std::fs::read_to_string(folder.join(".omicron-team/heads-ups.md")).unwrap().contains("(planner): npm test takes 3 minutes"));
 
+    // The lead stopped (it crashed): a worker's news isn't lost. The lead
+    // is started again, hearing it first (#116).
+    ok(&mac, None, &["sessions", "send", &format!("{team}.lead"), "/exit"]);
+    wait_for("the lead stopped", || !ok(&mac, None, &["sessions", "hosted"]).lines().any(|l| l == format!("{team}.lead")));
+    let (okay, out) = run(&["teams", "blocked", "Waiting on the design."], Some("planner"), t);
+    assert!(okay && out.contains("The lead has been told"), "{out}");
+    wait_for("the lead started again with the news", || read(&mac, "lead.args").contains("While you weren't running, you were told: planner is blocked on job #1: Waiting on the design."));
+
     // The planner hands it to the builder; the lead is told.
     let (okay, out) = run(&["teams", "handoff", "builder", "--note", "Plan: one form, one route."], Some("planner"), t);
     assert!(okay, "{out}");
