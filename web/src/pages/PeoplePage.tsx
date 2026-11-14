@@ -58,15 +58,15 @@ export function PeoplePage() {
       accessorKey: "display_name",
       header: ({ column }) => <SortHeader column={column} label="Name" />,
       cell: ({ row: { original: p } }) => (
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">
             {initials(p.display_name)}
           </span>
-          <span className="font-medium">
+          <span className="min-w-0 font-medium">
             {p.display_name}
             {p.id === me.personId && <span className="font-normal text-muted-foreground"> (you)</span>}
             {/* On a phone, the login sits under the name. */}
-            <span className="block truncate font-mono text-xs font-normal text-muted-foreground sm:hidden" title={p.logins.join(", ")}>{p.logins.join(", ")}</span>
+            <span className="block max-w-[calc(100vw-8rem)] truncate font-mono text-xs font-normal text-muted-foreground sm:hidden" title={p.logins.join(", ")}>{p.logins.join(", ")}</span>
           </span>
         </div>
       ),

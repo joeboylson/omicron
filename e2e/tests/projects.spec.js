@@ -124,6 +124,9 @@ test("a task can be filled in and finished", async ({ page, request }) => {
   await dialog.getByLabel("New checklist item").press("Enter");
   await dialog.getByRole("checkbox", { name: "Buy a new latch" }).check();
   await expect(dialog.getByRole("list", { name: "Checklist" }).getByRole("listitem")).toHaveCount(2);
+  // Near the top: how far along it is, which jumps to the checklist (#185).
+  await dialog.getByRole("button", { name: "1 of 2 done" }).click();
+  await expect(dialog.getByRole("checkbox", { name: "Buy a new latch" })).toBeFocused();
 
   // The card shows it all.
   await escape(page);

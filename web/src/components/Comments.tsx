@@ -117,7 +117,7 @@ export function Comments({
   }
 
   return (
-    <Group title="Comments">
+    <Group title="Comments" id="task-comments">
       {task.comments.length > 0 && (
         <ul aria-label="Comments" className="divide-y">
           {/* Waiting for review: the session's last comment is its report. */}

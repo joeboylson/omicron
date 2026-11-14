@@ -26,6 +26,7 @@ export function TaskChecklist({ task, change }: SectionProps) {
   );
   return (
     <Group
+      id="task-checklist"
       label="Checklist"
       title={
         <>
@@ -40,7 +41,7 @@ export function TaskChecklist({ task, change }: SectionProps) {
     >
       <ul aria-label="Checklist" className={cn("divide-y", task.checklist.length === 0 && "hidden")}>
         {task.checklist.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className="group">
             <Row>
               <Checkbox
                 id={`item-${item.id}`}
@@ -62,7 +63,8 @@ export function TaskChecklist({ task, change }: SectionProps) {
                 variant="ghost"
                 size="icon"
                 aria-label={`Remove ${item.text}`}
-                className="-mr-2 text-muted-foreground"
+                // Quieter than the tickbox: faint on a phone, shown on hover with a mouse.
+                className="-mr-2 text-muted-foreground/50 [&_svg]:size-4 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
                 onClick={() => change(() => deleteChecklistItem(db, item))}
               >
                 <X />

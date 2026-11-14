@@ -800,7 +800,7 @@ function Column({
         {status ? status.name : label}
         <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>
         {status?.is_done && (
-          <span className="ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
+          <span className="relative ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
             <CheckCircle2 className="h-4 w-4" aria-hidden />
             <span className="sr-only">Tasks here count as done</span>
           </span>

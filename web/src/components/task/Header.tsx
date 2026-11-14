@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useToast } from "@/lib/toast";
-import { ArrowRight, Check, Link2, MoreHorizontal, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { type Task } from "@/lib/data";
 import { DialogDescription, DialogHeader, DialogTitle } from "@/components/base/dialog";
@@ -14,6 +14,12 @@ import { type SectionProps } from "@/components/task/save";
 /** The sheet's top: where the task is, its ⋯ menu, its title, and Needs review. */
 export function TaskHeader({ project, task, save, onDelete }: SectionProps & { onDelete: (task: Task) => void }) {
   const toast = useToast();
+  // Scroll the sheet to a section of it, and put focus there for the keyboard.
+  const jump = (id: string) => {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    el?.querySelector<HTMLElement>("input, button, textarea")?.focus({ preventScroll: true });
+  };
   const [title, setTitle] = useState(task.title);
   // Someone else changed it while it's open: show theirs, unless it's being typed in.
   useEffect(() => {
@@ -94,6 +100,27 @@ export function TaskHeader({ project, task, save, onDelete }: SectionProps & { o
         }}
         className="min-h-0 w-full resize-none border-transparent bg-transparent px-0 py-1 [overflow-wrap:anywhere] text-xl font-semibold leading-snug shadow-none [field-sizing:content] focus-visible:border-input focus-visible:bg-background focus-visible:px-3 focus-visible:ring-0 focus-visible:ring-offset-0 md:text-xl"
       />
+      {/* On a phone the checklist and comments are far down: say what's there, and jump to it. */}
+      {(task.checklist.length > 0 || task.comments.length > 0) && (
+        <div className="flex gap-1 text-sm">
+          {task.checklist.length > 0 && (
+            <button type="button" className="flex items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent" onClick={() => jump("task-checklist")}>
+              <ListChecks className="h-4 w-4" aria-hidden />
+              <span className="tabular-nums">
+                {task.checklist.filter((c) => c.done).length} of {task.checklist.length} done
+              </span>
+            </button>
+          )}
+          {task.comments.length > 0 && (
+            <button type="button" className="flex items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent" onClick={() => jump("task-comments")}>
+              <MessageSquare className="h-4 w-4" aria-hidden />
+              <span className="tabular-nums">
+                {task.comments.length} {task.comments.length === 1 ? "comment" : "comments"}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
     </DialogHeader>
 
     {task.needs_review && (

@@ -9,9 +9,12 @@ export function Group({
   title,
   note,
   label,
+  id,
   children,
   className,
 }: {
+  /** To jump to it (like a task's checklist from the top of its sheet). */
+  id?: string;
   title?: ReactNode;
   note?: ReactNode;
   /** Accessible name for the list, when the title isn't plain text. */
@@ -20,7 +23,7 @@ export function Group({
   className?: string;
 }) {
   return (
-    <section aria-label={label ?? (typeof title === "string" ? title : undefined)} className={cn("grid gap-1.5", className)}>
+    <section id={id} aria-label={label ?? (typeof title === "string" ? title : undefined)} className={cn("grid scroll-mt-4 gap-1.5", className)}>
       {title && <h3 className="px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>}
       <div className="divide-y overflow-hidden rounded-xl border bg-card">{children}</div>
       {note && <p className="px-4 text-xs text-muted-foreground">{note}</p>}
