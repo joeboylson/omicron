@@ -109,3 +109,57 @@ Taken by `scripts/shots.sh` (made-up data from dev/seed/seed.js) for the Apple H
 - `phone-7d-this-computer.png`: This computer: setup checks, loops, Claude accounts, teams.
 - `phone-7e-dev-tasks.png`: Dev side on a phone: the Tasks pane.
 - `phone-7f-team-question.png`: A team's question: a task waiting on Joe, its question and where the answer goes.
+
+## Findings (#194)
+
+Ten reviewers, one HIG area each (`/hig-review`), merged into tasks labelled `hig`; each task cites the rules it breaks (ref/hig/). Not filed: dropping the Light/Dark setting (Joe asked for it), and anything adding help text or a tour (Omicron's own rules).
+
+- #196 (high) Things that can't be undone happen with one tap
+- #197 (high) A failed change undoes itself without a word
+- #198 (high) A board or list that fails to load pulses forever
+- #199 (high) Sheets on a phone can't be swiped down to close
+- #200 (high) Closing a task loses a half-written comment
+- #201 (high) Screen readers hear only a card's number and title
+- #202 (high) Many controls are too small to tap on a phone
+- #203 (high) Warning text and some badges are too faint to read
+- #204 (high) Pressing and holding a card can select its text on iPhone, and nothing shows during the hold
+- #205 (high) 'Add a task' covers a column's last card
+- #206 (high) On a phone you can't see which filters are on
+- #207 (high) Setup checks tell people to type terminal commands
+- #208 (high) 'Count as done' doesn't look like a choice
+- #209 (high) Sharing a board takes three places, and a shared board doesn't show who's in it
+- #210 (medium) Undo for moves, not only deletes
+- #211 (medium) Messages with an Undo shouldn't vanish on a timer
+- #212 (medium) Move a task up or down without dragging
+- #213 (medium) Dragging between columns: where it lands, far columns, after the drop
+- #214 (medium) Stronger colors with Increase Contrast
+- #215 (medium) Dark mode: what's in front should be lighter
+- #216 (medium) One name for giving a task: 'Give to'
+- #217 (medium) Remove the explanations under titles and in menus
+- #218 (medium) Every text box gets a visible label
+- #219 (medium) States in words, not one-word codes
+- #220 (medium) The code font only for terminal text
+- #221 (medium) No text under 11px on a phone
+- #222 (medium) A team's question reads like a log line
+- #223 (medium) Confirmations as real alerts
+- #224 (medium) On a phone, no floating popovers
+- #225 (medium) A task opens beside the board on a Mac, full height on a phone
+- #226 (medium) Show when the live connection drops
+- #227 (medium) Settings and New Project: show machine things only to people who use them
+- #228 (medium) Change the board's columns from the board
+- #229 (medium) Desktop board header: a New task button, and fewer controls in one row
+- #230 (medium) Pages share one left edge
+- #231 (medium) On a phone, the column's name shows twice
+- #232 (medium) Phone Dev side: fewer rows above the terminal, and one 'Tasks'
+- #233 (medium) Nothing cut off in the Dev side and sheets
+- #234 (medium) Command menu finds tasks in every Project
+- #235 (medium) The remote control token box hides what's typed
+- #236 (medium) People rows: Projects as text, not a picker each
+- #237 (low) Keyboard and assistive details
+- #238 (low) The phone's View and filters menu: one checkmark style
+- #239 (low) One capitalization style for buttons and menus
+- #240 (low) Colors mean one thing each
+- #241 (low) Small menus and the sign-in wording
+- #242 (low) Small layout tidy-ups
+- #243 (low) Copy buttons say when copying failed
+- #244 (low) Tell someone when they're added to a Project
