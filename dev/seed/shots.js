@@ -103,7 +103,7 @@ async function escape(page) {
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
     await page.getByRole("button", { name: "More for build-box" }).click();
-    await page.getByRole("menuitem", { name: /Switch off/ }).waitFor();
+    await page.getByRole("menuitem", { name: /Switch Off/ }).waitFor();
     await shot("1m-machine-menu");
     await page.getByRole("menuitem", { name: /Remove build-box…/ }).click();
     await page.getByRole("heading", { name: "Remove build-box?" }).waitFor();

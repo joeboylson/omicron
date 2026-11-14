@@ -13,7 +13,6 @@ export function RunRulesSection({ project, change }: SectionProps) {
   return (
     <Group
       title={<label htmlFor="run-rules">Run rules</label>}
-      note="How this Project's Claude sessions work: given to a session with every task, beside its folder's CLAUDE.md. Like: test, take screenshots of page changes, commit and push, report on the task, ask in Waiting on Joe."
     >
       <Row className="py-2">
         <Textarea

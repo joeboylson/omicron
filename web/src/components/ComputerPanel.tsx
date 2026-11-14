@@ -51,7 +51,7 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
         <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           <DialogHeader>
             <DialogTitle className="font-mono">{dev.machine}</DialogTitle>
-            <DialogDescription>Setup, loops, Claude accounts and teams on this computer.</DialogDescription>
+            <DialogDescription className="sr-only">This computer</DialogDescription>
           </DialogHeader>
           {said && (
             <p role="status" className="rounded-md bg-secondary px-3 py-2 text-sm">
@@ -166,9 +166,6 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
                 );
               })}
           </Group>
-          <p className="px-4 text-xs text-muted-foreground">
-            A team starts in its folder: <code className="font-mono">omicron teams start</code> there.
-          </p>
         </DialogContent>
       </Dialog>
     </>

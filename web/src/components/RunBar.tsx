@@ -125,10 +125,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
         <DialogContent className="gap-5 bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           <DialogHeader>
             <DialogTitle>Start a run</DialogTitle>
-            <DialogDescription>
-              A session works down To do on its own, one task at a time, following the Project's run rules, until To do is empty. Between tasks it hands
-              off and starts fresh.
-            </DialogDescription>
+            <DialogDescription className="sr-only">A session works down To do on its own.</DialogDescription>
           </DialogHeader>
           <StartForm
             project={{ ...project, sessions: here }}
@@ -148,9 +145,6 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
               })
             }
           />
-          <p className="text-xs text-muted-foreground">
-            From anywhere but the session's own computer, it only starts if you own that computer and its remote control is on.
-          </p>
         </DialogContent>
       </Dialog>
 
@@ -238,8 +232,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
         <DialogTitle>{active(run) ? "The run" : "The last run"}</DialogTitle>
         <DialogDescription>
           {session ? `In ${session.name} on ${session.machine}` : "Its session has ended"}, since {when(run.started_at)}. {run.done} done.
-          {active(run) && " It stops when To do is empty."}
-          {session && run.started_by !== run.machine_id && ` ${gateWords(session)} Started from elsewhere, it stops when remote control turns off.`}
+          {session && run.started_by !== run.machine_id && ` ${gateWords(session)}`}
         </DialogDescription>
       </DialogHeader>
       <Group title="Now">

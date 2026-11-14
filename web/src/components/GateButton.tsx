@@ -80,7 +80,6 @@ export function GateButton() {
             <Button type="submit">Turn on</Button>
           </form>
         )}
-        <p className="text-xs text-muted-foreground">Only you can hand it work, never anyone else. At most 24 hours at a time.</p>
       </PopoverContent>
     </Popover>
   );

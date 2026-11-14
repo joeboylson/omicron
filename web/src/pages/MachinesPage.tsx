@@ -144,19 +144,13 @@ export function MachinesPage() {
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem className="flex-col items-start gap-0.5" onSelect={() => change(() => switchMachine(db, m.id, !m.active))}>
-                <span className="flex items-center gap-2">
-                  <Power className="h-4 w-4" aria-hidden /> {m.active ? "Switch off" : "Switch on"}
-                </span>
-                <span className="pl-6 text-xs text-muted-foreground">{m.active ? "Its key stops working until it's switched back on." : "Its key works again."}</span>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => change(() => switchMachine(db, m.id, !m.active))}>
+                <Power className="h-4 w-4" aria-hidden /> {m.active ? "Switch Off" : "Switch On"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="flex-col items-start gap-0.5 text-destructive focus:text-destructive" onSelect={() => setRemoving(m)}>
-                <span className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" aria-hidden /> Remove {m.name}…
-                </span>
-                <span className="pl-6 text-xs text-muted-foreground">Its key stops working for good.</span>
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setRemoving(m)}>
+                <Trash2 className="h-4 w-4" aria-hidden /> Remove {m.name}…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -295,7 +289,7 @@ function NewKey({
           <>
             <DialogHeader className="text-left">
               <DialogTitle>New key</DialogTitle>
-              <DialogDescription>A key lets a computer join Omicron, in the Projects you pick. It's shown once, with the one command to run on that computer.</DialogDescription>
+              <DialogDescription className="sr-only">A key for a new computer.</DialogDescription>
             </DialogHeader>
             <form onSubmit={make} className="grid gap-4">
               <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Machine name, like mac-mini" aria-label="Machine name" />

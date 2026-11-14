@@ -6,12 +6,6 @@ export function FoldersSection({ project }: { project: ProjectData }) {
     <Group
       title="Folders"
       label="Folders"
-      note={
-        <>
-          Where its Claude sessions start. A folder is added on its own computer: <code className="font-mono">omicron folders add</code> in
-          it, or by opening a session there.
-        </>
-      }
     >
       {project.folders.length === 0 ? (
         <Row className="text-sm text-muted-foreground">No folders yet.</Row>

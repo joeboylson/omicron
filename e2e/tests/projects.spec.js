@@ -287,7 +287,7 @@ test("a Project's folders are listed in its settings, added only on their comput
   await page.getByRole("dialog").getByText("Claude sessions", { exact: true }).click();
   const folders = page.getByRole("dialog").getByRole("region", { name: "Folders" });
   await expect(folders).toContainText("No folders yet.");
-  await expect(folders).toContainText("omicron folders add");
+  await expect(folders).not.toContainText("omicron folders add");
 
   // Added on the machine: the page shows it live, with nothing to add it from here.
   const dir = require("node:fs").realpathSync(require("node:fs").mkdtempSync("/tmp/of-"));
@@ -614,7 +614,7 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     // Its sheet: what's next, and when it ends.
     await bar.click();
     const sheet = page.getByRole("dialog");
-    await expect(sheet).toContainText("It stops when To do is empty.");
+    await expect(sheet).not.toContainText("It stops when To do is empty.");
     await expect(sheet.getByRole("region", { name: "Up next" })).toContainText("#2 Write the tests");
     await escape(page);
     // Stop now asks first; Keep going keeps it.
@@ -1721,15 +1721,15 @@ test("Machines: make a key for a new machine, see it, change its Projects, switc
   await page.getByRole("option", { name }).click();
   await page.keyboard.press("Escape");
   await expect(its).toHaveText(name);
-  // Switch off and Remove are in its ⋯ menu, each saying what it does.
+  // Switch Off and Remove are in its ⋯ menu, with no lines of help under them (#217).
   await row.getByRole("button", { name: `More for ${box}` }).click();
-  await expect(page.getByRole("menuitem", { name: /Switch off/ })).toContainText("Its key stops working until it's switched back on.");
-  await page.getByRole("menuitem", { name: /Switch off/ }).click();
+  await expect(page.getByRole("menuitem", { name: /Switch Off/ })).toHaveText("Switch Off");
+  await page.getByRole("menuitem", { name: /Switch Off/ }).click();
   await expect(row).toContainText("Switched off");
   // Switched off, the key gets nothing.
   expect(await rest(request, login, "GET", "/rest/v1/projects?select=name")).toEqual([]);
   await row.getByRole("button", { name: `More for ${box}` }).click();
-  await page.getByRole("menuitem", { name: /Switch on/ }).click();
+  await page.getByRole("menuitem", { name: /Switch On/ }).click();
   await expect(row).toContainText(/Waiting to connect|Last seen just now/);
   // Removing asks first; Cancel keeps it.
   await row.getByRole("button", { name: `More for ${box}` }).click();

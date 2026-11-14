@@ -62,7 +62,7 @@ export function ProjectSettings({
       >
         <DialogHeader className="text-left">
           <DialogTitle>Project settings</DialogTitle>
-          <DialogDescription>Changes save as you make them.</DialogDescription>
+          <DialogDescription className="sr-only">Project settings</DialogDescription>
         </DialogHeader>
 
         <NameSection {...section} />
