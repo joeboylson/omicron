@@ -443,7 +443,10 @@ test("the Dev view's session buttons: open in a folder, hand off, end", async ({
 
     // End: asks once more, then quits Claude.
     await page.getByRole("button", { name: "End", exact: true }).click();
-    await page.getByRole("button", { name: `End ${folderName}: quit Claude` }).click();
+    const ask = page.getByRole("alertdialog", { name: `End ${folderName}?` });
+    // Nothing is chosen for you: Return alone doesn't end it (#196).
+    await expect(ask.getByRole("button", { name: "End Session" })).not.toBeFocused();
+    await ask.getByRole("button", { name: "End Session" }).click();
     await expect(page.getByRole("status").filter({ hasText: "quit" })).toHaveText(`Asked ${folderName} to quit.`);
   } finally {
     try {
@@ -1331,6 +1334,8 @@ test("a session's loop shows on the page, live, and can be stopped there", async
 
     // Stopped from the page: gone from the sheet and the strip, and the command agrees.
     await page.getByRole("button", { name: "Stop loop" }).click();
+    // It asks first: stopping is for good (#196).
+    await page.getByRole("alertdialog", { name: "Stop this loop?" }).getByRole("button", { name: "Stop Loop" }).click();
     await expect(loop).toHaveCount(0);
     await escape(page);
     await expect(sessions.getByLabel("looping")).toHaveCount(0);
@@ -1522,6 +1527,13 @@ test("labels are renamed and removed in Project settings", async ({ page, reques
 
   await page.getByRole("button", { name: "Project settings" }).click();
   await page.getByRole("button", { name: "Remove label groceries" }).click();
+  // On a task, so it asks first; Cancel keeps it (#196).
+  const ask = page.getByRole("alertdialog", { name: "Delete “groceries”?" });
+  await expect(ask).toContainText("It comes off 1 task.");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Label name: groceries")).toBeVisible();
+  await page.getByRole("button", { name: "Remove label groceries" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete Label" }).click();
   await expect(page.getByRole("list", { name: "Labels" })).toHaveCount(0);
   await escape(page);
   await expect(card).not.toContainText("groceries");

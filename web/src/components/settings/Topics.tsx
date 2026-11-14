@@ -1,3 +1,4 @@
+import { Confirm } from "@/components/base/confirm";
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useApp } from "@/lib/app";
@@ -56,6 +57,7 @@ function TopicRow({
   count: number;
   change: (work: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [asking, setAsking] = useState(false);
   const { db } = useApp();
   const [name, setName] = useState(topic.name);
   useEffect(() => setName(topic.name), [topic.name]);
@@ -82,11 +84,20 @@ function TopicRow({
           size="icon"
           className="-mr-2 shrink-0 text-destructive hover:text-destructive"
           aria-label={`Remove topic ${topic.name}`}
-          onClick={() => change(() => deleteTopic(db, topic))}
+          // On tasks: it would come off them all, so ask first.
+          onClick={() => (count > 0 ? setAsking(true) : change(() => deleteTopic(db, topic)))}
         >
           <Trash2 />
         </Button>
       </Row>
+      <Confirm
+        open={asking}
+        onOpenChange={setAsking}
+        title={`Delete “${topic.name}”?`}
+        sentence={`It comes off ${count === 1 ? "1 task" : `${count} tasks`}.`}
+        action="Delete Topic"
+        onConfirm={() => change(() => deleteTopic(db, topic))}
+      />
     </li>
   );
 }

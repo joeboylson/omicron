@@ -1,3 +1,4 @@
+import { Confirm } from "@/components/base/confirm";
 import { useEffect, useState } from "react";
 import { AlertCircle, Copy, Repeat, Terminal } from "lucide-react";
 import {
@@ -264,6 +265,8 @@ function inAbout(iso: string, now: number): string {
 /** A session's running loop: what it types in, how often, until when, and Stop. */
 function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => void }) {
   const { db, act } = useApp();
+  // Stopping is for good (the page can't start one), so it asks first.
+  const [asking, setAsking] = useState(false);
   const now = useNow();
   const end =
     loop.times !== null
@@ -295,11 +298,19 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
         <Button
           variant="ghost"
           className="-ml-3 text-destructive hover:text-destructive"
-          onClick={() => act(() => stopLoop(db, loop)).then((ok) => ok && onChanged())}
+          onClick={() => setAsking(true)}
         >
           Stop loop
         </Button>
       </Row>
+      <Confirm
+        open={asking}
+        onOpenChange={setAsking}
+        title="Stop this loop?"
+        sentence="It won't type anything more. It can only be started again in the session."
+        action="Stop Loop"
+        onConfirm={() => act(() => stopLoop(db, loop)).then((ok) => ok && onChanged())}
+      />
     </Group>
   );
 }

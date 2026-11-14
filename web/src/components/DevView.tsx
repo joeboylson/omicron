@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Confirm } from "@/components/base/confirm";
 import { Folder as FolderIcon, LogOut, Plus, Terminal as TerminalIcon, Undo2, X } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
@@ -223,20 +224,14 @@ export function DevView({
             >
               <Undo2 className="h-3.5 w-3.5" aria-hidden /> Hand off
             </button>
-            {ending === active ? (
-              <button type="button" className="flex items-center gap-1 rounded bg-red-600/80 px-2 py-1 text-white" onClick={() => end(active)}>
-                <LogOut className="h-3.5 w-3.5" aria-hidden /> End {active}: quit Claude
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded px-2 py-1 text-destructive hover:bg-destructive/10"
-                onClick={() => setEnding(active)}
-                title="Quit Claude, which ends the session"
-              >
-                <LogOut className="h-3.5 w-3.5" aria-hidden /> End
-              </button>
-            )}
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded px-2 py-1 text-destructive hover:bg-destructive/10"
+              onClick={() => setEnding(active)}
+              title="Quit Claude, which ends the session"
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden /> End
+            </button>
           </div>
         )}
         {said && (
@@ -250,6 +245,14 @@ export function DevView({
         {tabs.map((name) => (
           <Terminal key={name} session={name} active={active === name} />
         ))}
+        <Confirm
+          open={ending !== null}
+          onOpenChange={(o) => !o && setEnding(null)}
+          title={`End ${ending ?? ""}?`}
+          sentence="Claude quits in it, which ends the session."
+          action="End Session"
+          onConfirm={() => ending && end(ending)}
+        />
       </section>
 
       <aside aria-label="Tasks by column" className={cn("overflow-y-auto bg-background p-3 text-sm", pane !== "tasks" && "max-lg:hidden")}>
