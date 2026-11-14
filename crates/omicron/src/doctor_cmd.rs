@@ -88,7 +88,7 @@ fn checks() -> Vec<(&'static str, Check)> {
     // The daemon: running now, and coming back after a restart.
     out.push(("Daemon", match &machine {
         None => Check::Skip("needs the machine first".into()),
-        Some((s, key, name)) => match super::awake_machines(s, key) {
+        Some((s, key, name)) => match crate::machines_cmd::awake_machines(s, key) {
             Ok(awake) if awake.iter().any(|a| a == name) => Check::Ok(format!("running ({name} is awake)")),
             Ok(_) => Check::Fix("not running. Run `omicron daemon start-at-login` (or `omicron daemon` in a terminal).".into()),
             Err(e) => Check::Fix(format!("couldn't tell if it's running: {e:#}")),
