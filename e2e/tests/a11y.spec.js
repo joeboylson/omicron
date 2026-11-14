@@ -55,7 +55,7 @@ for (const scheme of ["light", "dark"]) {
     await page.getByRole("button", { name: "Project settings" }).click();
     await check(page, "Project settings");
     await page.keyboard.press("Escape");
-    await page.getByRole("radio", { name: "Status and topic" }).click();
+    await page.getByRole("radio", { name: "Topic", exact: true }).click();
     await check(page, "Board by topic");
 
     await page.keyboard.press("Control+k");

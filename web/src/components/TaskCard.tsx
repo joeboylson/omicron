@@ -3,15 +3,27 @@ import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { tint, type Color } from "@/lib/colors";
+import { statusColor, tint, type Color } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
 
-export function TaskCard({ project, task, onOpen }: { project: ProjectData; task: Task; onOpen: () => void }) {
+export function TaskCard({
+  project,
+  task,
+  showStatus = false,
+  onOpen,
+}: {
+  project: ProjectData;
+  task: Task;
+  /** In columns that aren't statuses (by topic), say which status it's in. */
+  showStatus?: boolean;
+  onOpen: () => void;
+}) {
   const labels = project.labels.filter((l) => task.labelIds.includes(l.id));
   const assignee = project.members.find((m) => m.id === task.assignee_person_id);
   const session = project.sessions.find((c) => c.id === task.assignee_session_id);
   const ticked = task.checklist.filter((c) => c.done).length;
-  const done = project.statuses.find((s) => s.id === task.status_id)?.is_done ?? false;
+  const status = project.statuses.find((s) => s.id === task.status_id);
+  const done = status?.is_done ?? false;
   // Given to a session that has since ended, and not given out again.
   const ended = !assignee && !session && !done && task.ended_session ? task.ended_session : null;
   return (
@@ -28,8 +40,14 @@ export function TaskCard({ project, task, onOpen }: { project: ProjectData; task
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
         <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
       </div>
-      {(task.needs_review || labels.length > 0) && (
+      {((showStatus && status) || task.needs_review || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
+          {showStatus && status && (
+            <Badge variant="outline" className="gap-1.5 font-normal">
+              <ColorDot color={statusColor(status)} />
+              {status.name}
+            </Badge>
+          )}
           {task.needs_review && <NeedsReview />}
           {labels.map((l) => (
             <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />

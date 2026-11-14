@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpDown, ChevronDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -77,7 +77,6 @@ export function ProjectPage({ id }: { id: string }) {
   const [viewInAddress, setViewInAddress] = useAddressValue("view");
   const view = dev && viewInAddress === "dev" ? "dev" : "tasks";
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
-  const [collapsed, setCollapsed] = useStored<string[]>(`omicron.collapsedTopics.${id}`, []);
   const [dragging, setDragging] = useState<Task | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   // Bumped to open "Add a task" in the first column (c, or the menu).
@@ -253,27 +252,37 @@ export function ProjectPage({ id }: { id: string }) {
     if (overTask?.id === moved.id) return;
     const col = parseColumn(overTask ? String(e.over.data.current?.column) : String(e.over.id));
     if (!col) return;
-    const inColumn = (t: Task) => t.status_id === col.statusId && (col.topicId === undefined || t.topic_id === col.topicId);
-    const others = inOrder(project.tasks.filter((t) => inColumn(t) && t.id !== moved.id));
-    const column = inOrder(project.tasks.filter(inColumn));
-    let at = overTask ? others.findIndex((t) => t.id === overTask.id) : others.length;
-    // Dragging down within the same column lands after the card it's over.
-    if (overTask && inColumn(moved) && column.indexOf(moved) < column.indexOf(overTask)) at += 1;
-    if (at < 0) at = others.length;
-    // Dropped where it already is (by its place in the column, so ties count).
-    if (inColumn(moved) && column.indexOf(moved) === at) return;
-    const { position, renumber } = placeAt(others, at);
-    const topicId = col.topicId === undefined ? moved.topic_id : col.topicId;
+    // A status column sets the status; a topic column, the topic.
+    const statusId = "statusId" in col ? col.statusId : moved.status_id;
+    const topicId = "topicId" in col ? col.topicId : moved.topic_id;
+    const sameColumn = "statusId" in col ? moved.status_id === statusId : moved.topic_id === topicId;
+    // Places count within a status. In a topic column, a card lands next to
+    // the one it's over only when that one has the same status.
+    const anchor = overTask && overTask.status_id === statusId ? overTask : undefined;
+    let position = moved.position;
+    let renumber: { id: string; position: number }[] = [];
+    if ("statusId" in col || anchor) {
+      const inStatus = (t: Task) => t.status_id === statusId;
+      const others = inOrder(project.tasks.filter((t) => inStatus(t) && t.id !== moved.id));
+      const column = inOrder(project.tasks.filter(inStatus));
+      let at = anchor ? others.findIndex((t) => t.id === anchor.id) : others.length;
+      // Dragging down within the same column lands after the card it's over.
+      if (anchor && inStatus(moved) && column.indexOf(moved) < column.indexOf(anchor)) at += 1;
+      if (at < 0) at = others.length;
+      // Dropped where it already is (by its place in the column, so ties count).
+      if (sameColumn && inStatus(moved) && column.indexOf(moved) === at) return;
+      ({ position, renumber } = placeAt(others, at));
+    } else if (sameColumn) return;
     const moves = new Map(renumber.map((r) => [r.id, r.position]));
     setProject({
       ...project,
       tasks: project.tasks.map((t) =>
-        t.id === moved.id ? { ...t, status_id: col.statusId, topic_id: topicId, position } : moves.has(t.id) ? { ...t, position: moves.get(t.id)! } : t,
+        t.id === moved.id ? { ...t, status_id: statusId, topic_id: topicId, position } : moves.has(t.id) ? { ...t, position: moves.get(t.id)! } : t,
       ),
     });
     act(async () => {
       if (renumber.length) await renumberTasks(db, renumber);
-      await moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position });
+      await moveTask(db, moved, { statusId, topicId, position });
     }).then(reload);
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
@@ -335,9 +344,8 @@ export function ProjectPage({ id }: { id: string }) {
     );
   }
   return (
-    // By status, the board fills the screen and each column scrolls on its
-    // own; by topic, the page scrolls through the rows.
-    <main className={cn("flex min-h-0 flex-col", groupBy === "status" ? "h-dvh flex-none" : "flex-1")}>
+    // The board fills the screen and each column scrolls on its own.
+    <main className="flex h-dvh min-h-0 flex-none flex-col">
       {nav}
       <Sessions project={project} onChanged={reload} />
       <RunBar project={project} onChanged={reload} />
@@ -404,7 +412,7 @@ export function ProjectPage({ id }: { id: string }) {
         </div>
         <span className="hidden flex-1 sm:block" />
         <span id="group-by" className="text-sm text-muted-foreground">
-          Group by
+          Columns
         </span>
         <div role="radiogroup" aria-labelledby="group-by" className="inline-flex rounded-lg bg-muted p-0.5">
           {(["status", "topic"] as const).map((g) => (
@@ -419,7 +427,7 @@ export function ProjectPage({ id }: { id: string }) {
                 groupBy === g ? "bg-background font-medium shadow-sm" : "text-foreground/75 hover:text-foreground",
               )}
             >
-              {g === "status" ? "Status" : "Status and topic"}
+              {g === "status" ? "Status" : "Topic"}
             </button>
           ))}
         </div>
@@ -439,35 +447,43 @@ export function ProjectPage({ id }: { id: string }) {
           },
         }}
       >
-      {groupBy === "status" ? (
-        <div className={cn(boardRow, "min-h-0")}>
-          {project.statuses.map((s, i) => (
-            <Column
-              key={s.id}
-              addSignal={i === 0 ? addSignal : 0}
-              project={project}
-              status={s}
-              topicId={null}
-              grouped={false}
-              label={s.name}
-              tasks={project.tasks.filter((t) => t.status_id === s.id && matches(t))}
-              onOpen={(t) => setOpenTask(t.number)}
-              onAdded={added}
-            />
-          ))}
-        </div>
-      ) : (
-        <Lanes
-          project={project}
-          matches={matches}
-          addSignal={addSignal}
-          collapsed={collapsed}
-          onToggle={(key) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key])}
-          onOpen={(t) => setOpenTask(t.number)}
-          onAdded={added}
-          onSettings={() => setSettingsOpen(true)}
-        />
+      {groupBy === "topic" && project.topics.length === 0 && (
+        <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
+          No topics yet. Topics are another way to sort tasks into columns, like “Joe's to-do”.{" "}
+          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setSettingsOpen(true)}>
+            Add topics in Project settings
+          </Button>
+        </p>
       )}
+      <div className={cn(boardRow, "min-h-0")}>
+        {groupBy === "status"
+          ? project.statuses.map((s, i) => (
+              <Column
+                key={s.id}
+                addSignal={i === 0 ? addSignal : 0}
+                project={project}
+                status={s}
+                topicId={null}
+                label={s.name}
+                tasks={project.tasks.filter((t) => t.status_id === s.id && matches(t))}
+                onOpen={(t) => setOpenTask(t.number)}
+                onAdded={added}
+              />
+            ))
+          : topicColumns(project).map((c, i) => (
+              <Column
+                key={c.key}
+                addSignal={i === 0 ? addSignal : 0}
+                project={project}
+                status={null}
+                topicId={c.topicId}
+                label={c.name}
+                tasks={byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t)))}
+                onOpen={(t) => setOpenTask(t.number)}
+                onAdded={added}
+              />
+            ))}
+      </div>
         <DragOverlay>
           {dragging && (
             <div className="rotate-1 cursor-grabbing shadow-xl">
@@ -532,88 +548,23 @@ function useStored<T>(key: string, initial: T): [T, (v: T) => void] {
   return [value, set];
 }
 
-const NO_TOPIC = "none";
+/** Columns by topic: one per topic, and "No topic" when any task has none. */
+function topicColumns(project: ProjectData): { key: string; topicId: string | null; name: string }[] {
+  const cols = project.topics.map((t) => ({ key: t.id, topicId: t.id as string | null, name: t.name }));
+  if (cols.length === 0 || project.tasks.some((t) => !t.topic_id)) cols.push({ key: "none", topicId: null, name: "No topic" });
+  return cols;
+}
 
-/** One row per topic (and one for tasks without a topic), each with the status columns. */
-function Lanes({
-  project,
-  matches,
-  addSignal,
-  collapsed,
-  onToggle,
-  onOpen,
-  onAdded,
-  onSettings,
-}: {
-  project: ProjectData;
-  /** Search and filters: which tasks show. */
-  matches: (t: Task) => boolean;
-  addSignal: number;
-  collapsed: string[];
-  onToggle: (key: string) => void;
-  onOpen: (t: Task) => void;
-  onAdded: (number?: number, open?: boolean) => void;
-  onSettings: () => void;
-}) {
-  const lanes = project.topics.map((t) => ({ key: t.id, topicId: t.id as string | null, name: t.name }));
-  if (lanes.length === 0 || project.tasks.some((t) => !t.topic_id)) lanes.push({ key: NO_TOPIC, topicId: null, name: "No topic" });
-  return (
-    <div className="flex flex-1 flex-col gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-      {project.topics.length === 0 && (
-        <p className="px-[max(1rem,env(safe-area-inset-left))] text-sm text-muted-foreground">
-          No topics yet. Topics group tasks into rows, like “Joe's to-do”.{" "}
-          <Button variant="link" className="h-auto p-0 text-sm" onClick={onSettings}>
-            Add topics in Project settings
-          </Button>
-        </p>
-      )}
-      {lanes.map((lane) => {
-        const tasks = project.tasks.filter((t) => t.topic_id === lane.topicId && matches(t));
-        const open = !collapsed.includes(lane.key);
-        return (
-          <section key={lane.key} aria-label={lane.name} className="flex flex-col">
-            <h2 className="px-[max(0.5rem,env(safe-area-inset-left))]">
-              <Button
-                variant="ghost"
-                aria-expanded={open}
-                onClick={() => onToggle(lane.key)}
-                className="gap-1.5 px-2 text-[17px] font-semibold sm:text-base"
-              >
-                <ChevronDown className={cn("transition-transform motion-reduce:transition-none", !open && "-rotate-90")} aria-hidden />
-                {lane.name}
-                <span className="font-mono text-sm font-normal text-muted-foreground">{tasks.length}</span>
-              </Button>
-            </h2>
-            {open && (
-              <div className={cn(boardRow, "pb-1")}>
-                {project.statuses.map((s, i) => (
-                  <Column
-                    addSignal={i === 0 && lane === lanes[0] ? addSignal : 0}
-                    key={s.id}
-                    project={project}
-                    status={s}
-                    topicId={lane.topicId}
-                    grouped
-                    label={`${s.name} in ${lane.name}`}
-                    tasks={tasks.filter((t) => t.status_id === s.id)}
-                    onOpen={onOpen}
-                    onAdded={onAdded}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
+/** A topic column's tasks: by their status's place, then their own. */
+function byStatus(project: ProjectData, tasks: Task[]): Task[] {
+  const at = new Map(project.statuses.map((s, i) => [s.id, i]));
+  return [...tasks].sort((a, b) => (at.get(a.status_id) ?? 0) - (at.get(b.status_id) ?? 0) || a.position - b.position || a.number - b.number);
 }
 
 function Column({
   project,
   status,
   topicId,
-  grouped,
   addSignal,
   label,
   tasks,
@@ -621,10 +572,9 @@ function Column({
   onAdded,
 }: {
   project: ProjectData;
-  status: Status;
+  /** A status column, or (null) a topic column, by `topicId`. */
+  status: Status | null;
   topicId: string | null;
-  /** In topic rows: dropping here also sets the topic. */
-  grouped: boolean;
   /** Bumped to open "Add a task" here. */
   addSignal: number;
   /** What the column is called to screen readers (and tests). */
@@ -645,7 +595,9 @@ function Column({
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [title, adding]);
-  const column = columnId(status.id, topicId, grouped);
+  const column = status ? `col|s|${status.id}` : `col|t|${topicId ?? "none"}`;
+  // New tasks go into this status; in a topic column, the first status.
+  const addTo = status ?? project.statuses[0];
   useEffect(() => {
     if (addSignal > 0) setAdding(true);
   }, [addSignal]);
@@ -661,7 +613,7 @@ function Column({
     setSaving(true);
     let number: number | undefined;
     const ok = await act(async () => {
-      number = await addTask(db, project, status.id, t, topicId);
+      number = await addTask(db, project, addTo.id, t, topicId);
     });
     setSaving(false);
     if (ok) {
@@ -677,14 +629,15 @@ function Column({
       className="flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 sm:w-72"
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
-        <ColorDot color={statusColor(status)} />
-        {status.name}
+        {status && <ColorDot color={statusColor(status)} />}
+        {status ? status.name : label}
         <span className="font-mono font-normal text-muted-foreground">{tasks.length}</span>
-        {status.is_done && (
+        {status?.is_done && (
           <Badge variant="outline" className="ml-auto font-normal">
             Done
           </Badge>
         )}
+        {status && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-8", !status.is_done && "ml-auto")} aria-label="More for this column">
@@ -716,6 +669,7 @@ function Column({
             </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
       </h2>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <ul
@@ -724,7 +678,7 @@ function Column({
           className={cn("-m-0.5 flex min-h-2 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-lg p-0.5 transition-colors", isOver && "bg-accent/60")}
         >
           {tasks.map((t) => (
-            <SortableTask key={t.id} project={project} task={t} column={column} onOpen={() => onOpen(t)} />
+            <SortableTask key={t.id} project={project} task={t} column={column} showStatus={!status} onOpen={() => onOpen(t)} />
           ))}
         </ul>
       </SortableContext>
@@ -765,19 +719,29 @@ function Column({
   );
 }
 
-/** A column's id: its status, and in topic rows its topic ("none" for no topic). */
-function columnId(statusId: string, topicId: string | null, grouped: boolean): string {
-  return grouped ? `col|${statusId}|${topicId ?? "none"}` : `col|${statusId}`;
-}
-
-function parseColumn(id: string): { statusId: string; topicId?: string | null } | null {
-  const [kind, statusId, topic] = id.split("|");
-  if (kind !== "col" || !statusId) return null;
-  return topic === undefined ? { statusId } : { statusId, topicId: topic === "none" ? null : topic };
+/** What a column id names: a status (`col|s|<id>`) or a topic (`col|t|<id or none>`). */
+function parseColumn(id: string): { statusId: string } | { topicId: string | null } | null {
+  const [kind, by, which] = id.split("|");
+  if (kind !== "col" || !which) return null;
+  if (by === "s") return { statusId: which };
+  if (by === "t") return { topicId: which === "none" ? null : which };
+  return null;
 }
 
 /** A card that can be dragged to another place or column. */
-function SortableTask({ project, task, column, onOpen }: { project: ProjectData; task: Task; column: string; onOpen: () => void }) {
+function SortableTask({
+  project,
+  task,
+  column,
+  showStatus,
+  onOpen,
+}: {
+  project: ProjectData;
+  task: Task;
+  column: string;
+  showStatus: boolean;
+  onOpen: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { column } });
   return (
     <li
@@ -790,7 +754,7 @@ function SortableTask({ project, task, column, onOpen }: { project: ProjectData;
       role="listitem"
       tabIndex={-1}
     >
-      <TaskCard project={project} task={task} onOpen={onOpen} />
+      <TaskCard project={project} task={task} showStatus={showStatus} onOpen={onOpen} />
     </li>
   );
 }

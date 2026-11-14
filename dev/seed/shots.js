@@ -111,7 +111,7 @@ async function escape(page) {
     await shot("2f-column-menu");
     await page.keyboard.press("Escape");
     await escape(page);
-    await page.getByRole("radio", { name: "Status and topic" }).click();
+    await page.getByRole("radio", { name: "Topic", exact: true }).click();
     await page.getByRole("region", { name: "Claire's to-do", exact: true }).waitFor();
     await shot("2b-house-topics", true);
     await page.getByRole("radio", { name: "Status", exact: true }).click();
@@ -192,8 +192,8 @@ async function escape(page) {
     await page.getByRole("link", { name: /^Lisbon trip/ }).click();
     await page.getByRole("button", { name: /Day trip to Sintra/ }).waitFor();
     await shot("6-lisbon");
-    // Grouped by topic with none yet; a task that isn't there; a Project that isn't.
-    await page.getByRole("radio", { name: "Status and topic" }).click();
+    // Columns by topic with none yet; a task that isn't there; a Project that isn't.
+    await page.getByRole("radio", { name: "Topic", exact: true }).click();
     await page.getByText(/No topics yet/).waitFor();
     await shot("6b-no-topics");
     await page.getByRole("radio", { name: "Status", exact: true }).click();

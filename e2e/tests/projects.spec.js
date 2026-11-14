@@ -790,16 +790,18 @@ test("a sheet opened and closed doesn't stop the Project page's live updates", a
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("topics group the board into rows, as well as by status", async ({ page, request }) => {
+test("the board's columns are statuses or topics", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("House");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Water the plants");
 
-  // Grouped by topic with no topics yet: one row, and how to add some.
-  await page.getByRole("radio", { name: "Status and topic" }).click();
-  await expect(page.getByText("No topics yet.")).toBeVisible();
-  await expect(page.getByRole("region", { name: "No topic", exact: true })).toContainText("Water the plants");
+  // By topic with no topics yet: one "No topic" column, and how to add some.
+  await page.getByRole("radio", { name: "Topic", exact: true }).click();
+  await expect(page.getByText(/No topics yet/)).toBeVisible();
+  await expect(column(page, "No topic")).toContainText("Water the plants");
+  // No columns by status at the same time.
+  await expect(column(page, "To do")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Add topics in Project settings" }).click();
   for (const topic of ["Joe's to-do", "Claire's to-do"]) {
@@ -809,38 +811,47 @@ test("topics group the board into rows, as well as by status", async ({ page, re
   }
   await escape(page);
 
-  // A row per topic, in order, then the tasks without one.
-  const lanes = page.locator("main > div > section");
-  await expect(lanes).toHaveCount(3);
-  await expect(lanes.nth(0)).toHaveAttribute("aria-label", "Joe's to-do");
-  await expect(lanes.nth(2)).toHaveAttribute("aria-label", "No topic");
+  // A column per topic, in order, then the tasks without one; no rows.
+  const cols = page.locator("main section[aria-label]");
+  await expect(cols).toHaveCount(3);
+  await expect(cols.nth(0)).toHaveAttribute("aria-label", "Joe's to-do");
+  await expect(cols.nth(1)).toHaveAttribute("aria-label", "Claire's to-do");
+  await expect(cols.nth(2)).toHaveAttribute("aria-label", "No topic");
+  // Each card says which status it's in.
+  await expect(column(page, "No topic").getByRole("button", { name: /Water the plants/ })).toContainText("To do");
 
-  // A task added in a row gets that row's topic.
-  const joe = page.getByRole("region", { name: "Joe's to-do", exact: true });
-  await joe.getByRole("region", { name: "To do in Joe's to-do" }).getByRole("button", { name: "Add a task" }).click();
-  await page.getByLabel("New task in To do in Joe's to-do").fill("Fix the gate");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
-  await expect(joe).toContainText("Fix the gate");
+  // A task added in a topic column gets that topic, in the first status.
+  await addTaskIn(page, "Joe's to-do", "Fix the gate");
+  await page.getByRole("button", { name: "Cancel" }).click();
 
-  // Moved to another topic from the task.
-  await page.getByRole("button", { name: /Water the plants/ }).click();
-  await pick(page, "Topic", "Claire's to-do");
-  await escape(page);
-  await expect(page.getByRole("region", { name: "Claire's to-do", exact: true })).toContainText("Water the plants");
-  // Nothing left without a topic: that row goes.
-  await expect(page.getByRole("region", { name: "No topic", exact: true })).toHaveCount(0);
+  // Dragged to another topic: the topic changes, the status doesn't.
+  const card = (t) => page.getByRole("button", { name: new RegExp(`^#\\d+ ${t}`) });
+  const said = page.locator('[id^="DndLiveRegion"]');
+  const a = await card("Water the plants").boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
+  await expect(said).toContainText(/Picked up|was moved over/);
+  const b = await column(page, "Claire's to-do").boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 });
+  await page.waitForTimeout(150);
+  const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
+  await page.mouse.up();
+  await expect(said).toContainText("dropped");
+  await saved;
+  await expect(column(page, "Claire's to-do")).toContainText("Water the plants");
+  // Nothing left without a topic: that column goes.
+  await expect(column(page, "No topic")).toHaveCount(0);
 
-  // Rows fold away.
-  await joe.getByRole("button", { name: /Joe's to-do/ }).click();
-  await expect(joe.getByRole("region")).toHaveCount(0);
-  await expect(joe.getByRole("button", { name: /Joe's to-do/ })).toHaveAttribute("aria-expanded", "false");
-
-  // The choice is kept on reload; back to status only.
+  // The choice is kept on reload; back to statuses, where nothing moved.
   await page.reload();
-  await expect(page.getByRole("radio", { name: "Status and topic" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Topic", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(column(page, "Claire's to-do")).toContainText("Water the plants");
   await page.getByRole("radio", { name: "Status", exact: true }).click();
   await expect(column(page, "To do")).toContainText("Fix the gate");
   await expect(column(page, "To do")).toContainText("Water the plants");
+  await page.getByRole("button", { name: /Water the plants/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("Claire's to-do");
 });
 
 test("comments hold images: picked, dropped, or posted by a session, and open full size", async ({ page, request }) => {
