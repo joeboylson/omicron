@@ -582,11 +582,8 @@ fn daemon() -> Result<()> {
     windows.save()?;
     let board = omicron::board::Board { supabase: supabase.clone(), session: first.clone() };
     let hosted = omicron::host::hosted()?;
-    for s in board.sessions(None)? {
-        let in_a_window = windows.windows.values().any(|w| w.session_id.as_deref() == Some(s.id.as_str()));
-        if s.machine_id == key.machine_id.to_string() && !hosted.contains(&s.name) && !in_a_window {
-            board.end_session(&s.id)?;
-        }
+    for id in omicron::windows::stopped_sessions(&board.sessions(None)?, &key.machine_id.to_string(), &hosted, &windows) {
+        board.end_session(&id)?;
     }
     // Switching Claude accounts on their own: Anthropic's usage numbers can
     // only be read by asking, so this checks every 2 minutes while it's on.

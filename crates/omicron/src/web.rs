@@ -52,6 +52,13 @@ fn content_type(path: &str) -> &'static str {
     }
 }
 
+/// An answer to a request: status, content type, body.
+type Reply = (u16, &'static str, Vec<u8>);
+
+fn json_reply(code: u16, v: serde_json::Value) -> Reply {
+    (code, "application/json", v.to_string().into_bytes())
+}
+
 /// A visit from this computer's owner, as `owner_visit` checked it.
 #[derive(Clone)]
 struct OwnerVisit {
@@ -375,155 +382,19 @@ impl WebMachine {
             let _ = request.as_reader().take(4096).read_to_end(&mut body);
         }
         let input: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
-        match what {
-            "" => {}
-            "gate" => {
-                if !visit.local {
-                    return answer(403, json!({ "error": "a computer's gate is opened only on it" }));
-                }
-                if input["close"] == true {
-                    crate::gate::close()?;
-                } else {
-                    let until = input["until"].as_str().unwrap_or("");
-                    if let Err(e) = crate::gate::open(until) {
-                        return answer(400, json!({ "error": format!("{e:#}") }));
-                    }
-                }
-            }
-            "computer" => {
-                // The rest of the Dev view: setup checks, Claude accounts
-                // and teams on this computer, as the `omicron` command says.
-                let lines = |args: &[&str]| -> Vec<String> {
-                    let (_, out, err) = run_omicron(args);
-                    let text = if out.trim().is_empty() { err } else { out };
-                    text.lines().map(str::trim_end).filter(|l| !l.is_empty()).map(String::from).collect()
-                };
-                return answer(
-                    200,
-                    json!({
-                        "setup": lines(&["doctor"]),
-                        "accounts": lines(&["accounts", "list"]),
-                        "teams": lines(&["teams", "list", "--as-machine"]),
-                    }),
-                );
-            }
-            "run" => {
-                // A few actions on this computer, as the `omicron` command
-                // does them, as this machine. Nothing else can be run.
-                let s = |k: &str| input[k].as_str().unwrap_or("").trim().to_string();
-                let args: Vec<String> = match s("action").as_str() {
-                    "accounts-use" => vec!["accounts".into(), "use".into(), s("name")],
-                    "teams-stop" => vec!["teams".into(), "stop".into(), s("team"), "--as-machine".into()],
-                    "loops-start" => {
-                        let mut a = vec!["loops".into(), "start".into(), s("prompt"), "--every".into(), s("every")];
-                        a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
-                        if !s("times").is_empty() {
-                            a.extend(["--times".into(), s("times")]);
-                        }
-                        a
-                    }
-                    "runs-start" => {
-                        let mut a = vec!["runs".into(), "start".into(), s("project"), "--session".into(), s("session")];
-                        if !s("label").is_empty() {
-                            a.extend(["--label".into(), s("label")]);
-                        }
-                        a
-                    }
-                    "loops-stop" => vec!["loops".into(), "stop".into(), "--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()],
-                    _ => return answer(400, json!({ "error": "that can't be run from the page" })),
-                };
-                if args.iter().any(|a| a.is_empty()) {
-                    return answer(400, json!({ "error": "something it needs is missing" }));
-                }
-                let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-                let (ok, out, err) = run_omicron(&refs);
-                return if ok { answer(200, json!({ "said": out.trim() })) } else { answer(409, json!({ "error": err.trim() })) };
-            }
-            "open" => {
-                // A new session in one of this computer's folders, in the
-                // background (the page opens its terminal).
-                let folder = input["folder_id"].as_str().unwrap_or("");
-                let me = visit.board.session.user.id.to_string();
-                let Some(f) = visit.board.folders(None)?.into_iter().find(|f| f.id == folder && f.machine_id == me) else {
-                    return answer(404, json!({ "error": "that folder isn't on this computer" }));
-                };
-                let mut cmd = std::process::Command::new(std::env::current_exe()?);
-                cmd.args(["open", "--project", &f.project, "--folder", &f.path]);
-                if let Some(n) = input["name"].as_str().map(str::trim).filter(|n| !n.is_empty()) {
-                    cmd.arg(n);
-                }
-                let o = cmd.stdin(std::process::Stdio::null()).output()?;
-                let said = String::from_utf8_lossy(&o.stdout).to_string();
-                if !o.status.success() {
-                    return answer(409, json!({ "error": String::from_utf8_lossy(&o.stderr).trim().to_string() }));
-                }
-                let name = said.split(" is running.").next().unwrap_or("").trim().to_string();
-                return answer(200, json!({ "session": name }));
-            }
-            "end" | "handoff" => {
-                let name = input["session"].as_str().unwrap_or("").to_string();
-                if !crate::host::hosted()?.iter().any(|h| *h == name) {
-                    return answer(404, json!({ "error": format!("{name} isn't running on this computer") }));
-                }
-                if what == "end" {
-                    // Quits Claude, which ends the session.
-                    crate::host::say(&name, "/exit")?;
-                    return answer(200, json!({ "said": format!("Asked {name} to quit.") }));
-                }
-                let me = visit.board.session.user.id.to_string();
-                let Some(s) = visit.board.sessions(None)?.into_iter().find(|s| s.name == name && s.machine_id == me) else {
-                    return answer(404, json!({ "error": format!("{name} isn't a session here") }));
-                };
-                hand_off(self.supabase.clone(), visit.board.clone(), s)?;
-                return answer(
-                    202,
-                    json!({ "said": format!("Asked {name} for its handoff note. Once it's saved, the conversation is cleared and the fresh one starts from the note.") }),
-                );
-            }
-            "give" => {
-                // A task dragged onto one of this computer's sessions in the
-                // Dev view: given by this computer, so the session takes it
-                // with its gate closed (handed over on its own computer).
-                let (task, session) = (input["task_id"].as_str().unwrap_or(""), input["session_id"].as_str().unwrap_or(""));
-                if task.parse::<uuid::Uuid>().is_err() || session.parse::<uuid::Uuid>().is_err() {
-                    return answer(400, json!({ "error": "which task, to which session?" }));
-                }
-                let seen = self.supabase.request_as(&visit.login, "GET", &format!("/rest/v1/tasks?id=eq.{task}&select=id"), None)?;
-                if seen.as_array().is_none_or(|a| a.is_empty()) {
-                    return answer(404, json!({ "error": "no such task" }));
-                }
-                let me = visit.board.session.user.id.to_string();
-                let s = self.supabase.request_as(&visit.board.session, "GET", &format!("/rest/v1/sessions?id=eq.{session}&select=machine_id"), None)?;
-                if s.get(0).and_then(|r| r["machine_id"].as_str()) != Some(me.as_str()) {
-                    return answer(409, json!({ "error": "that session isn't on this computer" }));
-                }
-                self.supabase.request_as(
-                    &visit.board.session,
-                    "PATCH",
-                    &format!("/rest/v1/tasks?id=eq.{task}"),
-                    Some(json!({ "assignee_session_id": session, "assignee_person_id": null, "given_by": null })),
-                )?;
-            }
-            t if t.starts_with("term/") => {
-                // POST /api/dev/term/<session>/input {data} or /size {rows, cols}.
-                let (name, what) = t.trim_start_matches("term/").rsplit_once('/').unwrap_or(("", ""));
-                if !crate::host::hosted()?.iter().any(|h| h == name) {
-                    return answer(404, json!({ "error": format!("{name} isn't running on this computer") }));
-                }
-                let frame = match what {
-                    "input" => crate::host::frame(crate::host::INPUT, input["data"].as_str().unwrap_or("").as_bytes()),
-                    "size" => {
-                        let (rows, cols) = (input["rows"].as_u64().unwrap_or(24) as u16, input["cols"].as_u64().unwrap_or(80) as u16);
-                        let mut d = rows.to_be_bytes().to_vec();
-                        d.extend(cols.to_be_bytes());
-                        crate::host::frame(crate::host::RESIZE, &d)
-                    }
-                    _ => return answer(404, json!({ "error": "not found" })),
-                };
-                type_into(name, &frame)?;
-                return Ok((204, "application/json", Vec::new()));
-            }
-            _ => return answer(404, json!({ "error": "not found" })),
+        let reply = match what {
+            "" => None,
+            "gate" => self.dev_gate(&visit, &input, what)?,
+            "computer" => self.dev_computer(&visit, &input, what)?,
+            "run" => self.dev_run(&visit, &input, what)?,
+            "open" => self.dev_open(&visit, &input, what)?,
+            "end" | "handoff" => self.dev_end_or_hand_off(&visit, &input, what)?,
+            "give" => self.dev_give(&visit, &input, what)?,
+            t if t.starts_with("term/") => self.dev_terminal(&visit, &input, what)?,
+            _ => Some(json_reply(404, json!({ "error": "not found" }))),
+        };
+        if let Some(r) = reply {
+            return Ok(r);
         }
         let me = visit.board.session.user.id.to_string();
         let name = visit.board.machines()?.into_iter().find(|m| m.id == me).map(|m| m.name).unwrap_or_default();
@@ -591,6 +462,168 @@ impl WebMachine {
             out.flush()
         };
         let _ = pass();
+    }
+
+    /// Open or close this computer's gate: only from the computer itself. `None`: answer with the Dev status.
+    fn dev_gate(&self, visit: &OwnerVisit, input: &serde_json::Value, _what: &str) -> Result<Option<Reply>> {
+        if !visit.local {
+            return Ok(Some(json_reply(403, json!({ "error": "a computer's gate is opened only on it" }))));
+        }
+        if input["close"] == true {
+            crate::gate::close()?;
+        } else {
+            let until = input["until"].as_str().unwrap_or("");
+            if let Err(e) = crate::gate::open(until) {
+                return Ok(Some(json_reply(400, json!({ "error": format!("{e:#}") }))));
+            }
+        }
+        Ok(None)
+    }
+
+    /// This computer's setup checks, Claude accounts and teams. `None`: answer with the Dev status.
+    fn dev_computer(&self, _visit: &OwnerVisit, _input: &serde_json::Value, _what: &str) -> Result<Option<Reply>> {
+        // The rest of the Dev view: setup checks, Claude accounts
+        // and teams on this computer, as the `omicron` command says.
+        let lines = |args: &[&str]| -> Vec<String> {
+            let (_, out, err) = run_omicron(args);
+            let text = if out.trim().is_empty() { err } else { out };
+            text.lines().map(str::trim_end).filter(|l| !l.is_empty()).map(String::from).collect()
+        };
+        return Ok(Some(json_reply(
+            200,
+            json!({
+                "setup": lines(&["doctor"]),
+                "accounts": lines(&["accounts", "list"]),
+                "teams": lines(&["teams", "list", "--as-machine"]),
+            }),
+        )));
+    }
+
+    /// One of a fixed few actions on this computer. `None`: answer with the Dev status.
+    fn dev_run(&self, _visit: &OwnerVisit, input: &serde_json::Value, _what: &str) -> Result<Option<Reply>> {
+        // A few actions on this computer, as the `omicron` command
+        // does them, as this machine. Nothing else can be run.
+        let s = |k: &str| input[k].as_str().unwrap_or("").trim().to_string();
+        let args: Vec<String> = match s("action").as_str() {
+            "accounts-use" => vec!["accounts".into(), "use".into(), s("name")],
+            "teams-stop" => vec!["teams".into(), "stop".into(), s("team"), "--as-machine".into()],
+            "loops-start" => {
+                let mut a = vec!["loops".into(), "start".into(), s("prompt"), "--every".into(), s("every")];
+                a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
+                if !s("times").is_empty() {
+                    a.extend(["--times".into(), s("times")]);
+                }
+                a
+            }
+            "runs-start" => {
+                let mut a = vec!["runs".into(), "start".into(), s("project"), "--session".into(), s("session")];
+                if !s("label").is_empty() {
+                    a.extend(["--label".into(), s("label")]);
+                }
+                a
+            }
+            "loops-stop" => vec!["loops".into(), "stop".into(), "--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()],
+            _ => return Ok(Some(json_reply(400, json!({ "error": "that can't be run from the page" })))),
+        };
+        if args.iter().any(|a| a.is_empty()) {
+            return Ok(Some(json_reply(400, json!({ "error": "something it needs is missing" }))));
+        }
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let (ok, out, err) = run_omicron(&refs);
+        return Ok(Some(if ok { json_reply(200, json!({ "said": out.trim() })) } else { json_reply(409, json!({ "error": err.trim() })) }));
+    }
+
+    /// A new session in one of this computer's folders. `None`: answer with the Dev status.
+    fn dev_open(&self, visit: &OwnerVisit, input: &serde_json::Value, _what: &str) -> Result<Option<Reply>> {
+        // A new session in one of this computer's folders, in the
+        // background (the page opens its terminal).
+        let folder = input["folder_id"].as_str().unwrap_or("");
+        let me = visit.board.session.user.id.to_string();
+        let Some(f) = visit.board.folders(None)?.into_iter().find(|f| f.id == folder && f.machine_id == me) else {
+            return Ok(Some(json_reply(404, json!({ "error": "that folder isn't on this computer" }))));
+        };
+        let mut cmd = std::process::Command::new(std::env::current_exe()?);
+        cmd.args(["open", "--project", &f.project, "--folder", &f.path]);
+        if let Some(n) = input["name"].as_str().map(str::trim).filter(|n| !n.is_empty()) {
+            cmd.arg(n);
+        }
+        let o = cmd.stdin(std::process::Stdio::null()).output()?;
+        let said = String::from_utf8_lossy(&o.stdout).to_string();
+        if !o.status.success() {
+            return Ok(Some(json_reply(409, json!({ "error": String::from_utf8_lossy(&o.stderr).trim().to_string() }))));
+        }
+        let name = said.split(" is running.").next().unwrap_or("").trim().to_string();
+        return Ok(Some(json_reply(200, json!({ "session": name }))));
+    }
+
+    /// End a session, or hand it off to a fresh conversation. `None`: answer with the Dev status.
+    fn dev_end_or_hand_off(&self, visit: &OwnerVisit, input: &serde_json::Value, what: &str) -> Result<Option<Reply>> {
+        let name = input["session"].as_str().unwrap_or("").to_string();
+        if !crate::host::hosted()?.iter().any(|h| *h == name) {
+            return Ok(Some(json_reply(404, json!({ "error": format!("{name} isn't running on this computer") }))));
+        }
+        if what == "end" {
+            // Quits Claude, which ends the session.
+            crate::host::say(&name, "/exit")?;
+            return Ok(Some(json_reply(200, json!({ "said": format!("Asked {name} to quit.") }))));
+        }
+        let me = visit.board.session.user.id.to_string();
+        let Some(s) = visit.board.sessions(None)?.into_iter().find(|s| s.name == name && s.machine_id == me) else {
+            return Ok(Some(json_reply(404, json!({ "error": format!("{name} isn't a session here") }))));
+        };
+        hand_off(self.supabase.clone(), visit.board.clone(), s)?;
+        return Ok(Some(json_reply(
+            202,
+            json!({ "said": format!("Asked {name} for its handoff note. Once it's saved, the conversation is cleared and the fresh one starts from the note.") }),
+        )));
+    }
+
+    /// Give a task to one of this computer's sessions, as this computer. `None`: answer with the Dev status.
+    fn dev_give(&self, visit: &OwnerVisit, input: &serde_json::Value, _what: &str) -> Result<Option<Reply>> {
+        // A task dragged onto one of this computer's sessions in the
+        // Dev view: given by this computer, so the session takes it
+        // with its gate closed (handed over on its own computer).
+        let (task, session) = (input["task_id"].as_str().unwrap_or(""), input["session_id"].as_str().unwrap_or(""));
+        if task.parse::<uuid::Uuid>().is_err() || session.parse::<uuid::Uuid>().is_err() {
+            return Ok(Some(json_reply(400, json!({ "error": "which task, to which session?" }))));
+        }
+        let seen = self.supabase.request_as(&visit.login, "GET", &format!("/rest/v1/tasks?id=eq.{task}&select=id"), None)?;
+        if seen.as_array().is_none_or(|a| a.is_empty()) {
+            return Ok(Some(json_reply(404, json!({ "error": "no such task" }))));
+        }
+        let me = visit.board.session.user.id.to_string();
+        let s = self.supabase.request_as(&visit.board.session, "GET", &format!("/rest/v1/sessions?id=eq.{session}&select=machine_id"), None)?;
+        if s.get(0).and_then(|r| r["machine_id"].as_str()) != Some(me.as_str()) {
+            return Ok(Some(json_reply(409, json!({ "error": "that session isn't on this computer" }))));
+        }
+        self.supabase.request_as(
+            &visit.board.session,
+            "PATCH",
+            &format!("/rest/v1/tasks?id=eq.{task}"),
+            Some(json!({ "assignee_session_id": session, "assignee_person_id": null, "given_by": null })),
+        )?;
+        Ok(None)
+    }
+
+    /// Keys or a new size for a session's terminal. `None`: answer with the Dev status.
+    fn dev_terminal(&self, _visit: &OwnerVisit, input: &serde_json::Value, what: &str) -> Result<Option<Reply>> {
+        // POST /api/dev/term/<session>/input {data} or /size {rows, cols}.
+        let (name, what) = what.trim_start_matches("term/").rsplit_once('/').unwrap_or(("", ""));
+        if !crate::host::hosted()?.iter().any(|h| h == name) {
+            return Ok(Some(json_reply(404, json!({ "error": format!("{name} isn't running on this computer") }))));
+        }
+        let frame = match what {
+            "input" => crate::host::frame(crate::host::INPUT, input["data"].as_str().unwrap_or("").as_bytes()),
+            "size" => {
+                let (rows, cols) = (input["rows"].as_u64().unwrap_or(24) as u16, input["cols"].as_u64().unwrap_or(80) as u16);
+                let mut d = rows.to_be_bytes().to_vec();
+                d.extend(cols.to_be_bytes());
+                crate::host::frame(crate::host::RESIZE, &d)
+            }
+            _ => return Ok(Some(json_reply(404, json!({ "error": "not found" })))),
+        };
+        type_into(name, &frame)?;
+        return Ok(Some((204, "application/json", Vec::new())));
     }
 
     fn dispatch_api(&self, request: &mut Request) -> Result<(u16, &'static str, Vec<u8>)> {

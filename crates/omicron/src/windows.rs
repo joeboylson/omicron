@@ -70,6 +70,18 @@ impl Windows {
     }
 }
 
+/// This machine's sessions that aren't running here any more: not hosted,
+/// and not in any Claude window Omicron knows of. Their ids.
+pub fn stopped_sessions(sessions: &[crate::board::SessionRecord], machine_id: &str, hosted: &[String], windows: &Windows) -> Vec<String> {
+    sessions
+        .iter()
+        .filter(|s| s.machine_id == machine_id)
+        .filter(|s| !hosted.contains(&s.name))
+        .filter(|s| !windows.windows.values().any(|w| w.session_id.as_deref() == Some(s.id.as_str())))
+        .map(|s| s.id.clone())
+        .collect()
+}
+
 /// The Claude window this process runs in: `OMICRON_CLAUDE_PID` if set
 /// (tests), else the nearest ancestor that is a Claude Code process, else
 /// the nearest ancestor `known` lists.
@@ -168,7 +180,27 @@ pub fn alive(pid: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_claude;
+    use super::{is_claude, stopped_sessions, Window, Windows};
+
+    #[test]
+    fn a_session_is_stopped_only_when_neither_hosted_nor_in_a_window() {
+        let session = |id: &str, name: &str, machine: &str| crate::board::SessionRecord {
+            id: id.into(),
+            project_id: "p".into(),
+            name: name.into(),
+            project: "P".into(),
+            machine_id: machine.into(),
+            machine: "m".into(),
+            state: "open".into(),
+            claude_session_id: None,
+            folder: "/w".into(),
+            gone_why: None,
+        };
+        let all = [session("1", "hosted", "me"), session("2", "windowed", "me"), session("3", "gone", "me"), session("4", "gone", "other")];
+        let mut windows = Windows::default();
+        windows.windows.insert(42, Window { claude_session_id: "c".into(), folder: "/w".into(), session_id: Some("2".into()), clearing: false });
+        assert_eq!(stopped_sessions(&all, "me", &["hosted".to_string()], &windows), vec!["3".to_string()]);
+    }
 
     #[test]
     fn spots_claude_code_processes() {

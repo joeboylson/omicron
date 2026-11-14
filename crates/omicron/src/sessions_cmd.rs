@@ -309,6 +309,75 @@ pub const REPORT_RULES: &str = "\nHow to write the report: short and plain, like
 /// The most words a report (a comment marked for review) may have.
 pub const REPORT_WORDS: usize = 500;
 
+/// What a window starting or ending means, worked out from the hook's
+/// input and the windows Omicron knows (which it updates), before anything
+/// is said to Supabase.
+#[derive(Debug, Default, PartialEq)]
+struct WindowChange {
+    /// Changes to sessions' records.
+    updates: Vec<(String, Value)>,
+    /// Sessions whose window closed: they end.
+    ended: Vec<String>,
+    /// A session whose waiting handoff note is cancelled (its window closed).
+    cancel_handoff: Option<String>,
+    /// A session whose waiting handoff note goes to its new conversation (/clear).
+    handoff: Option<String>,
+    /// What to tell a chat that just linked itself.
+    linked: Option<String>,
+    /// A session no longer busy (its window closed).
+    free: Option<String>,
+}
+
+/// Work out a SessionStart or SessionEnd. `link` makes a session of a chat
+/// that starts in one of this machine's folders: (its id, what to tell it).
+fn plan_window_change(
+    event: &Hook,
+    input: &Value,
+    claude_id: &str,
+    pid: u32,
+    windows: &mut Windows,
+    link: impl FnOnce(&str, &str) -> Option<(String, String)>,
+) -> WindowChange {
+    let mut change = WindowChange::default();
+    match event {
+        Hook::SessionStart => {
+            let folder = input["cwd"].as_str().unwrap_or("").to_string();
+            // A /clear in a tracked window, or `claude --resume` of a
+            // tracked conversation in a new one; or, failing those, a chat
+            // starting in one of this machine's folders.
+            let known = windows.windows.get(&pid).and_then(|w| w.session_id.clone()).or_else(|| windows.links.get(claude_id).cloned());
+            let session_id = known.or_else(|| {
+                link(claude_id, &folder).map(|(id, said)| {
+                    change.linked = Some(said);
+                    id
+                })
+            });
+            if let Some(id) = &session_id {
+                windows.links.insert(claude_id.to_string(), id.clone());
+                change.updates.push((id.clone(), json!({ "claude_session_id": claude_id, "folder": folder, "state": "open" })));
+                if input["source"] == "clear" {
+                    change.handoff = Some(id.clone());
+                }
+            }
+            windows.windows.insert(pid, Window { claude_session_id: claude_id.to_string(), folder, session_id, clearing: false });
+        }
+        Hook::SessionEnd => {
+            if input["reason"] == "clear" {
+                // The window stays; SessionStart follows with the new id.
+                if let Some(w) = windows.windows.get_mut(&pid) {
+                    w.clearing = true;
+                }
+            } else if let Some(id) = windows.windows.remove(&pid).and_then(|w| w.session_id) {
+                change.free = Some(id.clone());
+                change.cancel_handoff = Some(id.clone());
+                change.ended.push(id);
+            }
+        }
+        Hook::Stop | Hook::Prompt => {}
+    }
+    change
+}
+
 /// Returns what to print for Claude Code, if anything.
 fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
     let input: Value = serde_json::from_str(input).context("the hook's input isn't JSON")?;
@@ -347,70 +416,20 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         omicron::windows::set_busy(&id, false)?;
         return Ok(None);
     }
-    let mut pick_up = None;
-    // Said to a chat that just linked itself.
-    let mut linked = None;
-    // After /clear, the window's waiting handoff note goes to the new
-    // conversation. When the window closes, it's cancelled.
-    let mut handoff = None;
-    let mut cancel_handoff = None;
-    // What to tell Supabase, if anything. Untracked windows never call it.
-    // Sessions whose window ended (closed, or crashed unseen) end too.
-    let mut updates: Vec<(String, Value)> = Vec::new();
-    let mut ended: Vec<String> = gone;
-    match event {
-        Hook::SessionStart => {
-            let folder = input["cwd"].as_str().unwrap_or("").to_string();
-            // A /clear in a tracked window, or `claude --resume` of a
-            // tracked conversation in a new one.
-            let session_id = windows
-                .windows
-                .get(&pid)
-                .and_then(|w| w.session_id.clone())
-                .or_else(|| windows.links.get(&claude_id).cloned());
-            // A Claude started in one of this machine's folders links itself.
-            let session_id = match session_id {
-                Some(id) => Some(id),
-                None => match link_in_folder(&claude_id, &folder) {
-                    Ok(Some((id, said))) => {
-                        linked = Some(said);
-                        Some(id)
-                    }
-                    Ok(None) => None,
-                    Err(e) => {
-                        eprintln!("omicron: couldn't link this chat: {e:#}");
-                        None
-                    }
-                },
-            };
-            if let Some(id) = &session_id {
-                windows.links.insert(claude_id.clone(), id.clone());
-                updates.push((id.clone(), json!({ "claude_session_id": claude_id, "folder": folder, "state": "open" })));
-                pick_up = Some(id.clone());
-                if input["source"] == "clear" {
-                    handoff = Some(id.clone());
-                }
-            }
-            windows.windows.insert(pid, Window { claude_session_id: claude_id, folder, session_id, clearing: false });
+    let plan = plan_window_change(&event, &input, &claude_id, pid, &mut windows, |claude_id, folder| match link_in_folder(claude_id, folder) {
+        Ok(linked) => linked,
+        Err(e) => {
+            eprintln!("omicron: couldn't link this chat: {e:#}");
+            None
         }
-        Hook::Stop | Hook::Prompt => unreachable!(),
-        Hook::SessionEnd => {
-            if input["reason"] == "clear" {
-                // The window stays; SessionStart follows with the new id.
-                if let Some(w) = windows.windows.get_mut(&pid) {
-                    w.clearing = true;
-                }
-            } else if let Some(w) = windows.windows.remove(&pid) {
-                if let Some(id) = w.session_id {
-                    omicron::windows::set_busy(&id, false)?;
-                    cancel_handoff = Some(id.clone());
-                    ended.push(id);
-                }
-            }
-        }
+    });
+    if let Some(id) = &plan.free {
+        omicron::windows::set_busy(id, false)?;
     }
+    let (updates, mut ended, cancel_handoff, handoff, linked) = (plan.updates, plan.ended, plan.cancel_handoff, plan.handoff, plan.linked);
+    ended.splice(0..0, gone);
     windows.save()?;
-    if updates.is_empty() && ended.is_empty() && pick_up.is_none() {
+    if updates.is_empty() && ended.is_empty() && handoff.is_none() && linked.is_none() {
         return Ok(None);
     }
     let board = sign_in(true)?;
@@ -435,7 +454,6 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
             ));
         }
     }
-    let _ = pick_up;
     if context.is_empty() {
         return Ok(None);
     }
@@ -447,6 +465,35 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_starting_clearing_and_closing_is_worked_out_before_supabase() {
+        let mut w = Windows::default();
+        w.links.insert("conv-1".into(), "s1".into());
+        let no_link = |_: &str, _: &str| -> Option<(String, String)> { panic!("a known chat isn't linked again") };
+        // A tracked conversation starts: its record says so.
+        let c = plan_window_change(&Hook::SessionStart, &json!({ "cwd": "/w", "source": "startup" }), "conv-1", 7, &mut w, no_link);
+        assert_eq!(c.updates, vec![("s1".to_string(), json!({ "claude_session_id": "conv-1", "folder": "/w", "state": "open" }))]);
+        assert_eq!(c.handoff, None);
+        // /clear: the same window, a new conversation that gets the note.
+        let c = plan_window_change(&Hook::SessionEnd, &json!({ "reason": "clear" }), "conv-1", 7, &mut w, no_link);
+        assert_eq!(c, WindowChange::default());
+        assert!(w.windows[&7].clearing);
+        let c = plan_window_change(&Hook::SessionStart, &json!({ "cwd": "/w", "source": "clear" }), "conv-2", 7, &mut w, no_link);
+        assert_eq!(c.handoff.as_deref(), Some("s1"));
+        assert_eq!(w.links.get("conv-2").map(String::as_str), Some("s1"));
+        // Closed: it ends, free, and its waiting note is cancelled.
+        let c = plan_window_change(&Hook::SessionEnd, &json!({ "reason": "prompt_input_exit" }), "conv-2", 7, &mut w, no_link);
+        assert_eq!((c.ended, c.free.as_deref(), c.cancel_handoff.as_deref()), (vec!["s1".to_string()], Some("s1"), Some("s1")));
+        assert!(w.windows.is_empty());
+        // An unknown chat: linked if its folder is one of the machine's, told so.
+        let c = plan_window_change(&Hook::SessionStart, &json!({ "cwd": "/app" }), "conv-3", 8, &mut w, |_, f| (f == "/app").then(|| ("s2".to_string(), "linked".to_string())));
+        assert_eq!((c.linked.as_deref(), c.updates.len()), (Some("linked"), 1));
+        // Anywhere else: nothing to say to Supabase.
+        let c = plan_window_change(&Hook::SessionStart, &json!({ "cwd": "/tmp" }), "conv-4", 9, &mut w, |_, _| None);
+        assert_eq!(c, WindowChange::default());
+        assert_eq!(w.windows[&9].session_id, None);
+    }
 
     #[test]
     fn hooks_are_added_once_and_other_settings_are_kept() {
