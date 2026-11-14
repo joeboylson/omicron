@@ -1,6 +1,6 @@
 // Unit tests for the page's plain logic: run with `npm test` (vitest).
 import { describe, expect, test } from "vitest";
-import { positionBetween } from "./data";
+import { positionBetween } from "./tasks";
 
 describe("positionBetween", () => {
   test("between two cards: halfway", () => {

@@ -1,0 +1,175 @@
+// Tasks: adding, changing, moving and organizing them, their labels,
+// checklists, comments and images, and team jobs they link to.
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { must } from "../omicron";
+import type { ChecklistItem, Task, JobLink, ProjectData, Who } from "./types";
+import { after } from "./shared";
+
+export async function addTask(
+  db: SupabaseClient,
+  project: ProjectData,
+  statusId: string,
+  title: string,
+  topicId: string | null = null,
+  who?: Who,
+  dueOn?: string | null,
+) {
+  const position = after(project.tasks.filter((t) => t.status_id === statusId));
+  const given = { ...(who ? { assignee_person_id: who.person, assignee_session_id: who.session } : {}), ...(dueOn ? { due_on: dueOn } : {}) };
+  const row = must(
+    await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId, ...given }).select("number").single(),
+  ) as { number: number };
+  return row.number;
+}
+
+export type TaskChange = Partial<
+  Pick<
+    Task,
+    "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id" | "assignee_session_id" | "topic_id"
+  >
+>;
+
+export async function updateTask(db: SupabaseClient, project: ProjectData, task: Task, change: TaskChange) {
+  const row: TaskChange & { position?: number } = { ...change };
+  // A task moved to another status goes to the bottom of it.
+  if (change.status_id && change.status_id !== task.status_id) {
+    row.position = after(project.tasks.filter((t) => t.status_id === change.status_id));
+  }
+  must(await db.from("tasks").update(row).eq("id", task.id));
+}
+
+export async function deleteTask(db: SupabaseClient, task: Task) {
+  must(await db.from("tasks").delete().eq("id", task.id));
+}
+
+export async function setLabel(db: SupabaseClient, task: Task, labelId: string, on: boolean) {
+  if (on) {
+    must(await db.from("task_labels").upsert({ task_id: task.id, label_id: labelId }, { ignoreDuplicates: true }));
+  } else {
+    must(await db.from("task_labels").delete().eq("task_id", task.id).eq("label_id", labelId));
+  }
+}
+
+export async function addChecklistItem(db: SupabaseClient, task: Task, text: string) {
+  must(await db.from("checklist_items").insert({ task_id: task.id, text, position: after(task.checklist) }));
+}
+
+export async function tickChecklistItem(db: SupabaseClient, item: ChecklistItem, done: boolean) {
+  must(await db.from("checklist_items").update({ done }).eq("id", item.id));
+}
+
+export async function deleteChecklistItem(db: SupabaseClient, item: ChecklistItem) {
+  must(await db.from("checklist_items").delete().eq("id", item.id));
+}
+
+export async function addComment(db: SupabaseClient, task: Task, body: string, images: string[] = []) {
+  must(await db.from("comments").insert({ task_id: task.id, body, images }));
+}
+
+/** Where comments' images are kept: private, filed under each Project. */
+export const IMAGES_BUCKET = "comment-images";
+
+export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+export const IMAGE_LIMIT = 10 * 1024 * 1024;
+
+export const IMAGES_PER_COMMENT = 10;
+
+/** Why a file can't be added as an image, or null if it can. */
+export function imageProblem(file: File): string | null {
+  if (!IMAGE_TYPES.includes(file.type)) return `${file.name} isn't a PNG, JPEG, GIF or WebP image.`;
+  if (file.size > IMAGE_LIMIT) return `${file.name} is over 10 MB.`;
+  return null;
+}
+
+/** Upload an image for a comment in this Project. Returns its path. */
+export async function uploadImage(db: SupabaseClient, projectId: string, file: File): Promise<string> {
+  const name = (file.name || "image").replace(/[^A-Za-z0-9._-]/g, "_");
+  const path = `${projectId}/${randomId()}-${name}`;
+  const { error } = await db.storage.from(IMAGES_BUCKET).upload(path, file, { contentType: file.type });
+  if (error) throw new Error(error.message);
+  return path;
+}
+
+/** 32 random hex digits. (Not crypto.randomUUID: that only works on https pages.) */
+export function randomId(): string {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The name an image was added with. */
+export function imageName(path: string): string {
+  const file = path.split("/").pop() ?? path;
+  const dash = file.indexOf("-");
+  return dash < 0 ? file : file.slice(dash + 1);
+}
+
+/** Links to show images by (they work for an hour). */
+export async function imageLinks(db: SupabaseClient, paths: string[]): Promise<Record<string, string>> {
+  if (paths.length === 0) return {};
+  const { data, error } = await db.storage.from(IMAGES_BUCKET).createSignedUrls(paths, 3600);
+  if (error) throw new Error(error.message);
+  return Object.fromEntries((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
+}
+
+/** A position between two neighbours (either may be missing). */
+export function positionBetween(before: number | undefined, after: number | undefined): number {
+  if (before === undefined && after === undefined) return 0;
+  if (before === undefined) return after! - 1;
+  if (after === undefined) return before + 1;
+  return (before + after) / 2;
+}
+
+/** Move a task: to a status (and topic, when given) at a position. */
+/**
+ * Put a column's tasks in order once (#56): by number, by name, or by who
+ * they're given to (people and sessions by name, then nobody). Tasks moved
+ * in later stay where they're put.
+ */
+export async function organize(db: SupabaseClient, project: ProjectData, tasks: Task[], by: "number" | "name" | "assignee") {
+  const who = (t: Task) =>
+    project.members.find((m) => m.id === t.assignee_person_id)?.display_name ?? project.sessions.find((s) => s.id === t.assignee_session_id)?.name ?? null;
+  const sorted = [...tasks].sort((a, b) => {
+    if (by === "name") return a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }) || a.number - b.number;
+    if (by === "assignee") {
+      const [x, y] = [who(a), who(b)];
+      if (x !== y) return x === null ? 1 : y === null ? -1 : x.localeCompare(y);
+    }
+    return a.number - b.number;
+  });
+  // Only the ones whose place changes.
+  const changed = sorted.map((t, i) => ({ t, position: i + 1 })).filter(({ t, position }) => t.position !== position);
+  await Promise.all(changed.map(({ t, position }) => db.from("tasks").update({ position }).eq("id", t.id).then(must)));
+}
+
+/** Give tasks new positions (a tied column numbered before a drop). */
+export async function renumberTasks(db: SupabaseClient, rows: { id: string; position: number }[]) {
+  await Promise.all(rows.map((r) => db.from("tasks").update({ position: r.position }).eq("id", r.id).then(must)));
+}
+
+export async function moveTask(
+  db: SupabaseClient,
+  task: Task,
+  to: { statusId: string; topicId?: string | null; position: number; who?: Who },
+) {
+  const row: Record<string, unknown> = { status_id: to.statusId, position: to.position };
+  if (to.topicId !== undefined) row.topic_id = to.topicId;
+  if (to.who) Object.assign(row, { assignee_person_id: to.who.person, assignee_session_id: to.who.session });
+  must(await db.from("tasks").update(row).eq("id", task.id));
+}
+
+/** Every team job in a Project, to link tasks to. */
+export async function listProjectJobs(db: SupabaseClient, projectId: string): Promise<JobLink[]> {
+  const rows = must(
+    await db.from("jobs").select("id,number,title,state,step,teams(name)").eq("project_id", projectId).order("number"),
+  ) as any[];
+  return rows.map((j) => ({ id: j.id, team: j.teams?.name ?? "", number: j.number, title: j.title, state: j.state, step: j.step }));
+}
+
+export async function linkJob(db: SupabaseClient, task: Task, jobId: string) {
+  must(await db.from("task_jobs").insert({ task_id: task.id, job_id: jobId }));
+}
+
+export async function unlinkJob(db: SupabaseClient, task: Task, jobId: string) {
+  must(await db.from("task_jobs").delete().eq("task_id", task.id).eq("job_id", jobId));
+}
