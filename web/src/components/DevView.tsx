@@ -7,6 +7,7 @@ import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn } from "@/lib/utils";
 import { GripVertical } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDate, initials, LabelBadge, NeedsReview } from "@/components/TaskCard";
 import type { Color } from "@/lib/colors";
 
@@ -108,28 +109,32 @@ export function DevView({
       <aside aria-label="Folders and sessions" className={cn("overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
         <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Folders on {dev.machine}</h2>
         {folders.length === 0 ? (
-          <p className="px-1 pb-3 text-muted-foreground">
-            None yet: <code className="font-mono text-xs">omicron folders add</code> in one.
-          </p>
+          <p className="px-1 pb-1 text-muted-foreground">No folders yet.</p>
         ) : (
           <ul className="pb-3">
             {folders.map((f) => (
               <li key={f.id} className="group flex items-center gap-2 rounded px-1 py-1" title={f.path}>
                 <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">{f.path}</span>
+                {/* Its name first; the rest of the path dimmed, cut from the start (like VS Code's Recent). */}
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                  <span className="shrink-0 font-medium">{folderParts(f.path).name}</span>
+                  <span className="min-w-0 truncate text-xs text-muted-foreground [direction:rtl]">
+                    <bdi>{folderParts(f.path).parent}</bdi>
+                  </span>
+                </span>
                 <button
                   type="button"
-                  className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs text-link hover:bg-muted"
                   aria-label={`Open a new session in ${f.path}`}
-                  title="Open a new session here"
                   onClick={() => openIn(f.id)}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-3.5 w-3.5" aria-hidden /> New session
                 </button>
               </li>
             ))}
           </ul>
         )}
+        <AddFolder />
         <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Sessions</h2>
         {here.length === 0 ? (
           <p className="px-1 text-muted-foreground">No sessions running here.</p>
@@ -355,4 +360,40 @@ function sessionDoing(project: ProjectData, s: ProjectData["sessions"][number], 
   const on = mine.find((t) => t.picked_up_at);
   const what = on ? `on #${on.number}` : mine.length ? `${mine.length} waiting` : "free";
   return folder ? `${folder} · ${what}` : what;
+}
+
+/** A folder's last part, and the path it's in. */
+function folderParts(path: string): { name: string; parent: string } {
+  const clean = path.replace(/\/+$/, "");
+  const at = clean.lastIndexOf("/");
+  return at < 0 ? { name: clean, parent: "" } : { name: clean.slice(at + 1), parent: clean.slice(0, at) || "/" };
+}
+
+/** Add a folder: done on this computer, in the folder, with a command to copy. */
+function AddFolder() {
+  const [copied, setCopied] = useState(false);
+  const command = "omicron folders add";
+  return (
+    <Popover onOpenChange={() => setCopied(false)}>
+      <PopoverTrigger asChild>
+        <button type="button" className="mb-3 flex items-center gap-1 rounded px-1 py-1 text-xs text-link hover:bg-muted">
+          <Plus className="h-3.5 w-3.5" aria-hidden /> Add a folder
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="grid w-72 gap-2 text-sm">
+        <p>In the folder, on this computer, run:</p>
+        <div className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1">
+          <code className="flex-1 font-mono text-xs">{command}</code>
+          <button
+            type="button"
+            className="rounded px-2 py-1 text-xs hover:bg-background"
+            onClick={() => navigator.clipboard?.writeText(command).then(() => setCopied(true), () => {})}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+        <p className="text-muted-foreground">Opening a Claude session in a folder adds it too.</p>
+      </PopoverContent>
+    </Popover>
+  );
 }

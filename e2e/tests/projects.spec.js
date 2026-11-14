@@ -413,6 +413,11 @@ test("the Dev view's session buttons: open in a folder, hand off, end", async ({
   await page.goto(`${page.url().split("?")[0]}?view=dev`);
 
   // Open: a new session in the folder, named after it, in a new tab.
+  // The folder by its name, the rest dimmed; New session says what it does (#178).
+  await expect(page.getByRole("complementary", { name: "Folders and sessions" })).toContainText(dir.replace(/\/+$/, "").split("/").pop());
+  await page.getByRole("button", { name: "Add a folder" }).click();
+  await expect(page.getByText("omicron folders add", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: `Open a new session in ${dir}` }).click();
   await expect(page.getByRole("tab", { name: folderName })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("list", { name: "Sessions" })).toContainText(folderName);
