@@ -218,6 +218,34 @@ for (const [kind, device] of [
       await page.keyboard.press("Escape");
       await expect(sheet).toHaveCount(0);
 
+      // On a phone, pulling the sheet down by its top closes it; a short
+      // pull springs back (#199).
+      if (kind === "phone") {
+        const pull = async (dy) => {
+          const g = await sheet.getByTestId("sheet-grabber").boundingBox();
+          const x = g.x + g.width / 2;
+          const y = g.y + g.height / 2;
+          await page.mouse.move(x, y);
+          await page.mouse.down();
+          for (let i = 1; i <= 10; i++) await page.mouse.move(x, y + (dy * i) / 10, { steps: 1 });
+          await page.waitForTimeout(150);
+          await page.mouse.up();
+        };
+        await page.getByRole("button", { name: /Plant the tulips/ }).tap();
+        await expect(sheet).toBeVisible();
+        await settled(page);
+        await pull(40);
+        await page.waitForTimeout(500);
+        await expect(sheet).toBeVisible();
+        await pull(300);
+        await expect(sheet).toHaveCount(0);
+        // A tap on the grabber closes it too.
+        await page.getByRole("button", { name: /Plant the tulips/ }).tap();
+        await expect(sheet).toBeVisible();
+        await sheet.getByTestId("sheet-grabber").tap();
+        await expect(sheet).toHaveCount(0);
+      }
+
       // Project settings.
       await page.getByRole("button", { name: "Project settings" }).tap();
       await expect(page.getByRole("dialog")).toBeVisible();

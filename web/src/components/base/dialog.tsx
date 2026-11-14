@@ -41,6 +41,7 @@ export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, onCloseAutoFocus, onOpenAutoFocus, ...props }, ref) => {
+  const closeRef = React.useRef<HTMLButtonElement>(null);
   // What had focus before it opened gets focus back when it closes: the
   // last control focused outside any dialog (focus inside one doesn't count).
   // If the page redrew that control while this was open, the one with the
@@ -74,8 +75,11 @@ export const DialogContent = React.forwardRef<
         {...props}
       >
         <div aria-hidden className="mx-auto -mt-3 h-1.5 w-10 rounded-full bg-muted-foreground/30 sm:hidden" />
+        {/* On a phone: drag the top of the sheet (where the grabber is) down
+            to close it, or tap the grabber (Apple HIG sheets #9, #10). */}
+        <SwipeToClose close={() => closeRef.current?.click()} />
         {children}
-        <DialogPrimitive.Close className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground sm:right-2.5 sm:top-2.5 sm:h-8 sm:w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
+        <DialogPrimitive.Close ref={closeRef} className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground sm:right-2.5 sm:top-2.5 sm:h-8 sm:w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
@@ -84,3 +88,48 @@ export const DialogContent = React.forwardRef<
   );
 });
 DialogContent.displayName = DialogPrimitive.Content.displayName;
+
+/** The top strip of a phone's sheet: dragged down, the sheet follows the
+ *  finger and closes past a point (or on a quick flick); let go sooner and
+ *  it springs back. A tap closes it too. Not on larger screens. */
+function SwipeToClose({ close }: { close: () => void }) {
+  const start = React.useRef<{ y: number; t: number } | null>(null);
+  const sheet = (el: EventTarget) => (el as HTMLElement).closest<HTMLElement>('[role="dialog"]');
+  const move = (el: HTMLElement | null, dy: number) => {
+    if (!el) return;
+    el.style.transition = dy ? "none" : "";
+    el.style.transform = dy ? `translateY(${dy}px)` : "";
+  };
+  return (
+    <div
+      aria-hidden
+      data-testid="sheet-grabber"
+      className="absolute inset-x-0 top-0 h-8 touch-none [margin-right:3.5rem] sm:hidden"
+      onPointerDown={(e) => {
+        start.current = { y: e.clientY, t: e.timeStamp };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (!start.current) return;
+        move(sheet(e.currentTarget), Math.max(0, e.clientY - start.current.y));
+      }}
+      onPointerUp={(e) => {
+        const s = start.current;
+        start.current = null;
+        if (!s) return;
+        const dy = e.clientY - s.y;
+        const fast = dy > 30 && dy / Math.max(1, e.timeStamp - s.t) > 0.5;
+        const el = sheet(e.currentTarget);
+        // A tap (hardly moved) or far or fast enough: close. Otherwise back up.
+        if (Math.abs(dy) < 6 || dy > 120 || fast) {
+          move(el, 0);
+          close();
+        } else move(el, 0);
+      }}
+      onPointerCancel={(e) => {
+        start.current = null;
+        move(sheet(e.currentTarget), 0);
+      }}
+    />
+  );
+}
