@@ -774,10 +774,14 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
     // Its handoff notes show when the session is tapped, live.
     await sessions.getByRole("button", { name: /parser/ }).click();
     await expect(page.getByRole("dialog")).toContainText("No notes yet.");
-    omicron.cliIn(win.pid, "handoff", "write", "Parser half done. Next: error messages.");
+    // What it's doing, first (#170).
+    await expect(page.getByTestId("session-doing")).toHaveText("Nothing given to it");
+    omicron.cliIn(win.pid, "handoff", "write", "# Parser\n\nHalf done. Next: **error messages**.");
     const notes = page.getByRole("list", { name: "Handoff notes" });
-    await expect(notes).toContainText("#1waiting");
-    await expect(notes).toContainText("Parser half done. Next: error messages.");
+    // Its state in plain words, and its Markdown shown as text.
+    await expect(notes).toContainText("Not picked up yet");
+    await expect(notes.getByRole("heading", { name: "Parser" })).toBeVisible();
+    await expect(notes.locator("strong")).toHaveText("error messages");
     await escape(page);
 
     // It's closed: it ends, and leaves the page without reloading.

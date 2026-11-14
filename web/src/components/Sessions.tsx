@@ -14,11 +14,22 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Row, bare } from "@/components/Grouped";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/base/button";
+import { Markdown } from "@/components/Markdown";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 
-const NOTE_STATE = { waiting: "waiting", picked_up: "picked up", replaced: "replaced", cancelled: "cancelled" } as const;
+const NOTE_STATE = {
+  waiting: "Not picked up yet",
+  picked_up: "Picked up",
+  replaced: "Replaced by a newer note",
+  cancelled: "Cancelled",
+} as const;
+
+/** A folder's last part, like "omicron" for /Users/joe/omicron. */
+function folderName(path: string): string {
+  return path.replace(/\/+$/, "").split("/").pop() || path;
+}
 
 /**
  * The Project's Claude sessions: only ones running now (a session's record
@@ -78,6 +89,13 @@ function SessionNotes({
   const tasks = project.tasks.filter((t) => t.assignee_session_id === session.id && !done.has(t.status_id));
   const others = project.sessions.filter((s) => s.id !== session.id);
   const loop = project.loops.find((l) => l.session_id === session.id);
+  // A line on what it's doing: the task it took, or the one it's waiting to take.
+  const taken = tasks.find((t) => t.picked_up_at);
+  const doing = taken
+    ? `Working on #${taken.number} ${taken.title} · ${since(taken.picked_up_at!)}`
+    : tasks.length > 0
+      ? `#${tasks[0].number} ${tasks[0].title} is waiting for it`
+      : "Nothing given to it";
   const [copied, setCopied] = useState<number | null>(null);
   const copy = async (n: HandoffNote) => {
     // Pastes into any Claude session to continue from this note.
@@ -89,13 +107,21 @@ function SessionNotes({
       <DialogHeader className="text-left">
         <DialogTitle>{session.name}</DialogTitle>
         <DialogDescription>
-          <span className="font-mono">{session.machine}</span>
-          {session.folder && (
-            <>
-              {" · "}
-              <span className="font-mono">{session.folder}</span>
-            </>
-          )}
+          {/* What it's doing first; where it is after, the folder by its short name. */}
+          <span className="block text-foreground" data-testid="session-doing">
+            {doing}
+          </span>
+          <span>
+            on <span className="font-mono">{session.machine}</span>
+            {session.folder && (
+              <>
+                {" in "}
+                <span className="font-mono" title={session.folder}>
+                  {folderName(session.folder)}
+                </span>
+              </>
+            )}
+          </span>
         </DialogDescription>
       </DialogHeader>
       {loop && <LoopGroup loop={loop} onChanged={onChanged} />}
@@ -155,11 +181,11 @@ function SessionNotes({
           <ul aria-label="Handoff notes" className="divide-y">
             {notes.map((n) => (
               <li key={n.id} className="grid gap-1.5 px-4 py-3">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-mono">#{n.number}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="whitespace-nowrap font-mono">#{n.number}</span>
                   <Badge
                     variant="outline"
-                    className={cn("font-normal", n.state === "waiting" && "border-transparent text-white")}
+                    className={cn("whitespace-nowrap font-normal", n.state === "waiting" && "border-transparent text-white")}
                     style={n.state === "waiting" ? { background: "var(--sys-orange)" } : undefined}
                   >
                     {NOTE_STATE[n.state]}
@@ -185,7 +211,7 @@ function SessionNotes({
                     )}
                   </Button>
                 </div>
-                <p className="line-clamp-6 whitespace-pre-wrap break-words text-[15px] sm:text-sm">{n.body}</p>
+                <Markdown text={n.body} className="line-clamp-[12] text-[15px] sm:text-sm" />
               </li>
             ))}
           </ul>
@@ -255,4 +281,12 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
       </Row>
     </Group>
   );
+}
+
+/** How long since, in a few words: "just now", "4 min", "2 h". */
+function since(iso: string): string {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min`;
+  return `${Math.round(min / 60)} h`;
 }

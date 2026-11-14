@@ -8,6 +8,7 @@ import { inOrder } from "@/lib/board-rules";
 import { Button } from "@/components/base/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Group, Row } from "@/components/Grouped";
+import { Markdown } from "@/components/Markdown";
 
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 const active = (r: Run) => r.state === "running" || r.state === "pausing";
@@ -257,7 +258,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
             <summary className="cursor-pointer">
               <span className="font-mono text-xs">#{n.number}</span> {when(n.written_at)}
             </summary>
-            <pre className="mt-2 whitespace-pre-wrap font-mono text-xs">{n.body}</pre>
+            <Markdown text={n.body} className="mt-2" />
           </details>
         ))}
       </Group>

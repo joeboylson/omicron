@@ -130,7 +130,7 @@ test("screenshots", async ({ browser, request }) => {
       await shoot(page, `${kind}-${scheme}-6-comments`);
       await page.keyboard.press("Escape");
       await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /web-page/ }).click();
-      await expect(page.getByRole("list", { name: "Handoff notes" })).toContainText("waiting");
+      await expect(page.getByRole("list", { name: "Handoff notes" })).toContainText("Not picked up yet");
       await shoot(page, `${kind}-${scheme}-7-handoffs`);
       await page.keyboard.press("Escape");
       await context.close();

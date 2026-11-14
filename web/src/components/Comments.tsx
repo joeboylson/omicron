@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, ImagePlus, Loader2, Terminal, X } from "lucide-react";
 import { ImageViewer } from "@/components/ImageViewer";
+import { Markdown } from "@/components/Markdown";
 import { useApp } from "@/lib/app";
 import {
   addComment,
@@ -131,7 +132,7 @@ export function Comments({
                   {when(c.created_at)}
                 </time>
               </div>
-              {c.body && <p className="whitespace-pre-wrap break-words">{c.body}</p>}
+              {c.body && <Markdown text={c.body} />}
               {answerMark(task, c) && <p className="text-xs text-muted-foreground" data-testid="answer-mark">{answerMark(task, c)}</p>}
               {c.images.length > 0 && (
                 <ul aria-label="Images" className="mt-1 flex flex-wrap gap-2">
