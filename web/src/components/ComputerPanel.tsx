@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Computer } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
-import { sayEvery, type ProjectData } from "@/lib/data";
+import { listProjectJobs, sayEvery, type JobLink, type ProjectData } from "@/lib/data";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
@@ -22,7 +22,13 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
   const [open, setOpen] = useState(false);
   const [info, setInfo] = useState<Info | null>(null);
   const [said, setSaid] = useState<string | null>(null);
-  const load = () => act(async () => setInfo(await devAction(db, "/computer", {})));
+  const [jobs, setJobs] = useState<JobLink[]>([]);
+  const load = () =>
+    act(async () => {
+      const [i, j] = await Promise.all([devAction(db, "/computer", {}), listProjectJobs(db, project.id)]);
+      setInfo(i);
+      setJobs(j);
+    });
   useEffect(() => {
     if (open) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,27 +118,48 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
           </Group>
 
           <Group title="Teams" label="Teams">
-            {(info?.teams ?? ["…"]).map((l, i) => {
-              const [name, state, , jobs, folder] = l.split("\t");
-              return (
-                <Row key={i} className="py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate" title={folder}>
-                    {state !== undefined ? (
-                      <>
-                        <span className="font-medium">{name}</span> <span className="text-muted-foreground">{state}, {jobs}</span>
-                      </>
-                    ) : (
-                      l
+            {!info && <Row className="text-sm text-muted-foreground">Loading…</Row>}
+            {info && info.teams.filter((l) => l.includes("\t")).length === 0 && <Row className="text-sm text-muted-foreground">No teams on this computer.</Row>}
+            {info?.teams
+              .filter((l) => l.includes("\t"))
+              .map((l, i) => {
+                const [name, state, , count, folder] = l.split("\t");
+                // Its jobs in this Project that aren't finished, with where each is.
+                const mine = jobs.filter((j) => j.team === name && j.state !== "done");
+                const asks = project.tasks.filter((t) => t.question?.open && t.question.team === name);
+                return (
+                  <div key={i}>
+                    <Row className="py-2 text-sm">
+                      <span className="min-w-0 flex-1 truncate" title={folder}>
+                        <span className="font-medium">{name}</span> <span className="text-muted-foreground">{state}, {count}</span>
+                      </span>
+                      {state === "running" && (
+                        <Button size="sm" variant="outline" onClick={() => run({ action: "teams-stop", team: name })}>
+                          Stop
+                        </Button>
+                      )}
+                    </Row>
+                    {(mine.length > 0 || asks.length > 0) && (
+                      <ul aria-label={`${name}'s jobs`} className="grid gap-1 px-4 pb-2 text-xs">
+                        {mine.map((j) => (
+                          <li key={j.id} className="flex gap-2">
+                            <span className="font-mono text-muted-foreground">#{j.number}</span>
+                            <span className="min-w-0 flex-1 truncate">{j.title}</span>
+                            <span className={j.state === "blocked" ? "text-[var(--sys-orange)]" : "text-muted-foreground"}>
+                              {j.state === "blocked" ? "waiting on an answer" : j.step ? `${j.state}, ${j.step}` : j.state}
+                            </span>
+                          </li>
+                        ))}
+                        {asks.map((t) => (
+                          <li key={t.id} className="text-[var(--sys-blue)]">
+                            {t.question!.worker} is waiting on you: #{t.number}
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </span>
-                  {state === "running" && (
-                    <Button size="sm" variant="outline" onClick={() => run({ action: "teams-stop", team: name })}>
-                      Stop
-                    </Button>
-                  )}
-                </Row>
-              );
-            })}
+                  </div>
+                );
+              })}
           </Group>
           <p className="px-4 text-xs text-muted-foreground">
             A team starts in its folder: <code className="font-mono">omicron teams start</code> there.

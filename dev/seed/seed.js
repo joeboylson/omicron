@@ -407,6 +407,22 @@ async function seed(omicron) {
       ],
     });
 
+    // A team on studio, one of whose members asked Joe a question: the
+    // board shows it's waiting on him (#153).
+    const asStudio = await asMachine(studio);
+    const [todoRow] = await asStudio("GET", `/rest/v1/statuses?project_id=eq.${code.id}&name=eq.To%20do&select=id`);
+    const [team] = await asStudio("POST", "/rest/v1/teams", { project_id: code.id, name: "lumen", folder: "/Users/joe/omicron" });
+    const [job] = await asStudio("POST", "/rest/v1/jobs", { team_id: team.id, title: "Deletes in the change list", state: "blocked", step: "build" });
+    await asStudio("POST", "/rest/v1/jobs", { team_id: team.id, title: "Late saves", state: "working", step: "review" });
+    const [askTask] = await asStudio("POST", "/rest/v1/tasks", {
+      project_id: code.id,
+      status_id: todoRow.id,
+      title: "lumen: builder-2 asks about deletes",
+      notes: "Should deleting a task also delete its comments, or keep them in the activity log?\n\nAnswer with a comment; it goes straight back to builder-2.",
+      position: -1,
+    });
+    await asStudio("POST", "/rest/v1/team_requests", { team_id: team.id, job_id: job.id, worker: "builder-2", task_id: askTask.id });
+
     // The docs window dies without closing: its session shows as stopped
     // once anything on build-box notices.
     docs.proc.kill();

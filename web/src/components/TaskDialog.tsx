@@ -372,7 +372,14 @@ function TaskForm({
         </Row>
       </Group>
 
-      <Group title={<label htmlFor="task-notes">Notes</label>}>
+      <Group
+        title={
+          <label htmlFor="task-notes">
+            {task.question ? `${task.question.worker} in ${task.question.team} asks` : "Notes"}
+          </label>
+        }
+        className={task.question?.open ? "[&>div]:border-[var(--sys-blue)]" : undefined}
+      >
         <Textarea
           id="task-notes"
           value={notes}

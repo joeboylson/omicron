@@ -44,6 +44,18 @@ async function startProjectIn(page, name) {
   return page.url().split("/p/")[1];
 }
 
+/** Supabase as the secret key: to set up what only a machine could make. */
+async function admin(request, method, path, data) {
+  const key = process.env.OMICRON_SUPABASE_SECRET_KEY;
+  const res = await request.fetch(`${process.env.OMICRON_SUPABASE_URL}${path}`, {
+    method,
+    headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: "return=representation" },
+    data,
+  });
+  if (!res.ok()) throw new Error(`${method} ${path}: ${res.status()} ${await res.text()}`);
+  return res.json();
+}
+
 const column = (page, status) => page.getByRole("region", { name: status, exact: true });
 
 async function addTaskIn(page, status, title) {
@@ -954,6 +966,39 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   await page.keyboard.press("c");
   await expect(page.getByRole("radio", { name: "Board", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByLabel(/^New task in /)).toBeFocused();
+});
+
+test("a team's question shows it's waiting on you, and what happened to the answer (#153)", async ({ page, request }) => {
+  const me = await newPerson(page, request);
+  const name = unique("Code");
+  const projectId = await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Lumen: builder-2 asks about the API");
+  // The team and its question, as the team's computer would make them.
+  const [task] = await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${projectId}&select=id`);
+  const [machine] = await admin(request, "GET", `/rest/v1/machines?name=eq.${machineName}&select=id`);
+  await admin(request, "PATCH", `/rest/v1/machines?id=eq.${machine.id}`, { gate_until: null });
+  const [team] = await admin(request, "POST", "/rest/v1/teams", { project_id: projectId, machine_id: machine.id, name: "Lumen", folder: "/tmp/lumen" });
+  const [ask] = await admin(request, "POST", "/rest/v1/team_requests", { team_id: team.id, worker: "builder-2", task_id: task.id });
+  await page.reload();
+
+  // The card says so; the sheet says who asks.
+  const card = page.getByRole("button", { name: /#1 Lumen: builder-2 asks/ });
+  await expect(card).toContainText("Team is waiting on you");
+  await card.click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByText("builder-2 in Lumen asks")).toBeVisible();
+
+  // Answered while the team's computer's gate is closed: held, and says so.
+  await sheet.getByLabel("New comment").fill("Use version 2.");
+  await sheet.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(sheet.getByTestId("answer-mark")).toHaveText(`Held until ${machineName}'s gate opens`);
+
+  // Passed on (as the computer marks it): it says to whom, and the card's mark goes.
+  const [comment] = await rest(request, me.session, "GET", `/rest/v1/comments?task_id=eq.${task.id}&select=id`);
+  await admin(request, "PATCH", `/rest/v1/team_requests?id=eq.${ask.id}`, { state: "answered", answer_comment_id: comment.id, answered_at: new Date().toISOString() });
+  await expect(sheet.getByTestId("answer-mark")).toHaveText("Passed on to builder-2");
+  await escape(page);
+  await expect(card).not.toContainText("Team is waiting on you");
 });
 
 test("comments hold images: picked, dropped, or posted by a session, and open full size", async ({ page, request }) => {

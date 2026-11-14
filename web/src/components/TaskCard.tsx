@@ -44,8 +44,9 @@ export function TaskCard({
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
         <span className="font-mono text-xs text-muted-foreground">#{task.number}</span>
       </div>
-      {((showStatus && status) || task.needs_review || labels.length > 0) && (
+      {((showStatus && status) || task.needs_review || task.question?.open || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
+          {task.question?.open && <TeamWaiting />}
           {showStatus && status && (
             <Badge variant="outline" className="gap-1.5 font-normal">
               <ColorDot color={statusColor(status)} />
@@ -132,6 +133,15 @@ export function isOverdue(iso: string): boolean {
   const today = new Date();
   const t = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   return iso < t;
+}
+
+/** A team member asked this and is waiting on the answer. */
+export function TeamWaiting() {
+  return (
+    <Badge className="border-transparent font-medium text-white hover:opacity-90" style={{ background: "var(--sys-blue)" }}>
+      Team is waiting on you
+    </Badge>
+  );
 }
 
 /** The Needs review mark: orange, Apple's color for "look at this". */

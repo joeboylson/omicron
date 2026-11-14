@@ -52,7 +52,24 @@ export type Task = {
   dispatches: Dispatch[];
   /** Team jobs it's linked to. */
   jobs: JobLink[];
+  /** When the task is a team member's question to a person. */
+  question: TeamQuestion | null;
 };
+/** A team member's question, asked as a task; answered with a comment. */
+export type TeamQuestion = {
+  team: string;
+  /** Who asked, like builder-2. */
+  worker: string;
+  open: boolean;
+  asked_at: string;
+  /** The comment that was passed on as the answer, and when. */
+  answer_comment_id: string | null;
+  answered_at: string | null;
+  /** The team's computer, and when its gate closes (as it last said). */
+  machine: string;
+  gate_until: string | null;
+};
+
 /** A team's job, as linked from a task. */
 export type JobLink = { id: string; team: string; number: number; title: string; state: string; step: string | null };
 export type Dispatch = {
@@ -178,7 +195,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       db
         .from("tasks")
         .select(
-          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at,claimed_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
+          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at,claimed_at),task_jobs(jobs(id,number,title,state,step,teams(name))),team_requests(worker,state,created_at,answer_comment_id,answered_at,teams(name,machines(name,gate_until)))",
         )
         .eq("project_id", id)
         .order("position")
@@ -253,6 +270,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
         .map((l: any) => l.jobs)
         .filter(Boolean)
         .map((j: any) => ({ id: j.id, team: j.teams?.name ?? "", number: j.number, title: j.title, state: j.state, step: j.step })),
+      question: teamQuestion(t.team_requests),
     })),
     sessions: (must(sessions) as any[]).map((r) => ({
       id: r.id,
@@ -684,4 +702,20 @@ export async function linkJob(db: SupabaseClient, task: Task, jobId: string) {
 
 export async function unlinkJob(db: SupabaseClient, task: Task, jobId: string) {
   must(await db.from("task_jobs").delete().eq("task_id", task.id).eq("job_id", jobId));
+}
+
+/** A task's team question, from its team_requests row (one at most). */
+function teamQuestion(rows: any): TeamQuestion | null {
+  const r = Array.isArray(rows) ? rows[0] : rows;
+  if (!r) return null;
+  return {
+    team: r.teams?.name ?? "",
+    worker: r.worker,
+    open: r.state === "open",
+    asked_at: r.created_at,
+    answer_comment_id: r.answer_comment_id ?? null,
+    answered_at: r.answered_at ?? null,
+    machine: r.teams?.machines?.name ?? "",
+    gate_until: r.teams?.machines?.gate_until ?? null,
+  };
 }

@@ -14,6 +14,7 @@ import {
   IMAGE_TYPES,
   IMAGES_PER_COMMENT,
   uploadImage,
+  type Comment,
   type ProjectData,
   type Task,
 } from "@/lib/data";
@@ -28,6 +29,16 @@ type Pending = { key: string; name: string; preview: string; path?: string; erro
 
 // Links last an hour; kept for the page's life so images don't flicker on reload.
 const links = new Map<string, string>();
+
+/** On a team's question: what happened to a person's comment as an answer. */
+function answerMark(task: Task, c: Comment): string | null {
+  const q = task.question;
+  if (!q || c.session || c.created_at < q.asked_at) return null;
+  if (q.answer_comment_id === c.id) return `Passed on to ${q.worker}`;
+  if (!q.open) return null;
+  const open = q.gate_until !== null && new Date(q.gate_until).getTime() > Date.now();
+  return open ? `Passing on to ${q.worker}…` : `Held until ${q.machine}'s gate opens`;
+}
 
 export function Comments({
   project,
@@ -120,6 +131,7 @@ export function Comments({
                 </time>
               </div>
               {c.body && <p className="whitespace-pre-wrap break-words">{c.body}</p>}
+              {answerMark(task, c) && <p className="text-xs text-muted-foreground" data-testid="answer-mark">{answerMark(task, c)}</p>}
               {c.images.length > 0 && (
                 <ul aria-label="Images" className="mt-1 flex flex-wrap gap-2">
                   {c.images.map((path) => (

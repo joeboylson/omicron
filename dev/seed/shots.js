@@ -269,6 +269,11 @@ async function escape(page) {
       await page.getByText(/You can always use/).waitFor();
       await shot("7-gate");
       await page.keyboard.press("Escape");
+      // A team's question, waiting on Joe (#153).
+      await page.getByRole("button", { name: /lumen: builder-2 asks/ }).click();
+      await page.getByText("builder-2 in lumen asks").waitFor();
+      await shot("7f-team-question");
+      await escape(page);
       await page.getByRole("radio", { name: "Dev" }).click();
       await page.getByRole("list", { name: "Sessions" }).waitFor();
       await shot("7b-dev-view");
