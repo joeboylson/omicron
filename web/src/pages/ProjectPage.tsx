@@ -4,7 +4,7 @@ import { ArrowUpDown, X, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreH
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { updateTask, addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
+import { updateTask, addTask, deleteTask, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
 import { usePendingChanges, useUndoableDelete } from "@/lib/pending";
 import { dropPlace, inOrder, matches as shows, parseColumn, type ColumnKind } from "@/lib/board-rules";
 import {
@@ -49,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GateButton } from "@/components/GateButton";
+import { UndoSteps, type Step } from "@/lib/undo";
 import { ShareButton, ShareSheet } from "@/components/ShareSheet";
 import { DevView } from "@/components/DevView";
 import { RunBar } from "@/components/RunBar";
@@ -174,7 +175,11 @@ export function ProjectPage({ id }: { id: string }) {
                 label: `Move #${open.number} to ${st.name}`,
                 group: `#${open.number} ${open.title}`,
                 keywords: "status column",
-                run: () => act(() => updateTask(db, ready, open, { status_id: st.id })).then(reload),
+                run: () =>
+                  act(() => updateTask(db, ready, open, { status_id: st.id })).then((ok) => {
+                    if (ok) movedTaskRef.current(open, { status_id: st.id });
+                    reload();
+                  }),
               }));
           })(),
           ...ready.tasks.map((t) => ({
@@ -203,8 +208,26 @@ export function ProjectPage({ id }: { id: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const toast = useToast();
-  // Deleted tasks hide at once and are deleted for good when their Undo
-  // goes away (or straight away if the page closes).
+  // Changes that can be undone, newest last: each toast's Undo, and Cmd+Z
+  // back through several (#210).
+  const steps = useRef(new UndoSteps()).current;
+  // Set once the Project is loaded: what records a move (for the commands above it).
+  const movedTaskRef = useRef<(before: Task, change: Partial<Task>) => void>(() => {});
+  // After an Undo: say what came back and show its card.
+  const undone = (s: Step | null) => {
+    if (!s) return false;
+    toast({ message: s.undone, seconds: 4 });
+    if (s.task !== undefined) {
+      setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${s.task} "]`)?.scrollIntoView({ block: "nearest", inline: "nearest" }), 300);
+    }
+    return true;
+  };
+  const remember = (step: Step) => {
+    const id = steps.push(step);
+    toast({ message: step.label, seconds: 10, action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => undone(steps.undo(id)) } });
+  };
+  // Deleted tasks hide at once and are deleted for good 10 seconds later,
+  // or when the page is closed or hidden, whatever toasts come meanwhile.
   const { hidden, deletes } = useUndoableDelete<Task>((t) => act(() => deleteTask(db, t)).then(reload));
   const removeTask = (t: Task) => {
     // Focus goes to the card after it in its column (or before it), not
@@ -214,20 +237,17 @@ export function ProjectPage({ id }: { id: string }) {
     closedTask.current = (group?.tasks[i + 1] ?? group?.tasks[i - 1])?.number ?? null;
     setOpenTask(null);
     deletes.delete(t);
-    toast({
-      message: `Deleted #${t.number} ${t.title}`,
-      seconds: 10,
-      action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => deletes.undo(t.id) },
-      onGone: () => deletes.finish(t.id),
-    });
+    setTimeout(() => deletes.finish(t.id), 10_000);
+    remember({ label: `Deleted #${t.number} ${t.title}`, undone: `Brought back #${t.number} ${t.title}`, task: t.number, undo: () => deletes.undo(t.id) });
   };
-  // Cmd/Ctrl+Z, when not typing: brings back the task just deleted.
+  useEffect(() => {
+    const away = () => document.visibilityState === "hidden" && deletes.finishAll();
+    document.addEventListener("visibilitychange", away);
+    return () => document.removeEventListener("visibilitychange", away);
+  }, [deletes]);
+  // Cmd/Ctrl+Z, when not typing: undoes the last change.
   const undoKey = useRef<() => boolean>(() => false);
-  undoKey.current = () => {
-    if (!deletes.undo()) return false;
-    toast({ message: "Task brought back", seconds: 3 });
-    return true;
-  };
+  undoKey.current = () => undone(steps.undo());
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey || typing(e)) return;
@@ -284,6 +304,45 @@ export function ProjectPage({ id }: { id: string }) {
 
   // Tasks waiting to be deleted (Undo) aren't shown.
   if (hidden.length > 0) project = { ...project, tasks: project.tasks.filter((t) => !hidden.includes(t.id)) };
+  // A task moved (to another status, topic or person): say so, with Undo.
+  const cur = project;
+  const movedTask = (before: Task, change: Partial<Task>) => {
+    const name = (id: string | null | undefined) => cur.statuses.find((x) => x.id === id)?.name ?? "";
+    const n = before.number;
+    let label: string;
+    let undoneLabel: string;
+    if (change.status_id && change.status_id !== before.status_id) {
+      label = `Moved #${n} to ${name(change.status_id)}`;
+      undoneLabel = `Moved #${n} back to ${name(before.status_id)}`;
+    } else if (change.assignee_session_id && change.assignee_session_id !== before.assignee_session_id) {
+      label = `Gave #${n} to ${cur.sessions.find((x) => x.id === change.assignee_session_id)?.name ?? "a session"}`;
+      undoneLabel = `Took #${n} back`;
+    } else if (change.topic_id !== undefined && change.topic_id !== before.topic_id) {
+      label = `Moved #${n} to ${cur.topics.find((x) => x.id === change.topic_id)?.name ?? "No topic"}`;
+      undoneLabel = `Moved #${n} back`;
+    } else return;
+    const back: Partial<Task> = {
+      status_id: before.status_id,
+      topic_id: before.topic_id,
+      position: before.position,
+      assignee_person_id: before.assignee_person_id,
+      assignee_session_id: before.assignee_session_id,
+    };
+    remember({
+      label,
+      undone: undoneLabel,
+      task: n,
+      undo: () => {
+        const done = saving.hold(before.id, back);
+        setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === before.id ? { ...t, ...back } : t)) } : p));
+        act(() => putTaskBack(db, before.id, back))
+          .finally(done)
+          .then(reload);
+        return true;
+      },
+    });
+  };  movedTaskRef.current = movedTask;
+
   const filtering = query.trim() !== "" || filters.mine || filters.review || filters.due || filters.label !== null;
   // The filters that are on, by name, each with a way to take it off.
   const onFilters: { key: string; label: string; off: () => void }[] = [
@@ -390,6 +449,7 @@ export function ProjectPage({ id }: { id: string }) {
     })
       .finally(() => done.forEach((d) => d()))
       .then(reload);
+    movedTask(moved, { status_id: statusId, topic_id: topicId, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) });
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
   const added = (number?: number, open?: boolean) => {
@@ -751,6 +811,8 @@ export function ProjectPage({ id }: { id: string }) {
         onChanged={reload}
         onDelete={removeTask}
         onPatch={(taskId, change) => {
+          const before = project.tasks.find((t) => t.id === taskId);
+          if (before) movedTask(before, change);
           const done = saving.hold(taskId, change);
           setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p));
           // Called when the save is done (saved or not): stop holding it.

@@ -189,3 +189,8 @@ export async function linkJob(db: SupabaseClient, task: Task, jobId: string) {
 export async function unlinkJob(db: SupabaseClient, task: Task, jobId: string) {
   must(await db.from("task_jobs").delete().eq("task_id", task.id).eq("job_id", jobId));
 }
+
+/** Put a task's place back as it was (an Undo): exactly these fields. */
+export async function putTaskBack(db: SupabaseClient, taskId: string, fields: Partial<Task>) {
+  must(await db.from("tasks").update(fields).eq("id", taskId));
+}

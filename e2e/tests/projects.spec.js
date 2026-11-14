@@ -1776,11 +1776,29 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
   await del();
   await page.keyboard.press("ControlOrMeta+z");
   await expect(card).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Task brought back" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Brought back #1 Fix the gate" })).toBeVisible();
 
-  // Not undone: deleted in the database once the message goes.
+  // Moves can be undone too, and Cmd+Z works back through several (#210).
+  await card.click();
+  await page.getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Mark done" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Moved #1 to Done" })).toBeVisible();
+  await escape(page);
+  await expect(column(page, "Done").getByRole("button", { name: /#1 Fix the gate/ })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByRole("status").filter({ hasText: "Moved #1 back to To do" })).toBeVisible();
+  await expect(column(page, "To do").getByRole("button", { name: /#1 Fix the gate/ })).toBeVisible();
+  await expect
+    .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&number=eq.1&select=statuses(name)`))[0].statuses.name)
+    .toBe("To do");
+
+  // Not undone: deleted in the database 10 seconds later, even when
+  // another message has come meanwhile.
   await del();
   await expect(toast).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(card).toBeVisible();
+  await del();
   await expect(toast).toHaveCount(0, { timeout: 15000 });
   await expect
     .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&select=title`)).map((t) => t.title), { timeout: 10000 })
