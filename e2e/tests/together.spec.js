@@ -111,7 +111,8 @@ test("two people at once end up seeing the same board, with nothing lost or doub
   await b.getByRole("button", { name: new RegExp(`^#${benTwo} `) }).click();
   await expect(b.getByRole("dialog")).toBeVisible();
   await a.getByRole("button", { name: new RegExp(`^#${benTwo} `) }).click();
-  await a.getByRole("button", { name: "Delete task" }).click();
+  await a.getByRole("button", { name: "More for this task" }).click();
+  await a.getByRole("menuitem", { name: "Delete task" }).click();
   await expect(b.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
   await expect(b.getByRole("button", { name: new RegExp(`^#${benTwo} `) })).toHaveCount(0);
 

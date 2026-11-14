@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Check, CheckCircle2, Loader2, Plus, Send, Terminal, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, Loader2, MoreHorizontal, Plus, Send, Terminal, Trash2, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useAwakeMachines } from "@/lib/awake";
 import {
@@ -149,22 +150,48 @@ function TaskForm({
   return (
     <>
       <DialogHeader>
-        <DialogDescription className="text-left">
-          <span className="font-mono">#{task.number}</span> in {project.name}
-        </DialogDescription>
+        <div className="flex items-center gap-2 pr-8">
+          <DialogDescription className="flex-1 text-left">
+            <span className="font-mono">#{task.number}</span> in {project.name}
+          </DialogDescription>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="More for this task">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {done && !isDone && (
+                <DropdownMenuItem onSelect={() => save({ status_id: done.id })}>
+                  <Check /> Mark done
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(task)}>
+                <Trash2 /> Delete task
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <DialogTitle className="sr-only">{task.title}</DialogTitle>
-        <Input
+        <Textarea
           id="task-title"
           aria-label="Title"
+          rows={1}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          // One line, wrapped to fit: Enter is done, not a new line.
+          onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
+          }}
           onBlur={() => {
             const t = title.trim();
             if (!t) setTitle(task.title);
             else if (t !== task.title) save({ title: t });
           }}
-          className="h-auto border-transparent bg-transparent px-0 py-1 text-xl font-semibold shadow-none focus-visible:border-input focus-visible:bg-background focus-visible:px-3 md:text-xl"
+          className="min-h-0 w-full resize-none border-transparent bg-transparent px-0 py-1 [overflow-wrap:anywhere] text-xl font-semibold leading-snug shadow-none [field-sizing:content] focus-visible:border-input focus-visible:bg-background focus-visible:px-3 focus-visible:ring-0 focus-visible:ring-offset-0 md:text-xl"
         />
       </DialogHeader>
 
@@ -421,20 +448,6 @@ function TaskForm({
 
       <Comments project={project} task={task} change={change} when={when} />
 
-      <div className="flex flex-wrap gap-2 pt-2">
-        {done && !isDone && (
-          <Button className="flex-1 sm:flex-none" onClick={() => save({ status_id: done.id })}>
-            <Check /> Mark done
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          className="ml-auto text-destructive hover:text-destructive"
-          onClick={() => onDelete(task)}
-        >
-          <Trash2 /> Delete task
-        </Button>
-      </div>
     </>
   );
 }

@@ -65,7 +65,8 @@ for (const scheme of ["light", "dark"]) {
 
     // "Deleted · Undo".
     await page.getByRole("button", { name: /Paint the fence/ }).click();
-    await page.getByRole("button", { name: "Delete task" }).click();
+    await page.getByRole("button", { name: "More for this task" }).click();
+    await page.getByRole("menuitem", { name: "Delete task" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Deleted" })).toBeVisible();
     await check(page, "Deleted, with Undo");
 

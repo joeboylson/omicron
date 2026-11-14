@@ -111,8 +111,10 @@ test("a task can be filled in and finished", async ({ page, request }) => {
   await expect(card).toContainText("Dec 1");
 
   await card.click();
-  await dialog.getByRole("button", { name: "Mark done" }).click();
-  await expect(dialog.getByRole("button", { name: "Mark done" })).toHaveCount(0);
+  // Mark done and Delete are in the ⋯ menu at the top (#60).
+  await dialog.getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Mark done" }).click();
+  await expect(dialog.getByRole("combobox", { name: "Status" })).toHaveText("Done");
   await escape(page);
   await expect(column(page, "Done").getByRole("button", { name: "#1 Fix the back gate" })).toBeVisible();
   await expect(column(page, "To do").getByRole("button", { name: /^#\d+ / })).toHaveCount(0);
@@ -515,6 +517,10 @@ test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter op
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Plant the tulips along the fence");
   await expect(dialog.getByLabel("Notes")).toBeFocused();
+  // Its long title wraps in the sheet too (#59).
+  const titleBox = dialog.getByLabel("Title");
+  expect(await titleBox.evaluate((el) => el.scrollWidth <= el.clientWidth && el.clientHeight > 40)).toBe(true);
+  if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/task-sheet.png` });
   await page.keyboard.type("Bulbs are in the shed.");
   await escape(page);
   await expect(column(page, "To do").getByRole("button", { name: /Plant the tulips/ })).toBeVisible();
@@ -1177,7 +1183,8 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
   const card = page.getByRole("button", { name: /#1 Fix the gate/ });
 
   await card.click();
-  await page.getByRole("button", { name: "Delete task" }).click();
+  await page.getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Delete task" }).click();
   await expect(card).toHaveCount(0);
   const toast = page.getByRole("status").filter({ hasText: "Deleted #1 Fix the gate" });
   await expect(toast).toBeVisible();
@@ -1185,7 +1192,8 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
   await expect(card).toBeVisible();
 
   await card.click();
-  await page.getByRole("button", { name: "Delete task" }).click();
+  await page.getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Delete task" }).click();
   await expect(card).toHaveCount(0);
   // Not undone: deleted in the database a few seconds later.
   await expect

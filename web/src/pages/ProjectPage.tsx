@@ -616,6 +616,14 @@ function Column({
   const { db, act } = useApp();
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
+  // The box grows with what's typed, and shrinks back once it's added.
+  const titleBox = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = titleBox.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [title, adding]);
   const column = columnId(status.id, topicId, grouped);
   useEffect(() => {
     if (addSignal > 0) setAdding(true);
@@ -676,11 +684,8 @@ function Column({
             value={title}
             // A title is one line: what's typed wraps, and a pasted line
             // break becomes a space.
-            onChange={(e) => {
-              setTitle(e.target.value.replace(/[\r\n]+/g, " "));
-              e.target.style.height = "auto";
-              e.target.style.height = `${e.target.scrollHeight}px`;
-            }}
+            ref={titleBox}
+            onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
             onKeyDown={(e) => {
               if (e.key === "Escape") setAdding(false);
               // Enter adds it and keeps going; Shift+Enter adds it and opens it.
@@ -688,7 +693,7 @@ function Column({
             }}
             placeholder="What needs doing?"
             aria-label={`New task in ${label}`}
-            className="min-h-9 resize-none overflow-hidden bg-background py-2 [field-sizing:content]"
+            className="min-h-9 w-full resize-none overflow-hidden bg-background py-2 [field-sizing:content] [overflow-wrap:anywhere]"
           />
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={!title.trim() || saving} aria-label="Add task">
