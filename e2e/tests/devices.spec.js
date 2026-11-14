@@ -67,6 +67,21 @@ async function settled(page) {
   await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
 }
 
+/** A quick swipe from one place to another, with no hold (scrolling). */
+async function swipe(page, from, to) {
+  const a = await from.boundingBox();
+  const b = await to.boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const at = (x, y) => [{ x, y }];
+  const [ax, ay, bx, by] = [a.x + a.width / 2, a.y + a.height / 2, b.x + b.width / 2, b.y + 4];
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(ax, ay) });
+  for (let i = 1; i <= 8; i++) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(ax + ((bx - ax) * i) / 8, ay + ((by - ay) * i) / 8) });
+    await page.waitForTimeout(8);
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
 /** Press and hold on one place, then drag to another (as a finger does). */
 async function holdAndDrag(page, from, to) {
   const a = await from.boundingBox();
@@ -127,6 +142,10 @@ for (const [kind, device] of [
       const todo = page.getByRole("region", { name: statuses[0].name, exact: true });
       const order = async () => (await todo.getByRole("button", { name: /^#\d+ / }).allTextContents()).map((t) => t.replace(/#\d+$/, "").trim());
       await expect.poll(order).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
+      // A quick swipe over a card scrolls; it doesn't pick the card up (#141).
+      await swipe(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
+      await page.waitForTimeout(1500);
+      expect(await order()).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
       await holdAndDrag(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
       await expect.poll(order).toEqual(["Prune the roses", "Plant the tulips before the first frost comes", "Fix the gate"]);
 

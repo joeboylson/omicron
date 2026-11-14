@@ -8,7 +8,7 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   closestCorners,
   useDroppable,
@@ -93,9 +93,10 @@ export function ProjectPage({ id }: { id: string }) {
     label: null,
   });
   const sensors = useSensors(
-    // A small move starts a drag, so a click still opens the task.
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    // On a phone, press and hold, so scrolling still works.
+    // With a mouse, a small move starts a drag, so a click still opens the
+    // task. Mouse only: a finger moving over a card is scrolling (#141).
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    // On a touch screen, press and hold, so swiping still scrolls.
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     // Space picks a card up (Enter opens it), arrows move it, Space drops it.
     useSensor(KeyboardSensor, {
