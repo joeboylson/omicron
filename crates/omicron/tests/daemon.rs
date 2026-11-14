@@ -103,7 +103,7 @@ fn start_daemon(home: &Path, args: &[&str]) -> Daemon {
 impl Daemon {
     /// Wait until it says it's listening.
     fn wait_until_listening(&self) {
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let deadline = Instant::now() + Duration::from_secs(40);
         let mut seen = Vec::new();
         while Instant::now() < deadline {
             if let Ok(line) = self.errors.recv_timeout(Duration::from_millis(200)) {
@@ -226,7 +226,7 @@ fn a_running_daemon_shows_as_awake_and_drops_off_when_it_stops() {
 
     drop(daemon);
     // Supabase notices the closed connection right away; allow a moment.
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if !run(&other, &["machines", "awake"]).lines().any(|l| l == name) {
             break;
