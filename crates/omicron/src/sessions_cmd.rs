@@ -789,10 +789,12 @@ pub fn tasks_mine() -> Result<()> {
     // (ref/BRAINSTORM.md, "The gate").
     let me = board.session.user.id.to_string();
     let owner = if gate_open { board.machine_owner()? } else { None };
-    let (tasks, to_read): (Vec<_>, Vec<_>) = board.session_tasks(&session_id)?.into_iter().partition(|(_, t)| {
-        let by = t.given_by.as_deref();
-        by == Some(me.as_str()) || (owner.is_some() && by == owner.as_deref())
-    });
+    // The one order rule (gate::decide); the owner is only read while the
+    // gate is open, since with it closed only this machine's own orders go.
+    let (tasks, to_read): (Vec<_>, Vec<_>) = board
+        .session_tasks(&session_id)?
+        .into_iter()
+        .partition(|(_, t)| omicron::gate::decide(&me, owner.as_deref(), t.given_by.as_deref(), gate_open, "").is_none());
     if tasks.is_empty() && to_read.is_empty() {
         println!("Nothing is given to this session right now.");
         return Ok(());
