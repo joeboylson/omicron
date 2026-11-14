@@ -281,7 +281,7 @@ async function seed(omicron) {
     await photos.task(joe, "Done", "Back up every card", {});
 
     // ---- Lumen (a made-up app): Joe, plus Claude sessions on two machines.
-    const code = await project(joe, "Lumen", ["Backlog", ["To do", "teal"], ["Doing", "blue"], ["Review", "orange"], "Done"], [
+    const code = await project(joe, "Lumen", ["Backlog", ["To do", "teal"], ["Doing", "blue"], ["Review", "indigo"], "Done"], [
       ["web", "blue"],
       ["cli", "purple"],
       ["database", "teal"],
