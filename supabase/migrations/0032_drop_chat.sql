@@ -2,9 +2,8 @@
 -- chat message that named a session was an order anyone in the Project
 -- could give it (see ref/BRAINSTORM.md, "Drop chat").
 --
--- Waiting in supabase/pending until every machine runs a build without chat
--- (atlas's Stop hook still reads chat_read_at). Then move it to
--- supabase/migrations/ with the next number and push. It deletes the chat messages for good.
+-- It deletes the chat messages for good (Joe, 13 Nov: nothing important in
+-- them). Every machine runs a build without chat by now.
 
 drop table if exists public.chat_messages;
 alter table public.projects drop column if exists chat_enabled;
