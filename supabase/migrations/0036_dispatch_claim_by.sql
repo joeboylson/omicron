@@ -4,8 +4,10 @@
 -- (claim_dispatch) and failing old ones (fill_dispatch) read it, and pages
 -- show it, so no page or command keeps its own copy of the number.
 
-alter table public.dispatches
-  add column claim_by timestamptz generated always as (created_at + interval '20 seconds') stored;
+-- Set when the request is made (fill_dispatch), never by whoever asks.
+alter table public.dispatches add column claim_by timestamptz;
+update public.dispatches set claim_by = created_at + interval '20 seconds' where claim_by is null;
+alter table public.dispatches alter column claim_by set not null;
 
 create or replace function public.claim_dispatch(dispatch uuid) returns setof public.dispatches
 language sql volatile security definer set search_path = '' as $$
@@ -46,6 +48,7 @@ begin
   new.result := null;
   new.error := null;
   new.created_at := now();
+  new.claim_by := now() + interval '20 seconds';
   new.claimed_at := null;
   new.finished_at := null;
   return new;
