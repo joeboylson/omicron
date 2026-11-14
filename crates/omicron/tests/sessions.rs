@@ -766,7 +766,13 @@ fn dispatch_reaches_the_session_and_fails_when_it_ended_or_its_machine_is_asleep
     assert!(!o.status.success() && said.contains("only takes orders from its owner") && said.contains("no owner yet"), "{said}");
     // Pat owns it, but its gate is closed: refused, plainly.
     open_gate(&mac, &pat);
+    // The machine tells Omicron when its gate closes, for pages to show (#152).
+    let gate_until = || s.admin_request("GET", &format!("/rest/v1/machines?name=eq.{mac_name}&select=gate_until"), None).unwrap()[0]["gate_until"].clone();
+    let until = gate_until();
+    let until = chrono::DateTime::parse_from_rfc3339(until.as_str().unwrap_or_else(|| panic!("no gate_until: {until}"))).unwrap();
+    assert!(until > chrono::Utc::now() + chrono::Duration::minutes(90), "{until}");
     ok(&mac, None, &["gate", "close"]);
+    assert_eq!(gate_until(), Value::Null);
     let o = run(&pat, None, &["tasks", "dispatch", &project, "1"]);
     assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("gate is closed"), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(typed_lines(&mac).is_empty());

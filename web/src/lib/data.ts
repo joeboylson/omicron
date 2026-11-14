@@ -78,6 +78,8 @@ export type ClaudeSession = {
   folder: string;
   machine_id: string;
   machine: string;
+  /** When its machine's gate closes, as the machine last said (display only). */
+  gate_until: string | null;
   /** Why it's gone, when it is. */
   gone_why: string | null;
 };
@@ -106,6 +108,8 @@ export type Run = {
   machine_id: string;
   session_id: string | null;
   label_id: string | null;
+  /** Who started it: its own machine (needs no gate), or a person elsewhere. */
+  started_by: string;
   state: "running" | "pausing" | "stopped" | "finished";
   task_id: string | null;
   done: number;
@@ -183,7 +187,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
         .range(from, to),
     ),
     all((from, to) =>
-      db.from("sessions").select("id,name,state,folder,machine_id,gone_why,machines(name)").eq("project_id", id).order("name").order("id").range(from, to),
+      db.from("sessions").select("id,name,state,folder,machine_id,gone_why,machines(name,gate_until)").eq("project_id", id).order("name").order("id").range(from, to),
     ),
     db
       .from("handoffs")
@@ -200,7 +204,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db.from("folders").select("id,path,machine_id,machines(name)").eq("project_id", id).order("path"),
     db
       .from("runs")
-      .select("id,machine_id,session_id,label_id,state,task_id,done,note,started_at,updated_at")
+      .select("id,machine_id,session_id,label_id,started_by,state,task_id,done,note,started_at,updated_at")
       .eq("project_id", id)
       .order("started_at", { ascending: false })
       .limit(5),
@@ -257,6 +261,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       folder: r.folder,
       machine_id: r.machine_id,
       machine: r.machines?.name ?? "",
+      gate_until: r.machines?.gate_until ?? null,
       gone_why: r.gone_why,
     })),
     handoffs: must(handoffs) as HandoffNote[],

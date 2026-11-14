@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Pause, Play, Square } from "lucide-react";
 import { useApp } from "@/lib/app";
-import { devAction, whenDev } from "@/lib/dev";
-import { setRunState, startRun, type ProjectData, type Run } from "@/lib/data";
+import { devAction, useDev, whenDev } from "@/lib/dev";
+import { setRunState, startRun, type ClaudeSession, type ProjectData, type Run } from "@/lib/data";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/base/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Group, Row } from "@/components/Grouped";
@@ -15,6 +16,19 @@ const active = (r: Run) => r.state === "running" || r.state === "pausing";
  * it's got, with Pause and Stop; or Start one. Tap it for the night so far:
  * the session's handoff notes as a diary, and what's waiting on Joe.
  */
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+/** When the session's computer's gate closes, if it's open (as the computer last said). */
+function gateUntil(s: ClaudeSession): string | null {
+  return s.gate_until && new Date(s.gate_until).getTime() > Date.now() ? s.gate_until : null;
+}
+
+/** "studio's gate is open until 7:00 AM." or "… is closed." */
+function gateWords(s: ClaudeSession): string {
+  const until = gateUntil(s);
+  return until ? `${s.machine}'s gate is open until ${clock(until)}.` : `${s.machine}'s gate is closed.`;
+}
+
 export function RunBar({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
   const { db, act } = useApp();
   const [open, setOpen] = useState(false);
@@ -40,6 +54,11 @@ export function RunBar({ project, onChanged }: { project: ProjectData; onChanged
             {session && <span className="text-muted-foreground"> in {session.name}</span>}
             {label && <span className="text-muted-foreground"> ({label})</span>}: {run.note ?? run.state}
           </span>
+          {going && session && run.started_by !== run.machine_id && (
+            <span className={cn("hidden shrink-0 text-xs sm:inline", gateUntil(session) ? "text-muted-foreground" : "text-[var(--sys-orange)]")} data-testid="run-gate">
+              {gateUntil(session) ? `gate open until ${clock(gateUntil(session)!)}` : "gate closed"}
+            </span>
+          )}
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{run.done} done</span>
         </button>
       )}
@@ -107,6 +126,11 @@ export function RunBar({ project, onChanged }: { project: ProjectData; onChanged
 function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessionId: string, labelId: string | null) => void }) {
   const [sessionId, setSessionId] = useState(project.sessions[0]?.id ?? "");
   const [labelId, setLabelId] = useState("");
+  const chosen = project.sessions.find((s) => s.id === sessionId);
+  const { db } = useApp();
+  const [dev] = useDev(db);
+  // Started on its own computer, it needs no gate; from elsewhere, it does.
+  const fromElsewhere = chosen && chosen.machine_id !== dev?.machine_id;
   return (
     <form
       className="grid gap-3 text-sm"
@@ -136,6 +160,12 @@ function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessi
           ))}
         </select>
       </label>
+      {chosen && fromElsewhere && (
+        <p className={gateUntil(chosen) ? "text-muted-foreground" : "text-[var(--sys-orange)]"} data-testid="start-gate">
+          {gateWords(chosen)}
+          {gateUntil(chosen) ? " The run stops when it closes." : " It won't start until it's opened there."}
+        </p>
+      )}
       <Button type="submit" disabled={!sessionId}>
         Start
       </Button>
@@ -156,6 +186,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
         <DialogTitle>{active(run) ? "The run" : "The last run"}</DialogTitle>
         <DialogDescription>
           {session ? `In ${session.name} on ${session.machine}` : "Its session has ended"}, since {when(run.started_at)}. {run.done} done.
+          {session && run.started_by !== run.machine_id && ` ${gateWords(session)} Started from elsewhere, it stops when the gate closes.`}
         </DialogDescription>
       </DialogHeader>
       <Group title="Now">

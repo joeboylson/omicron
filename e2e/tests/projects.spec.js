@@ -525,10 +525,14 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     daemon = await omicron.daemon();
     await page.reload();
     await page.getByRole("button", { name: "Start a run" }).click();
+    // On its own computer a run needs no gate, so nothing about one (#152).
+    await expect(page.getByRole("dialog").getByRole("button", { name: "Start", exact: true })).toBeVisible();
+    await expect(page.getByTestId("start-gate")).toHaveCount(0);
     await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
     const bar = page.getByTestId("run");
     await expect(bar).toContainText("Run in parser: on #1: Write the parser");
     await expect(bar).toContainText("0 done");
+    await expect(page.getByTestId("run-gate")).toHaveCount(0);
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/run-bar.png` });
 
     // Paused: it stops once the task it's on is finished.
