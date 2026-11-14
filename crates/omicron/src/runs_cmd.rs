@@ -18,7 +18,7 @@ use clap::Subcommand;
 use omicron::board::{Board, Run};
 use omicron::supa::{MachineKey, Supabase};
 use serde_json::Value;
-use omicron::board::TaskRow;
+use omicron::board::{in_progress, TaskRow};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -185,12 +185,6 @@ fn step_soon(supabase: &Supabase, key: &MachineKey, id: &str) {
     }
 }
 
-/// Still being worked on: in the first status (To do) or one named Doing.
-fn in_progress(statuses: &[omicron::board::Status], status_id: &str) -> bool {
-    let first = statuses.iter().min_by(|a, b| a.position.total_cmp(&b.position)).map(|s| s.id.as_str());
-    statuses.iter().any(|s| s.id == status_id && (Some(s.id.as_str()) == first || s.name.eq_ignore_ascii_case("doing")) && !s.is_done)
-}
-
 /// A run's pick from the top status, in order: the tasks to give a team
 /// here (labelled `team_label`) on the way, and the next one for the
 /// session itself. Skipped: tasks given to anyone else, without the run's
@@ -283,7 +277,7 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     // not given to anyone else, not already with a team. A task labelled
     // "team" goes to a team running here for this Project as a linked job,
     // and the run carries on with the next (#92).
-    let first = statuses.iter().min_by(|a, b| a.position.total_cmp(&b.position)).context("the Project has no statuses")?;
+    let first = omicron::board::to_do(&statuses).context("the Project has no status that isn't done")?;
     let team_label = board.labels(&project)?.into_iter().map(|(n, _)| n).find(|n| n.eq_ignore_ascii_case("team"));
     let team_label_id = match team_label {
         Some(n) => Some(board.label_id(&project, &n)?),

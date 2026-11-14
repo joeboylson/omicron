@@ -34,6 +34,22 @@ pub struct Status {
     pub color: Option<String>,
 }
 
+/// A Project's To do: its first status that isn't a done one, by position
+/// then name. Runs work down it and team questions go in it.
+pub fn to_do(statuses: &[Status]) -> Option<&Status> {
+    statuses
+        .iter()
+        .filter(|s| !s.is_done)
+        .min_by(|a, b| a.position.total_cmp(&b.position).then_with(|| a.name.cmp(&b.name)))
+}
+
+/// Whether a status counts as still being worked on, for a run: To do, or
+/// one called Doing. Never a done one.
+pub fn in_progress(statuses: &[Status], status_id: &str) -> bool {
+    let first = to_do(statuses).map(|s| s.id.as_str());
+    statuses.iter().any(|s| s.id == status_id && !s.is_done && (Some(s.id.as_str()) == first || s.name.eq_ignore_ascii_case("doing")))
+}
+
 /// The colors a status or label can have: Apple's system colors, by name.
 pub const COLORS: &[&str] = &["red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "brown", "gray"];
 
@@ -1340,9 +1356,10 @@ impl Board {
     }
 
     /// A Project's first status that isn't a done one (To do, usually).
+    /// A Project's To do (see `to_do`), by the Project's id.
     pub fn first_open_status(&self, project_id: &str) -> Result<Option<String>> {
-        let rows = self.get(&format!("/rest/v1/statuses?project_id=eq.{project_id}&is_done=eq.false&select=id&order=position&limit=1"))?;
-        Ok(rows.get(0).and_then(|r| r["id"].as_str()).map(String::from))
+        let rows: Vec<Status> = serde_json::from_value(self.get(&format!("/rest/v1/statuses?project_id=eq.{project_id}&select=id,name,position,is_done,color"))?)?;
+        Ok(to_do(&rows).map(|s| s.id.clone()))
     }
 
     /// Whether a person is a member of a Project.
@@ -1732,6 +1749,20 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn to_do_is_the_first_status_that_isnt_done() {
+        let st = |id: &str, position: f64, is_done: bool| Status { id: id.into(), name: id.into(), position, is_done, color: None };
+        // Done was dragged to the front: To do is still To do.
+        let all = [st("Done", 0.0, true), st("To do", 1.0, false), st("Doing", 2.0, false), st("Review", 3.0, false)];
+        assert_eq!(to_do(&all).map(|s| s.name.as_str()), Some("To do"));
+        assert!(in_progress(&all, "To do") && in_progress(&all, "Doing"));
+        assert!(!in_progress(&all, "Done") && !in_progress(&all, "Review"));
+        // Tied positions: by name.
+        assert_eq!(to_do(&[st("b", 1.0, false), st("a", 1.0, false)]).map(|s| s.name.as_str()), Some("a"));
+        // Only done statuses: no To do.
+        assert!(to_do(&[st("Done", 0.0, true)]).is_none());
+    }
 
     #[test]
     fn placing_a_task() {
