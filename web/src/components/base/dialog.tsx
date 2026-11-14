@@ -42,8 +42,12 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     /** A sheet with its own Cancel: no × as well (one way out, HIG sheets #6). */
     noClose?: boolean;
+    /** Something to work in (a task): the full height of a phone, and a
+     *  panel down the right side on a wide screen, the board still in view
+     *  beside it (HIG sheets #3, #4). */
+    side?: boolean;
   }
->(({ className, children, onCloseAutoFocus, onOpenAutoFocus, noClose, ...props }, ref) => {
+>(({ className, children, onCloseAutoFocus, onOpenAutoFocus, noClose, side, ...props }, ref) => {
   const closeRef = React.useRef<HTMLButtonElement>(null);
   // What had focus before it opened gets focus back when it closes: the
   // last control focused outside any dialog (focus inside one doesn't count).
@@ -63,7 +67,7 @@ export const DialogContent = React.forwardRef<
   };
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay className={side ? "lg:bg-black/10" : undefined} />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
@@ -71,6 +75,11 @@ export const DialogContent = React.forwardRef<
           // shadcn's centered dialog.
           "fixed inset-x-0 bottom-0 z-50 grid w-full gap-4 rounded-t-2xl border bg-background p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-lg duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           "sm:inset-x-auto sm:bottom-auto sm:left-[50%] sm:top-[50%] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:pb-6 sm:duration-200 sm:data-[state=closed]:fade-out-0 sm:data-[state=open]:fade-in-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
+          side && [
+            "top-[max(0.5rem,env(safe-area-inset-top))] max-sm:max-h-none",
+            "lg:inset-y-0 lg:left-auto lg:right-0 lg:top-0 lg:h-dvh lg:max-h-none lg:w-[34rem] lg:max-w-[34rem] lg:translate-x-0 lg:translate-y-0 lg:rounded-none lg:border-y-0 lg:border-r-0",
+            "lg:data-[state=open]:zoom-in-100 lg:data-[state=closed]:zoom-out-100 lg:data-[state=open]:slide-in-from-left-0 lg:data-[state=open]:slide-in-from-top-0 lg:data-[state=closed]:slide-out-to-left-0 lg:data-[state=closed]:slide-out-to-top-0 lg:data-[state=open]:slide-in-from-right-full lg:data-[state=closed]:slide-out-to-right-full",
+          ],
           className,
         )}
         onOpenAutoFocus={onOpenAutoFocus}

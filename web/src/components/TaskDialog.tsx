@@ -40,7 +40,8 @@ export function TaskDialog({
   return (
     <Dialog open={task !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:max-w-xl sm:bg-background"
+        side
+        className="max-h-[92dvh] content-start gap-5 overflow-y-auto bg-muted sm:max-w-xl sm:bg-background"
         // Focus the sheet itself, not the title: on a phone a focused title
         // opens the keyboard. Keyboard and screen-reader users start inside.
         onOpenAutoFocus={(e) => {
