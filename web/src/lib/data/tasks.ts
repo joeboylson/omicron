@@ -51,8 +51,19 @@ export async function setLabel(db: SupabaseClient, task: Task, labelId: string, 
   }
 }
 
-export async function addChecklistItem(db: SupabaseClient, task: Task, text: string) {
-  must(await db.from("checklist_items").insert({ task_id: task.id, text, position: after(task.checklist) }));
+/** Checklist items being added, one after another: two added quickly
+ *  mustn't both take the place after the same last item (#200). */
+let addingItems: Promise<unknown> = Promise.resolve();
+
+export function addChecklistItem(db: SupabaseClient, task: Task, text: string): Promise<void> {
+  const next = addingItems.then(async () => {
+    // After the last one the database has, not the one this page last saw.
+    const last = must(await db.from("checklist_items").select("position").eq("task_id", task.id).order("position", { ascending: false }).limit(1)) as { position: number }[];
+    const position = Math.max(after(task.checklist), (last[0]?.position ?? 0) + 1);
+    must(await db.from("checklist_items").insert({ task_id: task.id, text, position }));
+  });
+  addingItems = next.catch(() => {});
+  return next;
 }
 
 export async function tickChecklistItem(db: SupabaseClient, item: ChecklistItem, done: boolean) {
