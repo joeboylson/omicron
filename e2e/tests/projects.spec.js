@@ -1086,11 +1086,24 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await expect(row).toBeVisible();
   if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/people.png` });
 
-  // Deleted, after asking once more: gone for good. Not yourself.
-  await expect(page.getByRole("button", { name: /^Delete Robin Example/ })).toHaveCount(0);
-  await row.getByRole("button", { name: `Delete ${sam}…` }).click();
+  // Filtered to a Project, the first thing offered is taking them out of
+  // just that one: they stay, in no Project of yours (#145).
+  await expect(page.getByRole("button", { name: "More for Robin Example" })).toHaveCount(0);
+  await row.getByRole("button", { name: `More for ${sam}` }).click();
+  await page.getByRole("menuitem", { name: `Remove from ${garden}` }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByLabel("Only people in").selectOption({ label: "Everyone" });
+  await expect(projects).toHaveText("No Projects you're in");
+  await projects.click();
+  await page.getByRole("option", { name: garden }).click();
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Only people in").selectOption({ label: `In ${garden}` });
+
+  // Deleted, after asking once more and naming what they leave: gone for good.
+  await row.getByRole("button", { name: `More for ${sam}` }).click();
+  await page.getByRole("menuitem", { name: `Delete ${sam}…` }).click();
   const asked = page.getByRole("dialog", { name: `Delete ${sam}?` });
-  await expect(asked).toContainText("taken out of every Project");
+  await expect(asked).toContainText(`taken out of ${garden}`);
   await asked.getByRole("button", { name: `Delete ${sam}`, exact: true }).click();
   await expect(asked).toHaveCount(0);
   await expect(page.getByRole("table", { name: "People" }).getByRole("row", { name: sam })).toHaveCount(0);

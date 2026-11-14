@@ -78,7 +78,10 @@ async function escape(page) {
     await shot("1b-people", true);
     // One Project's people, and deleting someone (asks once more; cancelled).
     await page.getByLabel("Only people in").selectOption({ label: "In Lisbon trip" });
-    await page.getByRole("button", { name: "Delete Sam Rivera…" }).click();
+    await page.getByRole("button", { name: "More for Sam Rivera" }).click();
+    await page.getByRole("menuitem", { name: "Remove from Lisbon trip" }).waitFor();
+    await shot("1k-people-menu");
+    await page.getByRole("menuitem", { name: "Delete Sam Rivera…" }).click();
     const asked = page.getByRole("dialog", { name: "Delete Sam Rivera?" });
     await asked.waitFor();
     await shot("1h-people-delete");

@@ -3,7 +3,8 @@
 // take them out. Mirrors `omicron people`.
 
 import { useCallback, useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2, UserMinus } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addMember, deletePerson, listPeopleTable, listProjects, removeMember, type PersonRow, type ProjectSummary } from "@/lib/data";
@@ -21,6 +22,11 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((w) => w[0]!.toUpperCase())
     .join("");
+}
+
+/** "A", "A and B", "A, B and C". */
+function listNames(names: string[]): string {
+  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 export function PeoplePage() {
@@ -93,14 +99,33 @@ export function PeoplePage() {
       enableSorting: false,
       cell: ({ row: { original: p } }) => {
         if (p.id === me.personId) return null;
-        // Only people all of whose Projects you're in (the Web Machine checks too).
+        // Taken out of the Project the list is showing, when it's filtered to one.
+        const here = inProject && p.projectIds.includes(inProject) ? projects.find((pr) => pr.id === inProject) : undefined;
+        // Deleted only if all their Projects are yours (the Web Machine checks too).
         const yours = p.projectIds.every((id) => projects.some((pr) => pr.id === id));
-        if (!yours) return null;
+        if (!here && !yours) return null;
         return (
           <div className="flex justify-end">
-            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-destructive" aria-label={`Delete ${p.display_name}…`} onClick={() => setDeleting(p)}>
-              <Trash2 />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="text-muted-foreground" aria-label={`More for ${p.display_name}`}>
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {here && (
+                  <DropdownMenuItem onSelect={() => change(() => removeMember(db, here.id, p.id))}>
+                    <UserMinus /> Remove from {here.name}
+                  </DropdownMenuItem>
+                )}
+                {here && yours && <DropdownMenuSeparator />}
+                {yours && (
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleting(p)}>
+                    <Trash2 /> Delete {p.display_name}…
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         );
       },
@@ -148,7 +173,11 @@ export function PeoplePage() {
             <>
               <DialogHeader className="text-left">
                 <DialogTitle>Delete {deleting.display_name}?</DialogTitle>
-                <DialogDescription>They're taken out of every Project and can't sign in again. This can't be undone.</DialogDescription>
+                <DialogDescription>
+                  {visible(deleting).length > 0
+                    ? `They're taken out of ${listNames(visible(deleting).map((id) => projects.find((pr) => pr.id === id)!.name))}, and can't sign in again. This can't be undone.`
+                    : "They can't sign in again. This can't be undone."}
+                </DialogDescription>
               </DialogHeader>
               <DialogFooter className="gap-2 sm:gap-0">
                 <Button variant="ghost" onClick={() => setDeleting(null)}>
