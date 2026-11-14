@@ -372,14 +372,14 @@ pub fn start_worker(role: &str, number: i64, part: Option<&str>) -> Result<Strin
     let live = |state: &str| matches!(state, "starting" | "busy" | "idle");
     // One copy per job, except for parts: they're worked side by side.
     if part.is_none() {
-        if let Some((name, ..)) = workers.iter().find(|(_, r, s, j)| r == role && live(s) && j.as_deref() == Some(job.id.as_str())) {
+        if let Some(name) = workers.iter().find(|w| w.role == role && live(&w.state) && w.job_id.as_deref() == Some(job.id.as_str())).map(|w| &w.name) {
             if omicron::host::is_running(&host_name(&team.name, name)) {
                 bail!("{name} is already on job #{number}: message it instead (omicron sessions send {}.{name} \"...\")", team.name);
             }
         }
     }
     // The role's name, or the next free copy (builder-2, builder-3...).
-    let taken = |n: &str| workers.iter().any(|(w, _, s, _)| w == n && live(s)) || omicron::host::is_running(&host_name(&team.name, n));
+    let taken = |n: &str| workers.iter().any(|w| w.name == n && live(&w.state)) || omicron::host::is_running(&host_name(&team.name, n));
     let name = (1..).map(|i| if i == 1 { role.to_string() } else { format!("{role}-{i}") }).find(|n| !taken(n)).unwrap();
     let part = part.map(|text| new_part(&team, &job, text)).transpose()?;
     launch(&board, &team, &name, role, &job, part.as_ref(), None)?;
@@ -430,7 +430,7 @@ fn launch(board: &Board, team: &TeamRow, name: &str, role: &str, job: &Job, part
 /// The job a worker is on.
 fn my_job(board: &Board, team: &TeamRow, me: &str) -> Result<Job> {
     let workers = board.workers(team)?;
-    let job_id = workers.iter().find(|(w, ..)| w == me).and_then(|(.., j)| j.clone()).context("you're not on a job")?;
+    let job_id = workers.iter().find(|w| w.name == me).and_then(|w| w.job_id.clone()).context("you're not on a job")?;
     board.jobs(team)?.into_iter().find(|j| j.id == job_id).context("your job is gone")
 }
 
@@ -446,7 +446,7 @@ pub fn handoff(to: &str, note: &str) -> Result<String> {
         bail!("{} has no role {to} (roles: {}, or done)", team.name, roles.join(", "));
     }
     board.update_job(&job, serde_json::json!({ "step": to, "note": note, "state": "working" }))?;
-    let role = board.workers(&team)?.into_iter().find(|(w, ..)| *w == me).map(|(_, r, ..)| r).unwrap_or_default();
+    let role = board.workers(&team)?.into_iter().find(|w| w.name == me).map(|w| w.role).unwrap_or_default();
     board.set_worker(&team, &me, &role, "idle", Some(&job.id))?;
     let msg = if to == "done" {
         format!("{me} says job #{} is done: {note} Finish it with omicron teams finish {}.", job.number, job.number)
@@ -474,7 +474,7 @@ fn part_done(board: &Board, team: &TeamRow, me: &str, job: &Job, k: i64, note: &
         bail!("your part clashes with the job's branch: run `git merge {}` here, fix the clash, commit, and hand off again", branch(job));
     }
     let left = parts_left(team, job)?;
-    let role = board.workers(team)?.into_iter().find(|(w, ..)| w == me).map(|(_, r, ..)| r).unwrap_or_default();
+    let role = board.workers(team)?.into_iter().find(|w| w.name == me).map(|w| w.role).unwrap_or_default();
     board.set_worker(team, me, &role, "idle", Some(&job.id))?;
     let rest = if left.is_empty() {
         "All its parts are in: hand the job on to the next role.".to_string()
@@ -574,8 +574,8 @@ pub fn heads_up(text: &str) -> Result<String> {
     all.push_str(&format!("- {} ({me}): {line}\n", chrono::Local::now().format("%Y-%m-%d")));
     std::fs::write(&file, all)?;
     let mut told = 0;
-    for (w, _, state, _) in board.workers(&team)? {
-        if w != me && matches!(state.as_str(), "busy" | "idle" | "starting") && tell(&team.name, &w, &format!("Heads-up from {me}: {line}"))? {
+    for w in board.workers(&team)? {
+        if w.name != me && matches!(w.state.as_str(), "busy" | "idle" | "starting") && tell(&team.name, &w.name, &format!("Heads-up from {me}: {line}"))? {
             told += 1;
         }
     }
@@ -627,10 +627,10 @@ pub fn finish(number: i64) -> Result<String> {
         }
     }
     board.update_job(&job, serde_json::json!({ "state": "done" }))?;
-    for (w, role, state, j) in board.workers(&team)? {
-        if j.as_deref() == Some(job.id.as_str()) && state != "stopped" {
-            stop(&team, &w)?;
-            board.set_worker(&team, &w, &role, "stopped", None)?;
+    for w in board.workers(&team)? {
+        if w.job_id.as_deref() == Some(job.id.as_str()) && w.state != "stopped" {
+            stop(&team, &w.name)?;
+            board.set_worker(&team, &w.name, &w.role, "stopped", None)?;
         }
     }
     nudge_advisor(&team, &format!("job #{number} ({}) is finished.", job.title));
@@ -648,7 +648,7 @@ fn stop(team: &TeamRow, worker: &str) -> Result<()> {
 pub fn stop_worker(name: &str) -> Result<String> {
     let (board, team, me) = caller()?;
     lead_only(&me, "stop workers")?;
-    let role = board.workers(&team)?.into_iter().find(|(w, ..)| w == name).map(|(_, r, ..)| r).with_context(|| format!("no worker {name}"))?;
+    let role = board.workers(&team)?.into_iter().find(|w| w.name == name).map(|w| w.role).with_context(|| format!("no worker {name}"))?;
     stop(&team, name)?;
     board.set_worker(&team, name, &role, "stopped", None)?;
     Ok(format!("Stopped {name}."))
@@ -938,7 +938,7 @@ pub fn fresh_start(team_id: &str, worker: &str) -> Result<()> {
             start_advisor(&board, &team, Some(&note))?;
         }
         _ => {
-            let (_, role, _, job_id) = board.workers(&team)?.into_iter().find(|(w, ..)| w == worker).with_context(|| format!("no worker {worker}"))?;
+            let omicron::board::Worker { role, job_id, .. } = board.workers(&team)?.into_iter().find(|w| w.name == worker).with_context(|| format!("no worker {worker}"))?;
             let job = board.jobs(&team)?.into_iter().find(|j| Some(&j.id) == job_id.as_ref()).context("its job is gone")?;
             let part = saved["part"].as_str().and_then(|k| k.parse().ok()).map(|k| read_part(&team, &job, k)).transpose()?;
             launch(&board, &team, worker, &role, &job, part.as_ref(), Some(&note))?;

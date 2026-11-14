@@ -254,6 +254,74 @@ impl Run {
     }
 }
 
+/// A team's worker: a Claude session in one of its roles.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Worker {
+    pub name: String,
+    pub role: String,
+    /// starting, busy, idle, stopped, or gone.
+    pub state: String,
+    pub job_id: Option<String>,
+}
+
+/// What `TaskRow` reads.
+const TASK_ROW: &str = "id,number,title,status_id,assignee_person_id,assignee_session_id,task_labels(label_id),task_jobs(job_id)";
+
+/// A task as a run looks at it: where it is, who has it, its labels and
+/// whether a team has it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TaskRow {
+    pub id: String,
+    pub number: i64,
+    #[serde(default)]
+    pub title: String,
+    pub status_id: String,
+    #[serde(default)]
+    pub assignee_person_id: Option<String>,
+    #[serde(default)]
+    pub assignee_session_id: Option<String>,
+    #[serde(default)]
+    task_labels: Vec<LabelRef>,
+    #[serde(default)]
+    task_jobs: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LabelRef {
+    label_id: String,
+}
+
+impl TaskRow {
+    pub fn label_ids(&self) -> Vec<&str> {
+        self.task_labels.iter().map(|l| l.label_id.as_str()).collect()
+    }
+    /// Linked to a team's job.
+    pub fn has_job(&self) -> bool {
+        !self.task_jobs.is_empty()
+    }
+}
+
+/// A task linked to a job of a team on this machine.
+#[derive(Debug, Clone)]
+pub struct TeamTask {
+    pub task: TaskRow,
+    pub job_number: i64,
+    pub job_state: String,
+    pub team: String,
+}
+
+impl TeamTask {
+    fn read(r: &Value) -> Option<TeamTask> {
+        let job = &r["jobs"];
+        Some(TeamTask {
+            task: serde_json::from_value(r["tasks"].clone()).ok()?,
+            job_number: job["number"].as_i64()?,
+            job_state: job["state"].as_str()?.to_string(),
+            team: job["teams"]["name"].as_str()?.to_string(),
+        })
+    }
+}
+
 /// A team's job.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Job {
@@ -942,52 +1010,24 @@ impl Board {
     }
 
     /// A task by id, with its status id, assignees and labels (ids).
-    pub fn task_row(&self, id: &str) -> Result<Option<Value>> {
-        let rows = self.get(&format!(
-            "/rest/v1/tasks?id=eq.{id}&select=id,number,title,status_id,position,assignee_person_id,assignee_session_id,task_labels(label_id),task_jobs(job_id)"
-        ))?;
-        Ok(rows.get(0).cloned())
+    pub fn task_row(&self, id: &str) -> Result<Option<TaskRow>> {
+        let rows = self.get(&format!("/rest/v1/tasks?id=eq.{id}&select={TASK_ROW}"))?;
+        Ok(serde_json::from_value::<Vec<TaskRow>>(rows)?.into_iter().next())
     }
 
-    /// Give a task to a session as the one signed in (for a run, its machine).
-    pub fn give_task(&self, task_id: &str, session_id: &str) -> Result<()> {
-        self.send(
-            "PATCH",
-            &format!("/rest/v1/tasks?id=eq.{task_id}"),
-            json!({ "assignee_session_id": session_id, "assignee_person_id": null, "given_by": null }),
-        )?;
-        Ok(())
+    /// A Project's tasks in a status, in their order (see `task_row`).
+    pub fn task_rows_in(&self, project_id: &str, status_id: &str) -> Result<Vec<TaskRow>> {
+        let rows = self.get(&format!("/rest/v1/tasks?project_id=eq.{project_id}&status_id=eq.{status_id}&select={TASK_ROW}&order=position,number"))?;
+        Ok(serde_json::from_value(rows)?)
     }
 
-    /// A Project's tasks in a status, in their order, as rows (see `task_row`).
-    pub fn task_rows_in(&self, project_id: &str, status_id: &str) -> Result<Vec<Value>> {
-        let rows = self.get(&format!(
-            "/rest/v1/tasks?project_id=eq.{project_id}&status_id=eq.{status_id}&select=id,number,title,status_id,position,assignee_person_id,assignee_session_id,task_labels(label_id),task_jobs(job_id)&order=position,number"
-        ))?;
-        Ok(rows.as_array().cloned().unwrap_or_default())
-    }
-
-    /// A Project's tasks linked to jobs of teams on the machine signed in:
-    /// (task row, job number, job state, team name).
-    pub fn team_tasks_here(&self, project_id: &str) -> Result<Vec<(Value, i64, String, String)>> {
+    /// A Project's tasks linked to jobs of teams on the machine signed in.
+    pub fn team_tasks_here(&self, project_id: &str) -> Result<Vec<TeamTask>> {
         let rows = self.get(&format!(
             "/rest/v1/task_jobs?select=tasks!inner(id,number,title,status_id,project_id,assignee_session_id),jobs!inner(number,state,teams!inner(name,machine_id))&tasks.project_id=eq.{project_id}&jobs.teams.machine_id=eq.{}",
             self.session.user.id
         ))?;
-        Ok(rows
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|r| r["jobs"]["teams"].is_object())
-            .map(|r| {
-                (
-                    r["tasks"].clone(),
-                    r["jobs"]["number"].as_i64().unwrap_or(0),
-                    r["jobs"]["state"].as_str().unwrap_or("").to_string(),
-                    r["jobs"]["teams"]["name"].as_str().unwrap_or("").to_string(),
-                )
-            })
-            .collect())
+        Ok(rows.as_array().into_iter().flatten().filter_map(TeamTask::read).collect())
     }
 
     /// A Project's run rules (empty if it has none).
@@ -1314,18 +1354,10 @@ impl Board {
         Ok(())
     }
 
-    /// A team's workers: (name, role, state, job id).
-    pub fn workers(&self, team: &TeamRow) -> Result<Vec<(String, String, String, Option<String>)>> {
+    /// A team's workers, by name.
+    pub fn workers(&self, team: &TeamRow) -> Result<Vec<Worker>> {
         let rows = self.get(&format!("/rest/v1/workers?team_id=eq.{}&select=name,role,state,job_id&order=name", team.id))?;
-        Ok(rows
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|r| {
-                let s = |k: &str| r[k].as_str().unwrap_or("").to_string();
-                (s("name"), s("role"), s("state"), r["job_id"].as_str().map(String::from))
-            })
-            .collect())
+        Ok(serde_json::from_value(rows)?)
     }
 
     /// Record a worker (added, or changed if it's there). Only the team's machine can.
@@ -1412,6 +1444,22 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_rows_team_tasks_and_workers_are_read() {
+        let row = json!({ "id": "t1", "number": 4, "title": "Fix it", "status_id": "s1", "assignee_person_id": null,
+            "assignee_session_id": "x", "task_labels": [{ "label_id": "l1" }, { "label_id": "l2" }], "task_jobs": [] });
+        let t: TaskRow = serde_json::from_value(row.clone()).unwrap();
+        assert_eq!((t.number, t.label_ids(), t.has_job(), t.assignee_session_id.as_deref()), (4, vec!["l1", "l2"], false, Some("x")));
+        // A team's task: fewer fields, read all the same.
+        let tt = TeamTask::read(&json!({ "tasks": { "id": "t1", "number": 4, "title": "Fix it", "status_id": "s1", "assignee_session_id": null },
+            "jobs": { "number": 2, "state": "done", "teams": { "name": "web", "machine_id": "m" } } })).unwrap();
+        assert_eq!((tt.task.number, tt.task.has_job(), tt.job_number, tt.job_state.as_str(), tt.team.as_str()), (4, false, 2, "done", "web"));
+        // Not one of this machine's teams (no team): left out.
+        assert!(TeamTask::read(&json!({ "tasks": row, "jobs": { "number": 2, "state": "done", "teams": null } })).is_none());
+        let w: Vec<Worker> = serde_json::from_value(json!([{ "name": "builder-1", "role": "builder", "state": "busy", "job_id": null }])).unwrap();
+        assert_eq!(w[0], Worker { name: "builder-1".into(), role: "builder".into(), state: "busy".into(), job_id: None });
+    }
 
     #[test]
     fn dates_must_look_like_dates() {

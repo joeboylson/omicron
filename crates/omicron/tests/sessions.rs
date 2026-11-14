@@ -178,6 +178,9 @@ fn record(s: &Supabase, project: &str, name: &str) -> Value {
 #[test]
 fn a_session_is_recorded_while_it_runs_and_ends_when_it_closes_or_crashes() {
     let s = supabase_or_skip!();
+    // Where the change list is now: searching only past here stays quick
+    // on a big list.
+    let from = s.admin_request("GET", "/rest/v1/changes?select=seq&order=seq.desc&limit=1", None).unwrap()[0]["seq"].as_i64().unwrap_or(0);
     let pat = person(&s, "Pat");
     let project = unique("Code");
     ok(&pat, None, &["projects", "new", &project]);
@@ -204,7 +207,7 @@ fn a_session_is_recorded_while_it_runs_and_ends_when_it_closes_or_crashes() {
     let id = s.admin_request("GET", &format!("/rest/v1/sessions?select=id&claude_session_id=eq.{b}"), None).unwrap()[0]["id"].as_str().unwrap().to_string();
     hook(&mac, first.id(), "session-end", json!({ "session_id": b, "reason": "prompt_input_exit" }));
     assert!(record(&s, &project, "parser").is_null());
-    let logged = s.admin_request("GET", &format!("/rest/v1/changes?select=kind&table_name=eq.sessions&kind=eq.DELETE&old_record->>id=eq.{id}"), None).unwrap();
+    let logged = s.admin_request("GET", &format!("/rest/v1/changes?select=kind&seq=gt.{from}&table_name=eq.sessions&kind=eq.DELETE&old_record->>id=eq.{id}"), None).unwrap();
     assert_eq!(logged.as_array().map(Vec::len), Some(1), "{logged}");
     first.kill().unwrap();
     first.wait().unwrap();

@@ -212,13 +212,13 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     // On a task: still at it, or finished with it.
     if let Some(task_id) = &run.task_id {
         let task = board.task_row(task_id)?;
-        let mine = task.as_ref().is_some_and(|t| t["assignee_session_id"].as_str() == Some(session.id.as_str()));
+        let mine = task.as_ref().is_some_and(|t| t.assignee_session_id.as_deref() == Some(session.id.as_str()));
         if let Some(t) = &task {
-            if mine && in_progress(&statuses, t["status_id"].as_str().unwrap_or("")) {
+            if mine && in_progress(&statuses, &t.status_id) {
                 return Ok(());
             }
         }
-        let number = task.as_ref().and_then(|t| t["number"].as_i64()).unwrap_or(0);
+        let number = task.as_ref().map(|t| t.number).unwrap_or(0);
         let done = run.done + 1;
         if run.state == "pausing" {
             return board.set_run(id, json!({ "state": "stopped", "task_id": null, "done": done, "note": format!("paused after #{number}") }));
@@ -238,11 +238,12 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     // A big task a team here finished: the session checks it, reports, and
     // moves it to Review, before anything new (#92).
     let team_tasks = board.team_tasks_here(&run.project_id)?;
-    if let Some((t, job, _, team)) = team_tasks.iter().find(|(t, _, state, _)| {
-        state == "done" && in_progress(&statuses, t["status_id"].as_str().unwrap_or("")) && t["assignee_session_id"].as_str() != Some(session.id.as_str())
+    if let Some(tt) = team_tasks.iter().find(|tt| {
+        tt.job_state == "done" && in_progress(&statuses, &tt.task.status_id) && tt.task.assignee_session_id.as_deref() != Some(session.id.as_str())
     }) {
-        let (task_id, number, title) = (t["id"].as_str().unwrap_or(""), t["number"].as_i64().unwrap_or(0), t["title"].as_str().unwrap_or(""));
-        board.give_task(task_id, &session.id)?;
+        let (team, job) = (&tt.team, tt.job_number);
+        let (task_id, number, title) = (tt.task.id.as_str(), tt.task.number, tt.task.title.as_str());
+        board.give_anew(task_id, Some(&session.id))?;
         board.set_run(id, json!({ "task_id": task_id, "note": format!("checking #{number}: {team} finished job #{job}") }))?;
         omicron::handover::wait_until_free(&session.id);
         omicron::host::say(
@@ -270,18 +271,18 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     let team = board.teams()?.into_iter().find(|t| t.machine_id == me && t.project_id == run.project_id && t.state == "running");
     let mut next = None;
     for t in board.task_rows_in(&run.project_id, &first.id)? {
-        let free = t["assignee_person_id"].is_null() && (t["assignee_session_id"].is_null() || t["assignee_session_id"].as_str() == Some(session.id.as_str()));
-        let labels: Vec<&str> = t["task_labels"].as_array().into_iter().flatten().filter_map(|x| x["label_id"].as_str()).collect();
+        let free = t.assignee_person_id.is_none() && t.assignee_session_id.as_deref().is_none_or(|s| s == session.id);
+        let labels = t.label_ids();
         let labelled = run.label_id.as_deref().is_none_or(|l| labels.contains(&l));
-        let with_a_team = t["task_jobs"].as_array().is_some_and(|j| !j.is_empty());
+        let with_a_team = t.has_job();
         if !free || !labelled || with_a_team {
             continue;
         }
         if let (Some(team), Some(l)) = (&team, &team_label_id) {
             if labels.contains(&l.as_str()) {
-                let (number, title) = (t["number"].as_i64().unwrap_or(0), t["title"].as_str().unwrap_or(""));
+                let number = t.number;
                 let task = board.task(&project, number)?;
-                let job = board.add_job(team, title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
+                let job = board.add_job(team, &t.title, &format!("Task #{number} in {}.\n\n{}", project.name, task.notes))?;
                 board.link_job(&task, team, job.number)?;
                 board.set_run(id, json!({ "note": format!("gave #{number} to the team {} as job #{}", team.name, job.number) }))?;
                 continue;
@@ -293,8 +294,8 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
     let Some(next) = next else {
         let waiting: Vec<String> = team_tasks
             .iter()
-            .filter(|(t, _, state, _)| !matches!(state.as_str(), "done" | "cancelled") && in_progress(&statuses, t["status_id"].as_str().unwrap_or("")))
-            .map(|(t, job, _, team)| format!("#{} ({team} job #{job})", t["number"].as_i64().unwrap_or(0)))
+            .filter(|tt| !matches!(tt.job_state.as_str(), "done" | "cancelled") && in_progress(&statuses, &tt.task.status_id))
+            .map(|tt| format!("#{} ({} job #{})", tt.task.number, tt.team, tt.job_number))
             .collect();
         if !waiting.is_empty() {
             // Comes back when a job finishes (the daemon steps runs then).
@@ -303,8 +304,8 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
         let done = board.run(id)?.map(|r| r.done).unwrap_or(run.done);
         return board.set_run(id, json!({ "state": "finished", "note": format!("finished: {} is empty ({done} done)", first.name) }));
     };
-    let (task_id, number, title) = (next["id"].as_str().unwrap_or(""), next["number"].as_i64().unwrap_or(0), next["title"].as_str().unwrap_or(""));
-    board.give_task(task_id, &session.id)?;
+    let (task_id, number, title) = (next.id.as_str(), next.number, next.title.as_str());
+    board.give_anew(task_id, Some(&session.id))?;
     board.set_run(id, json!({ "task_id": task_id, "note": format!("on #{number}: {}", omicron::text::line(title)) }))?;
     omicron::handover::wait_until_free(&session.id);
     omicron::host::say(

@@ -130,7 +130,7 @@ pub fn pick_team(team: Option<String>) -> Result<()> {
             continue;
         }
         let jobs = board.jobs(&t)?;
-        for (worker, role, state, job_id) in board.workers(&t)? {
+        for omicron::board::Worker { name: worker, role, state, job_id } in board.workers(&t)? {
             let job = job_id.and_then(|id| jobs.iter().find(|j| j.id == id)).map(|j| format!("#{} {}", j.number, j.title));
             members.push(Member { team: t.name.clone(), worker, role, state, job });
         }
