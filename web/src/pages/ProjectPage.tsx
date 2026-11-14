@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { updateTask, addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
-import { inOrder, placeAt } from "@/lib/board-rules";
+import { dropPlace, inOrder, matches as shows, parseColumn, type ColumnKind } from "@/lib/board-rules";
 import {
   DndContext,
   DragOverlay,
@@ -295,14 +295,8 @@ export function ProjectPage({ id }: { id: string }) {
     setQuery("");
     setFilters({ mine: false, review: false, due: false, label: null });
   };
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const soon = Date.now() + 7 * 86400000;
-  const matches = (t: Task) =>
-    words.every((w) => `#${t.number} ${t.title} ${t.notes}`.toLowerCase().includes(w)) &&
-    (!filters.mine || t.assignee_person_id === me.personId) &&
-    (!filters.review || t.needs_review) &&
-    (!filters.due || (t.due_on !== null && new Date(t.due_on).getTime() <= soon)) &&
-    (filters.label === null || t.labelIds.includes(filters.label));
+  const now = Date.now();
+  const matches = (t: Task) => shows(t, query, filters, me.personId, now);
   // The board's columns, and the list's groups: statuses or topics.
   const groups: Group[] =
     groupBy === "status"
@@ -376,38 +370,11 @@ export function ProjectPage({ id }: { id: string }) {
     const moved = project.tasks.find((t) => t.id === e.active.id);
     if (!moved || !e.over) return;
     const overTask = project.tasks.find((t) => t.id === e.over!.id);
-    // Let go over itself: it stays where it was.
-    if (overTask?.id === moved.id) return;
     const col = parseColumn(overTask ? String(e.over.data.current?.column) : String(e.over.id));
     if (!col) return;
-    // A status column sets the status; a topic column, the topic; a
-    // person's or session's column, who it's given to.
-    const byStatus = col.kind === "s";
-    const statusId = byStatus && col.ref ? col.ref : moved.status_id;
-    const topicId = col.kind === "t" ? col.ref : moved.topic_id;
-    const who = col.kind === "p" ? { person: col.ref, session: null } : col.kind === "c" ? { person: null, session: col.ref } : undefined;
-    const sameColumn = byStatus
-      ? moved.status_id === statusId
-      : col.kind === "t"
-        ? moved.topic_id === topicId
-        : moved.assignee_person_id === who!.person && moved.assignee_session_id === who!.session;
-    // Places count within a status. In a topic column, a card lands next to
-    // the one it's over only when that one has the same status.
-    const anchor = overTask && overTask.status_id === statusId ? overTask : undefined;
-    let position = moved.position;
-    let renumber: { id: string; position: number }[] = [];
-    if (byStatus || anchor) {
-      const inStatus = (t: Task) => t.status_id === statusId;
-      const others = inOrder(project.tasks.filter((t) => inStatus(t) && t.id !== moved.id));
-      const column = inOrder(project.tasks.filter(inStatus));
-      let at = anchor ? others.findIndex((t) => t.id === anchor.id) : others.length;
-      // Dragging down within the same column lands after the card it's over.
-      if (anchor && inStatus(moved) && column.indexOf(moved) < column.indexOf(anchor)) at += 1;
-      if (at < 0) at = others.length;
-      // Dropped where it already is (by its place in the column, so ties count).
-      if (sameColumn && inStatus(moved) && column.indexOf(moved) === at) return;
-      ({ position, renumber } = placeAt(others, at));
-    } else if (sameColumn) return;
+    const drop = dropPlace(project.tasks, moved, overTask, col);
+    if (!drop) return;
+    const { statusId, topicId, who, position, renumber } = drop;
     const moves = new Map(renumber.map((r) => [r.id, r.position]));
     setProject({
       ...project,
@@ -965,13 +932,6 @@ function Column({
   );
 }
 
-/** What a column id names: a status (`col|s|<id>`) or a topic (`col|t|<id or none>`). */
-function parseColumn(id: string): { kind: Group["kind"]; ref: string | null } | null {
-  const [col, kind, which] = id.split("|");
-  if (col !== "col" || !which || !["s", "t", "p", "c"].includes(kind)) return null;
-  return { kind: kind as Group["kind"], ref: which === "none" ? null : which };
-}
-
 /** A card that can be dragged to another place or column. */
 function SortableTask({
   project,
@@ -1089,7 +1049,7 @@ function TaskList({
 /** A board column or list group: a status, or (status null) a topic. */
 /** A board column or list group: a status (s), topic (t), person (p) or
  *  Claude session (c); `ref` is its id (null: none of them). */
-type Group = { key: string; kind: "s" | "t" | "p" | "c"; ref: string | null; name: string; status: Status | null; topicId: string | null; tasks: Task[] };
+type Group = { key: string; kind: ColumnKind; ref: string | null; name: string; status: Status | null; topicId: string | null; tasks: Task[] };
 
 /** Columns by who it's given to: you first, the other members, Claude
  *  sessions that have tasks, then Nobody. */
