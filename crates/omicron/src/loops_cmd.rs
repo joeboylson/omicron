@@ -229,12 +229,16 @@ pub struct Runner {
     supabase: Supabase,
     key: MachineKey,
     loops: Mutex<HashMap<String, Loop>>,
-    names: Mutex<HashMap<String, String>>,
+    /// The loops' sessions, kept from the change list too, so a loop that's
+    /// due but waiting (not open, gate closed, busy) asks nothing each tick.
+    sessions: Mutex<HashMap<String, omicron::board::SessionRecord>>,
+    /// This machine's owner (`None` until read; `Some(None)`: no owner).
+    owner: Mutex<Option<Option<String>>>,
 }
 
 impl Runner {
     pub fn start(supabase: Supabase, key: MachineKey) -> Arc<Runner> {
-        let runner = Arc::new(Runner { supabase, key, loops: Mutex::default(), names: Mutex::default() });
+        let runner = Arc::new(Runner { supabase, key, loops: Mutex::default(), sessions: Mutex::default(), owner: Mutex::default() });
         let r = runner.clone();
         std::thread::spawn(move || loop {
             if let Err(e) = r.tick() {
@@ -251,15 +255,34 @@ impl Runner {
 
     /// Read this machine's running loops afresh (on start and reconnect).
     pub fn reload(&self) -> Result<()> {
-        let all = self.board()?.machine_loops(&self.key.machine_id.to_string())?;
+        let board = self.board()?;
+        let all = board.machine_loops(&self.key.machine_id.to_string())?;
         *self.loops.lock().unwrap() = all.into_iter().map(|l| (l.id.clone(), l)).collect();
+        // Read afresh when needed (changes may have been missed meanwhile).
+        self.sessions.lock().unwrap().clear();
+        *self.owner.lock().unwrap() = Some(board.machine_owner()?);
         Ok(())
     }
 
     /// A line of the change list about a loop.
     pub fn heard(&self, row: &Value) {
-        if row["table_name"] != "loops" {
-            return;
+        let me = self.key.machine_id.to_string();
+        match row["table_name"].as_str() {
+            // A loop's session changed or ended: forget it, to be read again.
+            Some("sessions") => {
+                let r = if row["kind"] == "DELETE" { &row["old_record"] } else { &row["record"] };
+                if let Some(id) = r["id"].as_str() {
+                    self.sessions.lock().unwrap().remove(id);
+                }
+                return;
+            }
+            // This machine's owner changed.
+            Some("machines") if row["record"]["id"].as_str() == Some(me.as_str()) => {
+                *self.owner.lock().unwrap() = Some(row["record"]["owner"].as_str().map(String::from));
+                return;
+            }
+            Some("loops") => {}
+            _ => return,
         }
         let record = if row["kind"] == "DELETE" { &row["old_record"] } else { &row["record"] };
         let Ok(l) = serde_json::from_value::<Loop>(record.clone()) else { return };
@@ -299,16 +322,16 @@ impl Runner {
         }
         // Bound first: a lock taken in the `match` line would be held for
         // the whole match, and the arm below takes it again.
-        let cached = self.names.lock().unwrap().get(&l.session_id).cloned();
-        let name = match cached {
-            Some(n) => n,
+        let cached = self.sessions.lock().unwrap().get(&l.session_id).cloned();
+        let session = match cached {
+            Some(s) => s,
             None => {
-                let n = board.session_by_id(&l.session_id)?.name;
-                self.names.lock().unwrap().insert(l.session_id.clone(), n.clone());
-                n
+                let s = board.session_by_id(&l.session_id)?;
+                self.sessions.lock().unwrap().insert(l.session_id.clone(), s.clone());
+                s
             }
         };
-        let session = board.session_by_id(&l.session_id)?;
+        let name = session.name.clone();
         let open = session.claude_session_id.as_deref().is_some_and(omicron::inbox::listening);
         if !open {
             // Not open in any window: wait rather than pile prompts up for
@@ -324,7 +347,18 @@ impl Runner {
         }
         // Started from elsewhere: only by this machine's owner, while its
         // gate is open.
-        if let Some(why) = omicron::gate::refusal(&board, &session.machine, l.started_by.as_deref())? {
+        let cached_owner = self.owner.lock().unwrap().clone();
+        let owner = match cached_owner {
+            Some(o) => o,
+            None => {
+                let o = board.machine_owner()?;
+                *self.owner.lock().unwrap() = Some(o.clone());
+                o
+            }
+        };
+        let me = self.key.machine_id.to_string();
+        let refused = omicron::gate::decide(&me, owner.as_deref(), l.started_by.as_deref(), omicron::gate::open_until().is_some(), &session.machine);
+        if let Some(why) = refused {
             let note = format!("waiting: it was started from elsewhere. {why}");
             if l.note.as_deref() != Some(note.as_str()) {
                 board.loop_note(&l.id, Some(&note))?;

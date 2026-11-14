@@ -78,22 +78,34 @@ fn parse_time(text: &str) -> Result<NaiveTime> {
 /// Why this machine (signed in as `board`) won't take an order from `who`
 /// (the login that gave it), if it won't. Its own orders always go
 /// through; otherwise only its owner's, and only while the gate is open.
+/// Reads the machine's owner from the database; see `decide` to use one
+/// already known.
 pub fn refusal(board: &crate::board::Board, machine: &str, who: Option<&str>) -> Result<Option<String>> {
     let me = board.session.user.id.to_string();
     if who == Some(me.as_str()) {
         return Ok(None);
     }
     let owner = board.machine_owner()?;
-    if owner.is_none() || who != owner.as_deref() {
+    Ok(decide(&me, owner.as_deref(), who, open_until().is_some(), machine))
+}
+
+/// The order rule itself, with nothing read: `me` is this machine, `owner`
+/// its owner (if it has one), `who` the login that gave the order. `None`
+/// when it goes through; otherwise why not, in words.
+pub fn decide(me: &str, owner: Option<&str>, who: Option<&str>, gate_open: bool, machine: &str) -> Option<String> {
+    if who == Some(me) {
+        return None;
+    }
+    if owner.is_none() || who != owner {
         let owner = if owner.is_none() { "it has no owner yet (`omicron machines owner` on it)" } else { "this came from someone else" };
-        return Ok(Some(format!("{machine} only takes orders from its owner, and {owner}.")));
+        return Some(format!("{machine} only takes orders from its owner, and {owner}."));
     }
-    if open_until().is_none() {
-        return Ok(Some(format!(
+    if !gate_open {
+        return Some(format!(
             "{machine}'s gate is closed, so it takes no work from elsewhere. Open it on {machine} with `omicron gate open --until 17:00`."
-        )));
+        ));
     }
-    Ok(None)
+    None
 }
 
 /// Words for whether the gate is open.
@@ -107,6 +119,20 @@ pub fn status() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_order_rule() {
+        let d = |who: Option<&str>, owner: Option<&str>, open: bool| decide("mac", owner, who, open, "atlas");
+        // Its own orders always.
+        assert_eq!(d(Some("mac"), None, false), None);
+        // The owner's, only with the gate open.
+        assert_eq!(d(Some("joe"), Some("joe"), true), None);
+        assert!(d(Some("joe"), Some("joe"), false).unwrap().contains("gate is closed"));
+        // Anyone else never, gate open or not; nobody's, with no owner.
+        assert!(d(Some("sam"), Some("joe"), true).unwrap().contains("someone else"));
+        assert!(d(Some("joe"), None, true).unwrap().contains("no owner yet"));
+        assert!(d(None, Some("joe"), true).is_some());
+    }
 
     #[test]
     fn times_are_read_the_usual_ways() {
