@@ -115,6 +115,10 @@ async function escape(page) {
     await page.getByRole("region", { name: "Claire's to-do", exact: true }).waitFor();
     await shot("2b-house-topics", true);
     await page.getByRole("radio", { name: "Status", exact: true }).click();
+    await page.getByRole("radio", { name: "List", exact: true }).click();
+    await page.getByRole("list", { name: "To do" }).waitFor();
+    await shot("2g-house-list", true);
+    await page.getByRole("radio", { name: "Board", exact: true }).click();
     await page.getByRole("button", { name: /Fix the back gate/ }).click();
     await shot("3-task");
     // Its ⋯ menu, and who it can be given to.

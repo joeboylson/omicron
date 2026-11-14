@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
 import { Badge } from "@/components/ui/badge";
+import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings } from "@/components/ProjectSettings";
@@ -77,10 +78,18 @@ export function ProjectPage({ id }: { id: string }) {
   const [viewInAddress, setViewInAddress] = useAddressValue("view");
   const view = dev && viewInAddress === "dev" ? "dev" : "tasks";
   const [groupBy, setGroupBy] = useStored<"status" | "topic">(`omicron.groupBy.${id}`, "status");
+  const [layout, setLayout] = useStored<"board" | "list">(`omicron.layout.${id}`, "board");
   const [dragging, setDragging] = useState<Task | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   // Bumped to open "Add a task" in the first column (c, or the menu).
   const [addSignal, setAddSignal] = useState(0);
+  // A new task is typed into the board's first column; from the list, the
+  // board comes back first. (A ref, so the key handler always has the latest.)
+  const newTask = useRef(() => {});
+  newTask.current = () => {
+    setLayout("board");
+    setAddSignal((n) => n + 1);
+  };
   // Search and filters (not kept: a fresh look each visit).
   // The search is in the address too.
   const [queryInAddress, setQueryInAddress] = useAddressValue("q");
@@ -125,11 +134,13 @@ export function ProjectPage({ id }: { id: string }) {
     "project",
     ready
       ? [
-          { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => setAddSignal((n) => n + 1) },
+          { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => newTask.current() },
           { id: "search", label: "Search tasks", group: ready.name, shortcut: "/", keywords: "find filter", run: () => searchBox.current?.focus() },
           { id: "settings", label: "Project settings", group: ready.name, run: () => setSettingsOpen(true) },
-          { id: "group-status", label: "Group by status", group: ready.name, keywords: "columns", run: () => setGroupBy("status") },
-          { id: "group-topic", label: "Group by status and topic", group: ready.name, keywords: "rows lanes", run: () => setGroupBy("topic") },
+          { id: "group-status", label: "Columns by status", group: ready.name, keywords: "group", run: () => setGroupBy("status") },
+          { id: "group-topic", label: "Columns by topic", group: ready.name, keywords: "group", run: () => setGroupBy("topic") },
+          { id: "show-board", label: "Show as a board", group: ready.name, keywords: "view columns", run: () => setLayout("board") },
+          { id: "show-list", label: "Show as a list", group: ready.name, keywords: "view rows", run: () => setLayout("list") },
           ...ready.tasks.map((t) => ({
             id: `task-${t.id}`,
             label: `#${t.number} ${t.title}`,
@@ -149,7 +160,7 @@ export function ProjectPage({ id }: { id: string }) {
         searchBox.current?.focus();
       } else if (e.key === "c") {
         e.preventDefault();
-        setAddSignal((n) => n + 1);
+        newTask.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -411,27 +422,52 @@ export function ProjectPage({ id }: { id: string }) {
           )}
         </div>
         <span className="hidden flex-1 sm:block" />
-        <span id="group-by" className="text-sm text-muted-foreground">
-          Columns
-        </span>
-        <div role="radiogroup" aria-labelledby="group-by" className="inline-flex rounded-lg bg-muted p-0.5">
-          {(["status", "topic"] as const).map((g) => (
-            <button
-              key={g}
-              type="button"
-              role="radio"
-              aria-checked={groupBy === g}
-              onClick={() => setGroupBy(g)}
-              className={cn(
-                "min-h-8 rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                groupBy === g ? "bg-background font-medium shadow-sm" : "text-foreground/75 hover:text-foreground",
-              )}
-            >
-              {g === "status" ? "Status" : "Topic"}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Show"
+          value={layout}
+          options={[
+            ["board", "Board"],
+            ["list", "List"],
+          ]}
+          onChange={setLayout}
+        />
+        <Segmented
+          label={layout === "board" ? "Columns" : "Group by"}
+          value={groupBy}
+          options={[
+            ["status", "Status"],
+            ["topic", "Topic"],
+          ]}
+          onChange={setGroupBy}
+        />
       </div>
+      {groupBy === "topic" && project.topics.length === 0 && (
+        <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
+          No topics yet. Topics are another way to sort tasks, like “Joe's to-do”.{" "}
+          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setSettingsOpen(true)}>
+            Add topics in Project settings
+          </Button>
+        </p>
+      )}
+      {layout === "list" ? (
+        <TaskList
+          project={project}
+          groups={
+            groupBy === "status"
+              ? project.statuses.map((s) => ({ key: s.id, name: s.name, status: s, tasks: inOrder(project.tasks.filter((t) => t.status_id === s.id && matches(t))) }))
+              : topicColumns(project).map((c) => ({
+                  key: c.key,
+                  name: c.name,
+                  status: null,
+                  tasks: byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t))),
+                }))
+          }
+          showStatus={groupBy === "topic"}
+          filtering={filtering}
+          onOpen={(t) => setOpenTask(t.number)}
+        />
+      ) : (
+      <>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -447,20 +483,13 @@ export function ProjectPage({ id }: { id: string }) {
           },
         }}
       >
-      {groupBy === "topic" && project.topics.length === 0 && (
-        <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
-          No topics yet. Topics are another way to sort tasks into columns, like “Joe's to-do”.{" "}
-          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setSettingsOpen(true)}>
-            Add topics in Project settings
-          </Button>
-        </p>
-      )}
       <div className={cn(boardRow, "min-h-0")}>
         {groupBy === "status"
           ? project.statuses.map((s, i) => (
               <Column
                 key={s.id}
                 addSignal={i === 0 ? addSignal : 0}
+                onAddShown={() => setAddSignal(0)}
                 project={project}
                 status={s}
                 topicId={null}
@@ -474,6 +503,7 @@ export function ProjectPage({ id }: { id: string }) {
               <Column
                 key={c.key}
                 addSignal={i === 0 ? addSignal : 0}
+                onAddShown={() => setAddSignal(0)}
                 project={project}
                 status={null}
                 topicId={c.topicId}
@@ -492,6 +522,8 @@ export function ProjectPage({ id }: { id: string }) {
           )}
         </DragOverlay>
       </DndContext>
+      </>
+      )}
       <TaskDialog
         project={project}
         task={task}
@@ -566,6 +598,7 @@ function Column({
   status,
   topicId,
   addSignal,
+  onAddShown,
   label,
   tasks,
   onOpen,
@@ -575,8 +608,9 @@ function Column({
   /** A status column, or (null) a topic column, by `topicId`. */
   status: Status | null;
   topicId: string | null;
-  /** Bumped to open "Add a task" here. */
+  /** Set to open "Add a task" here; `onAddShown` once it's open. */
   addSignal: number;
+  onAddShown: () => void;
   /** What the column is called to screen readers (and tests). */
   label: string;
   tasks: Task[];
@@ -599,7 +633,10 @@ function Column({
   // New tasks go into this status; in a topic column, the first status.
   const addTo = status ?? project.statuses[0];
   useEffect(() => {
-    if (addSignal > 0) setAdding(true);
+    if (addSignal > 0) {
+      setAdding(true);
+      onAddShown();
+    }
   }, [addSignal]);
   const { setNodeRef, isOver } = useDroppable({ id: column });
 
@@ -756,5 +793,86 @@ function SortableTask({
     >
       <TaskCard project={project} task={task} showStatus={showStatus} onOpen={onOpen} />
     </li>
+  );
+}
+
+/** A small set of choices side by side, one picked (like iOS's segmented control). */
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: [T, string][];
+  onChange: (v: T) => void;
+}) {
+  const labelId = `seg-${label.toLowerCase().replace(/\W+/g, "-")}`;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span id={labelId} className="text-sm text-muted-foreground">
+        {label}
+      </span>
+      <span role="radiogroup" aria-labelledby={labelId} className="inline-flex rounded-lg bg-muted p-0.5">
+        {options.map(([v, name]) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={value === v}
+            onClick={() => onChange(v)}
+            className={cn(
+              "min-h-8 rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              value === v ? "bg-background font-medium shadow-sm" : "text-foreground/75 hover:text-foreground",
+            )}
+          >
+            {name}
+          </button>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** Every task in one scrolling list, in groups (statuses or topics). */
+function TaskList({
+  project,
+  groups,
+  showStatus,
+  filtering,
+  onOpen,
+}: {
+  project: ProjectData;
+  groups: { key: string; name: string; status: Status | null; tasks: Task[] }[];
+  showStatus: boolean;
+  filtering: boolean;
+  onOpen: (t: Task) => void;
+}) {
+  const shown = groups.filter((g) => g.tasks.length > 0);
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {shown.length === 0 && (
+        <p className="py-8 text-center text-sm text-muted-foreground">{filtering ? "No tasks match." : "No tasks yet."}</p>
+      )}
+      <div className="mx-auto flex max-w-4xl flex-col gap-4">
+        {shown.map((g) => (
+          <section key={g.key} aria-label={g.name}>
+            <h2 className="sticky top-0 z-10 flex min-h-9 items-center gap-2 bg-background px-3 text-[15px] font-semibold sm:text-sm">
+              {g.status && <ColorDot color={statusColor(g.status)} />}
+              {g.name}
+              <span className="font-mono font-normal text-muted-foreground">{g.tasks.length}</span>
+            </h2>
+            <ul aria-label={g.name} className="divide-y overflow-hidden rounded-xl border">
+              {g.tasks.map((t) => (
+                <li key={t.id}>
+                  <TaskRow project={project} task={t} showStatus={showStatus} onOpen={() => onOpen(t)} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
