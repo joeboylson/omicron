@@ -2150,3 +2150,26 @@ test("Settings: Ctrl/⌘-, opens it, shortcuts are a row, machine things only fo
   await page.getByRole("button", { name: "Keyboard shortcuts" }).click();
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toContainText("Settings");
 });
+
+test("columns are added, renamed and deleted from the board itself", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("House"));
+  // (#228) New column at the end of the board: before Done.
+  await page.getByRole("button", { name: "New Column" }).click();
+  await page.getByLabel("New column").fill("Waiting");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Waiting/, /^Done/]);
+  // Renamed from its ⋯ menu, in place.
+  await column(page, "Waiting").getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Rename Column" }).click();
+  await page.getByLabel("Column name").fill("Waiting on someone");
+  await page.keyboard.press("Enter");
+  await expect(column(page, "Waiting on someone")).toBeVisible();
+  // Deleted while empty; a column with tasks, or Done, can't be.
+  await column(page, "Done").getByRole("button", { name: "More for this column" }).click();
+  await expect(page.getByRole("menuitem", { name: "Delete Column" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await column(page, "Waiting on someone").getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Delete Column" }).click();
+  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Done/]);
+});

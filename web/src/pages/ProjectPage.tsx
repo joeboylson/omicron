@@ -1,10 +1,10 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, X, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowUpDown, X, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { updateTask, addTask, deleteTask, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
+import { addStatus, addTopic, deleteStatus, deleteTopic, renameStatus, renameTopic, updateTask, addTask, deleteTask, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
 import { usePendingChanges, useUndoableDelete } from "@/lib/pending";
 import { dropPlace, inOrder, matches as shows, parseColumn, type ColumnKind } from "@/lib/board-rules";
 import {
@@ -809,6 +809,7 @@ export function ProjectPage({ id }: { id: string }) {
               onAdded={added}
             />
           ))}
+          {(groupBy === "status" || groupBy === "topic") && <NewColumn project={project} topic={groupBy === "topic"} onAdded={reload} />}
         </div>
         </DropHint.Provider>
         <MoreToTheRight board={board} />
@@ -972,6 +973,19 @@ function Column({
     }
   }, [addSignal]);
   const { setNodeRef } = useDroppable({ id: column });
+  // A topic column's topic (renamed or deleted from its menu).
+  const topic = kind === "t" && refId ? (project.topics.find((t) => t.id === refId) ?? null) : null;
+  // Every task in it, not only the ones a search or filter shows: only an
+  // empty column can be deleted.
+  const inColumn = project.tasks.filter((t) => (status ? t.status_id === status.id : topic ? t.topic_id === topic.id : false)).length;
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  const rename = () => {
+    const n = newName.trim();
+    setRenaming(false);
+    if (!n || n === (status ? status.name : topic?.name)) return;
+    act(() => (status ? renameStatus(db, status, n) : renameTopic(db, topic!, n))).then(() => onAdded());
+  };
   const hint = useContext(DropHint);
   const landing = hint?.column === column ? hint : null;
   // Whether the list has more below what's shown.
@@ -1031,18 +1045,43 @@ function Column({
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[0.9375rem] font-semibold sm:text-sm">
         {status && <ColorDot color={statusColor(status)} />}
-        {status ? status.name : label}
-        <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>
+        {renaming ? (
+          <form
+            className="min-w-0 flex-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              rename();
+            }}
+          >
+            <Input
+              autoFocus
+              aria-label="Column name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onBlur={rename}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setRenaming(false);
+                }
+              }}
+              className="h-8"
+            />
+          </form>
+        ) : (
+          (status ? status.name : label)
+        )}
+        {!renaming && <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>}
         {status?.is_done && (
           <span className="relative ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
             <CheckCircle2 className="h-4 w-4" aria-hidden />
             <span className="sr-only">Tasks here count as done</span>
           </span>
         )}
-        {status && (
+        {(status || topic) && !renaming && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-8", !status.is_done && "ml-auto")} aria-label="More for this column">
+            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-8", !status?.is_done && "ml-auto")} aria-label="More for this column">
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
@@ -1065,6 +1104,7 @@ function Column({
             >
               <Plus /> Add a task here
             </DropdownMenuItem>
+            {status && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger disabled={tasks.length < 2}>
                 <ArrowUpDown /> Sort by
@@ -1100,6 +1140,24 @@ function Column({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            )}
+            {/* The column itself, changed where it is (HIG settings #7). */}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                setNewName(status ? status.name : (topic?.name ?? ""));
+                setRenaming(true);
+              }}
+            >
+              <Pencil /> Rename Column
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              disabled={inColumn > 0 || !!status?.is_done}
+              onSelect={() => act(() => (status ? deleteStatus(db, status) : deleteTopic(db, topic!))).then(() => onAdded())}
+            >
+              <Trash2 /> Delete Column
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         )}
@@ -1180,6 +1238,57 @@ function Column({
 }
 
 /** A card that can be dragged to another place or column. */
+/** At the end of the board: a new column (a status, or a topic when the
+ *  board is by topic), named in place. */
+function NewColumn({ project, topic, onAdded }: { project: ProjectData; topic: boolean; onAdded: () => void }) {
+  const { db, act } = useApp();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const add = async () => {
+    const n = name.trim();
+    if (!n) return setOpen(false);
+    if (await act(() => (topic ? addTopic(db, project, n) : addStatus(db, project, n)))) {
+      setName("");
+      setOpen(false);
+      onAdded();
+    }
+  };
+  return (
+    <div className="w-[86vw] shrink-0 snap-start sm:w-72">
+      {open ? (
+        <form
+          className="rounded-xl bg-muted/60 p-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add();
+          }}
+        >
+          <Input
+            autoFocus
+            aria-label={topic ? "New topic" : "New column"}
+            placeholder={topic ? "Topic name" : "Column name"}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setOpen(false))}
+          />
+          <div className="mt-2 flex gap-2">
+            <Button type="submit" size="sm" disabled={!name.trim()}>
+              Add
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button variant="ghost" className="w-full justify-start gap-2 text-muted-foreground" onClick={() => setOpen(true)}>
+          <Plus /> {topic ? "New Topic" : "New Column"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** Where a dragged card will land in another column. */
 function DropLine() {
   return <li aria-hidden className="mx-1 h-1 rounded-full bg-primary" />;
