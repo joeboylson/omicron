@@ -55,6 +55,21 @@ test("the page shows the Projects the person is in", async ({ page, request }) =
   await expect(page.getByRole("table", { name: "Projects" }).getByRole("link")).toHaveText([name]);
 });
 
+test("when we can't tell who's visiting, the page says so plainly (#156)", async ({ page }) => {
+  await page.route(`${omicron.url}/api/session`, (r) =>
+    r.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "who", detail: "refused a visit as someone: it didn't come through the gate" }) }),
+  );
+  await page.goto(omicron.url);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("We couldn't tell who you are");
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("Make sure you're signed in to Tailscale on this device, then try again.");
+  await expect(alert).not.toContainText(/refused|gate/);
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  // The why, for whoever runs it, out of the way.
+  await page.getByText("Details").click();
+  await expect(page.getByText(/didn't come through the gate/)).toBeVisible();
+});
+
 test("signing in needs POST", async ({ request }) => {
   const res = await request.get(`${omicron.url}/api/session`);
   expect(res.status()).toBe(405);

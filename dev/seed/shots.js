@@ -231,7 +231,7 @@ async function escape(page) {
   {
     const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 })).newPage();
     failing = page;
-    await page.route(`${url}/api/session`, (r) => r.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "refused a visit as someone: it didn't come through the gate" }) }));
+    await page.route(`${url}/api/session`, (r) => r.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "who", detail: "refused a visit as someone: it didn't come through the gate" }) }));
     await page.goto(url);
     await page.getByRole("button", { name: "Try again" }).waitFor();
     await page.screenshot({ path: path.join(out, "desktop-0b-sign-in-failed.png") });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { errorWords, OFFLINE_WORDS, signIn, type Me } from "@/lib/omicron";
+import { errorWords, OFFLINE_WORDS, signIn, SignInError, type Me } from "@/lib/omicron";
 import { Button } from "@/components/base/button";
 import { AppContext, go, usePath, type AppState } from "@/lib/app";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -31,7 +31,7 @@ function NotFound() {
 
 export default function App() {
   const [session, setSession] = useState<{ db: SupabaseClient; me: Me } | null>(null);
-  const [signInError, setSignInError] = useState<string | null>(null);
+  const [signInError, setSignInError] = useState<{ words: string; who: boolean; detail: string } | null>(null);
   // Where the error came from: a later action that works clears an
   // action's error, but not one from elsewhere (that stays until dismissed).
   const [error, setError] = useState<{ message: string; from: "action" | "uncaught"; started?: number } | null>(null);
@@ -46,7 +46,7 @@ export default function App() {
       loadAppearance(s.db, s.me.personId).then(applyAppearance, () => {});
     }, (e) => {
       reportError("sign-in", e);
-      setSignInError(errorWords(e));
+      setSignInError({ words: errorWords(e), who: e instanceof SignInError && e.kind === "who", detail: e instanceof Error ? e.message : String(e) });
     });
   }, []);
 
@@ -86,14 +86,34 @@ export default function App() {
 
   if (signInError) {
     return (
-      <main className="mx-auto max-w-md p-6">
-        <h1 className="text-2xl font-semibold">Omicron</h1>
-        <p role="alert" className="mt-4 text-destructive">
-          {signInError === OFFLINE_WORDS ? signInError : `Couldn't sign in: ${signInError}`}
-        </p>
-        <Button className="mt-4" onClick={() => window.location.reload()}>
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-6">
+        <h1 className="text-2xl font-semibold">
+          {signInError.words === OFFLINE_WORDS ? "You're offline" : signInError.who ? "We couldn't tell who you are" : "Omicron couldn't open"}
+        </h1>
+        <div role="alert" className="grid gap-2">
+          {signInError.words === OFFLINE_WORDS ? (
+            <p>{OFFLINE_WORDS}</p>
+          ) : signInError.who ? (
+            <>
+              <p>Make sure you're signed in to Tailscale on this device, then try again.</p>
+              <p className="text-muted-foreground">If it keeps happening, ask whoever set up Omicron for you.</p>
+            </>
+          ) : (
+            <>
+              <p>Something went wrong while signing you in. Try again in a moment.</p>
+              <p className="text-muted-foreground">If it keeps happening, ask whoever set up Omicron for you.</p>
+            </>
+          )}
+        </div>
+        <Button className="self-start" onClick={() => window.location.reload()}>
           Try again
         </Button>
+        {signInError.words !== OFFLINE_WORDS && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Details</summary>
+            <p className="mt-1 break-words font-mono">{signInError.detail}</p>
+          </details>
+        )}
       </main>
     );
   }

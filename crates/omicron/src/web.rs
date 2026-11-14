@@ -670,7 +670,12 @@ impl WebMachine {
         let peer: IpAddr = request.remote_addr().map(|a| a.ip()).context("no address for this visit")?;
         let visit = match identity::visitor(peer, |name| request_header(request, name), identity::gate_secret().as_deref(), identity::local_person) {
             Ok(v) => v,
-            Err(e) => return Ok((403, "application/json", json!({ "error": format!("{e:#}") }).to_string().into_bytes())),
+            Err(e) => {
+                // The why is for whoever runs this computer (here and in the
+                // log); the page says it in plain words.
+                eprintln!("sign-in refused: {e:#}");
+                return Ok((403, "application/json", json!({ "error": "who", "detail": format!("{e:#}") }).to_string().into_bytes()));
+            }
         };
         let person = visit.person();
         // One sign-in at a time: each makes a fresh sign-in link, which

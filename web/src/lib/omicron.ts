@@ -8,11 +8,21 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export type Me = { personId: string; displayName: string; login: string; via: "local" | "tailnet" };
 
+/** Signing in failed: we couldn't tell who's visiting, or something else. */
+export class SignInError extends Error {
+  constructor(
+    readonly kind: "who" | "other",
+    readonly detail: string,
+  ) {
+    super(detail);
+  }
+}
+
 export async function signIn(): Promise<{ db: SupabaseClient; me: Me }> {
   const config = await (await fetch("/config.json")).json();
   const res = await fetch("/api/session", { method: "POST" });
   const session = await res.json();
-  if (!res.ok) throw new Error(session.error || res.statusText);
+  if (!res.ok) throw new SignInError(session.error === "who" ? "who" : "other", session.detail ?? session.error ?? res.statusText);
   const db = createClient(config.supabase_url, config.supabase_key, {
     // The Web Machine signs us in again on every visit, so nothing is kept in
     // the browser. Supabase still renews the login while the page is open.
