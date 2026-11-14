@@ -109,3 +109,5 @@ Tasks: #96. Not decided yet. If the board is hosted publicly (like Vercel), a ma
 - Joe accepts the gap: anyone with that browser can give the machine orders until then.
 - Showing it: first "shown once, then locked away" (maybe API keys too); then "for now, neither hides it; the short life is the protection". To settle.
 - Open: this is a way back to hosting publicly, which "The gate" set aside. It reads like the gate opened for one browser only; whether the owner rule still applies is to decide.
+
+Decided (Joe, 13 Nov): the token is shown once when it's made (then carried to the browsers you want); any browser holding it can use it while signed in as the same person who made it; it lasts 8 hours by default, up to 30 days. No Vercel for now. (Answer 1 said "show always"; going with "shown once" from answer 3 until Joe says otherwise.)
