@@ -53,8 +53,8 @@ export function TaskRow({
         <span className="flex items-center gap-3 text-xs text-muted-foreground max-sm:pl-[3.25rem]">
           {task.due_on && (
             <span className={cn("flex items-center gap-1", overdue && "text-destructive")} title={overdue ? "Overdue" : undefined}>
-              <CalendarDays className="h-3.5 w-3.5" />
-              {formatDate(task.due_on)}
+              {overdue ? <AlertCircle className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
+              {overdue ? `Overdue · ${formatDate(task.due_on)}` : formatDate(task.due_on)}
             </span>
           )}
           {session && (

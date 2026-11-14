@@ -66,8 +66,8 @@ export function TaskCard({
               className={cn("flex items-center gap-1", !done && isOverdue(task.due_on) && "text-destructive")}
               title={!done && isOverdue(task.due_on) ? "Overdue" : undefined}
             >
-              <CalendarDays className="h-3.5 w-3.5" />
-              {formatDate(task.due_on)}
+              {!done && isOverdue(task.due_on) ? <AlertCircle className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
+              {!done && isOverdue(task.due_on) ? `Overdue · ${formatDate(task.due_on)}` : formatDate(task.due_on)}
             </span>
           )}
           {task.checklist.length > 0 && (

@@ -116,7 +116,7 @@ async function escape(page) {
     await page.getByRole("button", { name: /Fix the back gate/ }).waitFor();
     await shot("2-house");
     // Filters, a search that finds nothing, adding a task, a column's menu.
-    await page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Due soon" }).click();
+    await page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Due in 7 days" }).click();
     await shot("2c-filter-due-soon");
     await page.getByRole("button", { name: "Clear", exact: true }).click();
     await page.getByLabel("Search tasks").fill("zzz");

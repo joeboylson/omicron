@@ -457,7 +457,7 @@ export function ProjectPage({ id }: { id: string }) {
             [
               ["mine", "Mine"],
               ["review", "Needs review"],
-              ["due", "Due soon"],
+              ["due", "Due in 7 days"],
             ] as const
           )
             // Needs review is a Claude session's mark: only where it can be.
@@ -465,10 +465,11 @@ export function ProjectPage({ id }: { id: string }) {
             .map(([k, label]) => (
             <Button
               key={k}
-              variant={filters[k] ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
               aria-pressed={filters[k]}
-              className={cn("h-8 rounded-full border", filters[k] && "border-transparent")}
+              // On: filled, plainly different from off (like iOS filter chips).
+              className={cn("h-8 rounded-full border", filters[k] && "border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background")}
               onClick={() => setFilters({ ...filters, [k]: !filters[k] })}
             >
               {label}
@@ -476,7 +477,7 @@ export function ProjectPage({ id }: { id: string }) {
           ))}
           {project.labels.length > 0 && (
             <Select value={filters.label ?? "any"} onValueChange={(v) => setFilters({ ...filters, label: v === "any" ? null : v })}>
-              <SelectTrigger aria-label="Filter by label" className={cn("h-8 w-auto gap-1 rounded-full px-3 text-sm", filters.label && "bg-secondary")}>
+              <SelectTrigger aria-label="Filter by label" className={cn("h-8 w-auto gap-1 rounded-full px-3 text-sm", filters.label && "border-transparent bg-foreground text-background")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -102,7 +102,16 @@ test("a task can be filled in and finished", async ({ page, request }) => {
   await dialog.getByLabel("Title").fill("Fix the back gate");
   await dialog.getByLabel("Title").press("Enter");
   await dialog.getByLabel("Notes").fill("The latch is loose.");
-  await dialog.getByLabel("Date").fill("2026-12-01");
+  // The date: quick picks, any day, and Clear, shown as on the card (#164).
+  await dialog.getByLabel("Date", { exact: true }).click();
+  await page.getByRole("button", { name: /^Tomorrow/ }).click();
+  await expect(dialog.getByLabel("Date", { exact: true })).not.toHaveText("None");
+  await dialog.getByLabel("Date", { exact: true }).click();
+  await page.getByRole("button", { name: "Clear the date" }).click();
+  await expect(dialog.getByLabel("Date", { exact: true })).toHaveText("None");
+  await dialog.getByLabel("Date", { exact: true }).click();
+  await page.getByLabel("Pick a date").fill("2026-12-01");
+  await expect(dialog.getByLabel("Date", { exact: true })).toHaveText(/^Dec 1/);
   await pick(page, "Given to", me.name);
   await dialog.getByLabel("New label").fill("outside");
   await dialog.getByLabel("New label").press("Enter");
