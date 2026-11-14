@@ -54,6 +54,8 @@ export function Comments({
 }) {
   const { db, act } = useApp();
   const [comment, setComment] = useState("");
+  // The comment that's the session's report, while it waits for review.
+  const report = task.needs_review ? [...task.comments].reverse().find((c) => c.session)?.id : undefined;
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   // The comment's images being looked at, and which one.
@@ -118,14 +120,28 @@ export function Comments({
     <Group title="Comments">
       {task.comments.length > 0 && (
         <ul aria-label="Comments" className="divide-y">
+          {/* Waiting for review: the session's last comment is its report. */}
           {task.comments.map((c) => (
-            <li key={c.id} className="grid gap-1 px-4 py-3 text-[15px] sm:text-sm">
+            <li
+              key={c.id}
+              className={cn("grid gap-1 px-4 py-3 text-[15px] sm:text-sm", c.id === report && "border-l-4 border-l-[var(--sys-orange)] bg-[var(--sys-orange)]/5")}
+            >
+              {c.id === report && (
+                <span className="text-xs font-medium text-[var(--sys-orange)]" data-testid="report-mark">
+                  Report · Needs review
+                </span>
+              )}
               <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{c.author}</span>
-                {c.session && (
-                  <span className="flex items-center gap-1">
-                    <Terminal className="h-3 w-3" aria-hidden />
-                    <span className="font-mono">{c.session}</span>
+                {/* A session's comment is the session's; its computer is where. */}
+                {c.session ? (
+                  <span className="flex items-center gap-1" data-testid="comment-author">
+                    <Terminal className="h-3 w-3 self-center" aria-hidden />
+                    <span className="font-mono font-medium text-foreground">{c.session}</span>
+                    <span>on {c.author}</span>
+                  </span>
+                ) : (
+                  <span className="font-medium text-foreground" data-testid="comment-author">
+                    {c.author}
                   </span>
                 )}
                 <time className="ml-auto font-mono" dateTime={c.created_at} title={new Date(c.created_at).toLocaleString()}>

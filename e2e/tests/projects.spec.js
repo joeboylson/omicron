@@ -867,7 +867,9 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     // It reports back and asks for review; the page shows it live.
     omicron.cliIn(win.pid, "tasks", "comment", name, "1", "Parser done, with tests.", "--review", "--as-machine");
     const comments = page.getByRole("list", { name: "Comments" });
-    await expect(comments).toContainText(`${machineName}parser`);
+    // The session is the author, its computer where; it's marked as the report (#173).
+    await expect(comments.getByTestId("comment-author").first()).toHaveText(`parseron ${machineName}`);
+    await expect(comments.getByTestId("report-mark")).toHaveText("Report · Needs review");
     await expect(comments).toContainText("Parser done, with tests.");
     await expect(page.getByTestId("needs-review")).toBeVisible();
 
