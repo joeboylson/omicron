@@ -114,6 +114,7 @@ function RemoteControl() {
   const [dev] = useDev(db);
   const [saved, setSaved] = useState(remoteToken() !== null);
   const [typed, setTyped] = useState("");
+  const [showToken, setShowToken] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   // Controlled from here already, without a token: nothing to unlock.
@@ -159,6 +160,8 @@ function RemoteControl() {
             </label>
             <Input
               id="remote-token"
+              // A secret: hidden as it's typed or pasted, with Show (#235).
+              type={showToken ? "text" : "password"}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder="Paste it here"
@@ -166,7 +169,13 @@ function RemoteControl() {
               spellCheck={false}
               className="flex-1 border-0 bg-transparent px-0 font-mono shadow-none placeholder:font-sans focus-visible:ring-0 focus-visible:ring-offset-0"
             />
-            <Button type="submit" size="sm" disabled={!typed.trim() || checking}>
+            {typed && (
+              <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={() => setShowToken((v) => !v)}>
+                {showToken ? "Hide" : "Show"}
+              </Button>
+            )}
+            {/* Grey until there's a token to use (not a pale blue). */}
+            <Button type="submit" size="sm" variant={typed.trim() ? "default" : "secondary"} disabled={!typed.trim() || checking}>
               {checking ? "Checking…" : "Use token"}
             </Button>
           </Row>

@@ -2043,7 +2043,11 @@ test("a remote control token lets the computer's owner in from a visit Tailscale
   );
   await page.goto(`${omicron.url}/settings`);
   const box = page.getByLabel("Token", { exact: true });
+  // A secret: hidden as typed, shown on request (#235).
+  await expect(box).toHaveAttribute("type", "password");
   await box.fill("omr_not-a-token");
+  await page.getByRole("button", { name: "Show", exact: true }).click();
+  await expect(box).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "Use token" }).click();
   await expect(page.getByRole("alert")).toContainText("That token doesn't work on this computer");
   await box.fill(token);
