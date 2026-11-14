@@ -160,7 +160,7 @@ fn request_and_wait(board: &Board, task: &Task, session: &SessionRecord) -> Resu
     // The answer may have come in between; read it to be sure.
     let now = board.dispatch(&r.id)?;
     if now.state == "pending" {
-        let why = format!("{} didn't pick it up in time. Is its daemon running?", session.machine);
+        let why = format!("{} didn't pick it up in time. Is Omicron running on it?", session.machine);
         if board.give_up_dispatch(&r.id, &why)? {
             bail!(why);
         }

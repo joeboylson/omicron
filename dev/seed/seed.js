@@ -363,7 +363,7 @@ async function seed(omicron) {
     await studioCall("POST", "/rest/v1/rpc/claim_dispatch", { dispatch: typed.id });
     await studioCall("POST", "/rest/v1/rpc/finish_dispatch", { dispatch: typed.id, ok: true, message: "Typed the task into parser on studio." });
     const [missed] = await joe.call("POST", "/rest/v1/dispatches", { task_id: docsTask.id });
-    await joe.call("POST", "/rest/v1/rpc/give_up_dispatch", { dispatch: missed.id, why: "build-box didn't pick it up in time. Is its daemon running?" });
+    await joe.call("POST", "/rest/v1/rpc/give_up_dispatch", { dispatch: missed.id, why: "build-box didn't pick it up in time. Is Omicron running on it?" });
     await joe.call("POST", "/rest/v1/comments", { task_id: stripTask.id, body: "Looks good. Can closed ones fade a bit more?" });
 
     // Handoff notes.

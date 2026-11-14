@@ -511,7 +511,7 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
       // If the machine hasn't taken it in time, it fails. Kept even if the
       // dialog closes, so the request never stays waiting.
       setTimeout(() => {
-        giveUpDispatch(db, id, `${session.machine} didn't pick it up in time. Is its daemon running?`)
+        giveUpDispatch(db, id, `${session.machine} didn't pick it up in time. Is Omicron running on it?`)
           .catch(() => {})
           .finally(onChanged);
       }, DISPATCH_CLAIM_SECONDS * 1000);
@@ -520,15 +520,44 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
     if (!asked) onChanged();
   }
 
+  // One line: where the task is with its session, and why Dispatch is off.
+  const name = session?.name ?? "its session";
+  const machine = session?.machine ?? "its computer";
+  const failed = !working && !task.picked_up_at && latest?.state === "failed";
+  const line = working
+    ? latest?.state === "claimed"
+      ? `${machine} is handing it to ${name}…`
+      : `Sending it to ${name} on ${machine}…`
+    : failed
+      ? latest!.error ?? "It couldn't be sent."
+      : task.picked_up_at
+        ? `${name} has it.`
+        : latest?.state === "done"
+          ? (latest.result ?? `Sent to ${name}.`)
+          : `${name} gets it when it next looks for tasks.`;
+  // When the last send happened, beside what it said.
+  const at = !working && !task.picked_up_at && latest && (latest.state === "done" || failed) ? latest.created_at : null;
+  const off = asleep && !working && !task.picked_up_at ? ` ${machine} is off, so it can't be sent now.` : "";
+
   return (
-    <>
-      <Row className="text-sm text-muted-foreground">
-        <Terminal className="h-4 w-4 shrink-0" aria-hidden />
-        <span data-testid="pickup" className="flex-1">
-          {task.picked_up_at
-              ? "Picked up by the session."
-              : "Waiting until the session is told to get its tasks, or it's dispatched."}
-        </span>
+    <Row className="text-sm">
+      {failed ? (
+        <AlertCircle className="h-4 w-4 shrink-0 text-[var(--sys-red)]" aria-hidden />
+      ) : task.picked_up_at ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--sys-green)]" aria-hidden />
+      ) : (
+        <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      )}
+      <span role="status" aria-live="polite" data-testid="dispatch" className={cn("flex-1", !failed && "text-muted-foreground")}>
+        {line}
+        {at && (
+          <time dateTime={at} title={new Date(at).toLocaleString()} className="ml-1.5 font-mono text-xs text-muted-foreground">
+            {when(at)}
+          </time>
+        )}
+        {off}
+      </span>
+      {!task.picked_up_at && (
         <Button
           type="button"
           variant="outline"
@@ -536,48 +565,13 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
           className="shrink-0"
           disabled={!session || working || asleep}
           onClick={dispatch}
-          title={asleep ? `${session?.machine} is asleep` : `Hand it to ${session?.name} now, on ${session?.machine}`}
+          title={`Hand it to ${name} now, on ${machine}`}
         >
           {working ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
-          {working ? "Dispatching" : "Dispatch"}
+          {working ? "Sending" : latest?.state === "done" || failed ? "Send again" : "Send now"}
         </Button>
-      </Row>
-      {latest && (
-        <Row className="text-sm">
-          <div role="status" aria-live="polite" data-testid="dispatch" className="flex flex-1 items-start gap-2">
-            {latest.state === "pending" ? (
-              <span className="text-muted-foreground">Waiting for {session?.machine} to pick it up…</span>
-            ) : latest.state === "claimed" ? (
-              <span className="text-muted-foreground">
-                {session?.machine} is opening {session?.name}…
-              </span>
-            ) : latest.state === "done" ? (
-              <>
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-green)]" aria-hidden />
-                <span className="flex-1">{latest.result}</span>
-              </>
-            ) : (
-              <>
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-red)]" aria-hidden />
-                <span className="flex-1">{latest.error}</span>
-              </>
-            )}
-            <time
-              dateTime={latest.created_at}
-              title={new Date(latest.created_at).toLocaleString()}
-              className="shrink-0 font-mono text-muted-foreground"
-            >
-              {when(latest.created_at)}
-            </time>
-          </div>
-        </Row>
       )}
-      {asleep && !working && (
-        <Row className="text-sm text-muted-foreground">
-          <span data-testid="dispatch-asleep">{session?.machine} is asleep, so Dispatch is off until its daemon runs.</span>
-        </Row>
-      )}
-    </>
+    </Row>
   );
 }
 

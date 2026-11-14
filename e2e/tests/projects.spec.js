@@ -645,8 +645,8 @@ test("a dispatch left waiting by an asker who went away shows as failed, and Dis
     await page.reload();
     await page.getByRole("button", { name: "#1 Write the parser" }).click();
     await expect(page.getByTestId("dispatch")).toContainText("didn't pick it up in time");
-    await expect(page.getByRole("button", { name: "Dispatching" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Dispatch" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sending" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
   } finally {
     win.kill();
   }
@@ -745,25 +745,26 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     const card = page.getByRole("button", { name: "#1 Write the parser" });
     await card.click();
     await pick(page, "Given to", "parser");
-    await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    await expect(page.getByTestId("dispatch")).toHaveText("parser gets it when it next looks for tasks.");
     // Saved (the page shows it a moment before).
     await expect.poll(() => omicron.cliIn(win.pid, "tasks", "show", name, "1", "--as-machine")).toContain("sent to session parser");
 
     // The end of the session's turn doesn't hand it over...
     expect(omicron.hook(win.pid, "stop", { session_id: claude, stop_hook_active: false })).toBe("");
-    await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    await expect(page.getByTestId("dispatch")).toHaveText(/parser gets it when it next looks for tasks\./);
     // Given from the page, so from elsewhere: only to read until the
     // machine's owner gives it with its gate open (ref/BRAINSTORM.md, "The gate").
     let mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
     expect(mine).toContain("Given to this session from elsewhere, only to read");
-    await expect(page.getByTestId("pickup")).toHaveText(/Waiting until the session is told/);
+    await expect(page.getByTestId("dispatch")).toHaveText(/parser gets it when it next looks for tasks\./);
     omicron.cli("machines", "owner", robin.login);
     const later = new Date(Date.now() + 2 * 3600 * 1000);
     omicron.cli("gate", "open", "--until", `${later.getHours()}:${String(later.getMinutes()).padStart(2, "0")}`);
     // ...the session gets it when told to get its tasks.
     mine = omicron.cliIn(win.pid, "tasks", "mine", "--as-machine");
     expect(mine).toContain(`#1 in ${name}: Write the parser (new)`);
-    await expect(page.getByTestId("pickup")).toHaveText("Picked up by the session.");
+    await expect(page.getByTestId("dispatch")).toHaveText("parser has it.");
+    await expect(page.getByRole("button", { name: "Send now" })).toHaveCount(0);
 
     // It reports back and asks for review; the page shows it live.
     omicron.cliIn(win.pid, "tasks", "comment", name, "1", "Parser done, with tests.", "--review", "--as-machine");
@@ -801,16 +802,17 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     await page.getByRole("button", { name: "#1 Write the parser" }).click();
     await pick(page, "Given to", "parser");
 
-    // The machine's daemon isn't running: it's asleep, and Dispatch is off.
-    const button = page.getByRole("button", { name: "Dispatch" });
+    // Omicron isn't running on the machine: it's off, and sending is too,
+    // said in the one line beside the button (#154), never "daemon".
+    const button = page.getByRole("button", { name: /^(Send now|Send again)$/ });
     const outcome = page.getByTestId("dispatch");
-    await expect(page.getByTestId("dispatch-asleep")).toHaveText(`${machineName} is asleep, so Dispatch is off until its daemon runs.`);
+    await expect(outcome).toHaveText(`parser gets it when it next looks for tasks. ${machineName} is off, so it can't be sent now.`);
     await expect(button).toBeDisabled();
 
     // It wakes up: the page hears at once.
     daemon = await omicron.daemon();
     await expect(button).toBeEnabled();
-    await expect(page.getByTestId("dispatch-asleep")).toHaveCount(0);
+    await expect(outcome).not.toContainText("is off");
 
     // Robin doesn't own the machine: refused, plainly.
     await button.click();
@@ -830,6 +832,7 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     addon = await omicron.follow(claude);
     await button.click();
     await expect(outcome).toHaveText(`Sent the task to parser on ${machineName}.now`);
+    await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
     await expect.poll(() => addon.got().length).toBe(2);
     expect(addon.got().every((m) => m.startsWith("Omicron dispatched task #1 \"Write the parser\""))).toBe(true);
   } finally {
@@ -1093,7 +1096,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   await expect(card).toContainText("parser· ended");
   await card.click();
   await expect(page.getByTestId("ended-session")).toHaveText("It was given to parser, which has ended. Give it to someone else.");
-  await expect(page.getByRole("button", { name: "Dispatch" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Send (now|again)$/ })).toHaveCount(0);
 
   // Given to a person: no longer flagged.
   await pick(page, "Given to", "Robin Example");
