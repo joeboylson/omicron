@@ -2015,3 +2015,30 @@ test("a Project or the Projects list that can't load says so, with Try again (#1
   await page.getByRole("main").getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("link", { name: new RegExp(name) })).toBeVisible();
 });
+
+test("closing a task keeps a half-written comment and what was typed in its notes (#200)", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("House"));
+  await addTaskIn(page, "To do", "Fix the gate");
+  const open = () => column(page, "To do").getByRole("button", { name: /Fix the gate/ }).click();
+  await open();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("New comment").fill("Half a thought");
+  await escape(page);
+  await open();
+  await expect(sheet.getByLabel("New comment")).toHaveValue("Half a thought");
+  // Sent: gone from the box, for next time too.
+  await sheet.getByRole("button", { name: "Send" }).click();
+  await expect(sheet.getByRole("list", { name: "Comments" })).toContainText("Half a thought");
+  await escape(page);
+  await open();
+  await expect(sheet.getByLabel("New comment")).toHaveValue("");
+  // Notes typed and closed straight away: saved.
+  const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH" && r.request().postData()?.includes("Bring the drill"));
+  await sheet.getByLabel("Notes").fill("Bring the drill");
+  await page.keyboard.press("Escape");
+  await saved;
+  await page.reload();
+  await open();
+  await expect(sheet.getByLabel("Notes")).toHaveValue("Bring the drill");
+});

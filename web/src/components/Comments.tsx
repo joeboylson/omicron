@@ -3,6 +3,7 @@
 // open full size.
 
 import { useEffect, useRef, useState } from "react";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 import { AlertCircle, ImagePlus, Loader2, Terminal, X } from "lucide-react";
 import { ImageViewer } from "@/components/ImageViewer";
 import { Markdown } from "@/components/Markdown";
@@ -53,7 +54,12 @@ export function Comments({
   when: (iso: string) => string;
 }) {
   const { db, act } = useApp();
-  const [comment, setComment] = useState("");
+  // Kept for this task until it's sent, even if the sheet closes (#200).
+  const [comment, setCommentNow] = useState(() => loadDraft(task.id));
+  const setComment = (text: string) => {
+    setCommentNow(text);
+    saveDraft(task.id, text);
+  };
   // The comment that's the session's report, while it waits for review.
   const report = task.needs_review ? [...task.comments].reverse().find((c) => c.session)?.id : undefined;
   const [pending, setPending] = useState<Pending[]>([]);
