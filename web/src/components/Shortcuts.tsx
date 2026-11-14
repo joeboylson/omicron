@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { useCommands } from "@/lib/commands";
+import { go } from "@/lib/app";
 
 export const SHORTCUTS: [string, string][] = [
   ["⌘K or Ctrl-K", "Commands: go anywhere, open or move a task, change the theme"],
@@ -16,6 +17,7 @@ export const SHORTCUTS: [string, string][] = [
   ["Shift+Enter (adding a task)", "Add it and open it"],
   ["Enter (a task's title)", "Save the title"],
   ["⌘Z or Ctrl-Z", "Undo the last change"],
+  ["⌘, or Ctrl-,", "Settings"],
   ["Arrows (in a menu)", "Go up and down it; Enter picks"],
   ["Escape", "Close what's open, or stop adding"],
 ];
@@ -42,7 +44,8 @@ export function keyParts(keys: string): { text: string; key: boolean }[] {
   const [main, when] = keys.split(/\s*(?=\()/);
   const parts = main
     .split(/\s+/)
-    .map((w) => w.replace(/,$/, ""))
+    // "Arrows," is a word and its comma; "⌘," and "Ctrl-," are keys.
+    .map((w) => (/^[A-Za-z]{2,},$/.test(w) ? w.slice(0, -1) : w))
     .filter(Boolean)
     .map((w) => ({ text: w, key: !/^(or|then|and)$/.test(w) }));
   return when ? [...parts, { text: when, key: false }] : parts;
@@ -66,6 +69,11 @@ function Keys({ keys }: { keys: string }) {
   );
 }
 
+/** Open the shortcuts sheet from anywhere (Settings has a row for it). */
+export function openShortcuts() {
+  window.dispatchEvent(new Event("omicron:shortcuts"));
+}
+
 /** "?" (when not typing) opens the shortcuts; so does the command menu. */
 export function ShortcutsSheet() {
   const [open, setOpen] = useState(false);
@@ -77,8 +85,22 @@ export function ShortcutsSheet() {
       e.preventDefault();
       setOpen(true);
     };
+    const show = () => setOpen(true);
+    // Cmd/Ctrl-, opens Settings, as on a Mac (HIG settings #6).
+    const settings = (e: KeyboardEvent) => {
+      if (e.key === "," && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        go("/settings");
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", settings);
+    window.addEventListener("omicron:shortcuts", show);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", settings);
+      window.removeEventListener("omicron:shortcuts", show);
+    };
   }, []);
   useCommands("shortcuts", [{ id: "shortcuts", label: "Keyboard shortcuts", group: "Help", shortcut: "?", keywords: "keys help", run: () => setOpen(true) }]);
   return (

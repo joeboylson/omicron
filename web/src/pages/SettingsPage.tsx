@@ -6,7 +6,8 @@ import { Check, ChevronRight } from "lucide-react";
 import { go, useApp } from "@/lib/app";
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from "@/lib/theme";
 import { TopBar } from "@/components/TopBar";
-import { ShortcutList } from "@/components/Shortcuts";
+import { openShortcuts } from "@/components/Shortcuts";
+import { listMachines } from "@/lib/data";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/base/button";
@@ -27,6 +28,14 @@ export function SettingsPage() {
   useEffect(() => {
     act(async () => setAppearance(await loadAppearance(db, me.personId)));
   }, [db, act, me.personId]);
+  // Machines and remote control only for people who have a machine (or are
+  // on one now): a household board's people never see them (#227).
+  const [dev] = useDev(db);
+  const [machines, setMachines] = useState<number | null>(null);
+  useEffect(() => {
+    listMachines(db).then((m) => setMachines(m.length), () => setMachines(0));
+  }, [db]);
+  const usesMachines = !!dev || (machines ?? 0) > 0 || remoteToken() !== null;
 
   const choose = (a: Appearance) => {
     // Shows at once; saved in the background.
@@ -45,17 +54,6 @@ export function SettingsPage() {
             <span className="tabular-nums text-xs text-muted-foreground">{me.login}</span>
           </div>
         </Group>
-        <Group title="Machines">
-          <button
-            type="button"
-            onClick={() => go("/machines")}
-            className="flex min-h-11 w-full items-center px-4 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
-          >
-            <span className="flex-1">Machines and their keys</span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
-          </button>
-        </Group>
-        <RemoteControl />
         <Group title="Appearance">
           <div role="radiogroup" aria-label="Appearance" className="divide-y">
             {CHOICES.map((c) => (
@@ -77,8 +75,30 @@ export function SettingsPage() {
           </div>
         </Group>
         <Group title="Keyboard">
-          <ShortcutList />
+          <button
+            type="button"
+            onClick={openShortcuts}
+            className="flex min-h-11 w-full items-center px-4 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
+          >
+            <span className="flex-1">Keyboard shortcuts</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+          </button>
         </Group>
+        {usesMachines && (
+          <>
+        <Group title="Machines">
+          <button
+            type="button"
+            onClick={() => go("/machines")}
+            className="flex min-h-11 w-full items-center px-4 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
+          >
+            <span className="flex-1">Machines and their keys</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+          </button>
+        </Group>
+        <RemoteControl />
+          </>
+        )}
       </main>
     </>
   );

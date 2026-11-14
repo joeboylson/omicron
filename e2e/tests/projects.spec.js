@@ -1999,6 +1999,8 @@ test("a change in a task shows at once, before it's saved", async ({ page, reque
 test("a remote control token lets the computer's owner in from a visit Tailscale can't vouch for (#96)", async ({ page, request }) => {
   const robin = await newPerson(page, request);
   omicron.cli("machines", "owner", robin.login);
+  // In a Project, so Robin sees the computer and Settings shows remote control (#227).
+  await startProjectIn(page, unique("Code"));
   // Signed in as Robin, but this visit's Tailscale login is someone else's
   // (as on a page hosted elsewhere): no Dev side.
   const dev = (token, who = robin) =>
@@ -2134,4 +2136,17 @@ test("Increase Contrast gives stronger borders, grey text and colors, light and 
   expect(await token("--sys-green")).toBe("#30db5b");
   await page.emulateMedia({ contrast: "no-preference", colorScheme: "light" });
   await expect.poll(() => token("--border")).toBe(normal);
+});
+
+test("Settings: Ctrl/⌘-, opens it, shortcuts are a row, machine things only for people with a machine", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("House"));
+  // (#227)
+  await page.keyboard.press("ControlOrMeta+,");
+  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "Appearance" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Machines and their keys" })).toHaveCount(0);
+  await expect(page.getByLabel("Token", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Keyboard shortcuts" }).click();
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toContainText("Settings");
 });
