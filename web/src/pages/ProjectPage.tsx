@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { updateTask, addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
+import { usePendingChanges, useUndoableDelete } from "@/lib/pending";
 import { dropPlace, inOrder, matches as shows, parseColumn, type ColumnKind } from "@/lib/board-rules";
 import {
   DndContext,
@@ -131,11 +132,8 @@ export function ProjectPage({ id }: { id: string }) {
   // Changes made on this page that are still being saved: kept applied on
   // top of whatever a reload brings, so the board never jumps back to how
   // things were before the save lands.
-  const saving = useRef(new Map<string, { change: Partial<Task>; count: number }>());
-  const withSaving = (p: ProjectData | null) =>
-    p && saving.current.size > 0
-      ? { ...p, tasks: p.tasks.map((t) => (saving.current.has(t.id) ? { ...t, ...saving.current.get(t.id)!.change } : t)) }
-      : p;
+  const saving = usePendingChanges();
+  const withSaving = (p: ProjectData | null) => saving.over(p);
   const reload = useCallback(() => {
     act(async () => setProject(withSaving(await loadProject(db, id))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,25 +196,7 @@ export function ProjectPage({ id }: { id: string }) {
   const toast = useToast();
   // Deleted tasks hide at once and are deleted for good when their Undo
   // goes away (or straight away if the page closes).
-  const [hidden, setHidden] = useState<string[]>([]);
-  const pending = useRef(new Map<string, Task>());
-  const finishDelete = useCallback(
-    (id: string) => {
-      const t = pending.current.get(id);
-      if (!t) return;
-      pending.current.delete(id);
-      act(() => deleteTask(db, t)).then(reload);
-    },
-    [db, act, reload],
-  );
-  useEffect(() => () => [...pending.current.keys()].forEach(finishDelete), [finishDelete]);
-  const undoDelete = (id: string) => {
-    if (!pending.current.delete(id)) return false;
-    setHidden((h) => h.filter((x) => x !== id));
-    return true;
-  };
-  // The last deleted task, for Cmd/Ctrl+Z.
-  const lastDeleted = useRef<string | null>(null);
+  const { hidden, deletes } = useUndoableDelete<Task>((t) => act(() => deleteTask(db, t)).then(reload));
   const removeTask = (t: Task) => {
     // Focus goes to the card after it in its column (or before it), not
     // to the page, once the sheet has closed.
@@ -224,22 +204,18 @@ export function ProjectPage({ id }: { id: string }) {
     const i = group ? group.tasks.findIndex((x) => x.id === t.id) : -1;
     closedTask.current = (group?.tasks[i + 1] ?? group?.tasks[i - 1])?.number ?? null;
     setOpenTask(null);
-    setHidden((h) => [...h, t.id]);
-    pending.current.set(t.id, t);
-    lastDeleted.current = t.id;
+    deletes.delete(t);
     toast({
       message: `Deleted #${t.number} ${t.title}`,
       seconds: 10,
-      action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => undoDelete(t.id) },
-      onGone: () => finishDelete(t.id),
+      action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => deletes.undo(t.id) },
+      onGone: () => deletes.finish(t.id),
     });
   };
   // Cmd/Ctrl+Z, when not typing: brings back the task just deleted.
   const undoKey = useRef<() => boolean>(() => false);
   undoKey.current = () => {
-    const id = lastDeleted.current;
-    lastDeleted.current = null;
-    if (!id || !undoDelete(id)) return false;
+    if (!deletes.undo()) return false;
     toast({ message: "Task brought back", seconds: 3 });
     return true;
   };
@@ -375,21 +351,18 @@ export function ProjectPage({ id }: { id: string }) {
     const drop = dropPlace(project.tasks, moved, overTask, col);
     if (!drop) return;
     const { statusId, topicId, who, position, renumber } = drop;
-    const moves = new Map(renumber.map((r) => [r.id, r.position]));
-    setProject({
-      ...project,
-      tasks: project.tasks.map((t) =>
-        t.id === moved.id
-          ? { ...t, status_id: statusId, topic_id: topicId, position, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) }
-          : moves.has(t.id)
-            ? { ...t, position: moves.get(t.id)! }
-            : t,
-      ),
-    });
+    // Held over reloads until saved, so the card can't jump back meanwhile.
+    const done = [
+      saving.hold(moved.id, { status_id: statusId, topic_id: topicId, position, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) }),
+      ...renumber.map((r) => saving.hold(r.id, { position: r.position })),
+    ];
+    setProject(saving.over(project));
     act(async () => {
       if (renumber.length) await renumberTasks(db, renumber);
       await moveTask(db, moved, { statusId, topicId, position, who });
-    }).then(reload);
+    })
+      .finally(() => done.forEach((d) => d()))
+      .then(reload);
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
   const added = (number?: number, open?: boolean) => {
@@ -674,14 +647,10 @@ export function ProjectPage({ id }: { id: string }) {
         onChanged={reload}
         onDelete={removeTask}
         onPatch={(taskId, change) => {
-          const now = saving.current.get(taskId);
-          saving.current.set(taskId, { change: { ...now?.change, ...change }, count: (now?.count ?? 0) + 1 });
+          const done = saving.hold(taskId, change);
           setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p));
           // Called when the save is done (saved or not): stop holding it.
-          return () => {
-            const held = saving.current.get(taskId);
-            if (held && --held.count <= 0) saving.current.delete(taskId);
-          };
+          return done;
         }}
       />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
