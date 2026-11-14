@@ -260,6 +260,8 @@ test("a Project's folders are listed in its settings, added only on their comput
   const name = unique("Code");
   await startProjectIn(page, name);
   await page.getByRole("button", { name: "Project settings" }).click();
+  // On a Project with no Claude sessions yet, their parts are folded away (#160).
+  await page.getByRole("dialog").getByText("Claude sessions", { exact: true }).click();
   const folders = page.getByRole("dialog").getByRole("region", { name: "Folders" });
   await expect(folders).toContainText("No folders yet.");
   await expect(folders).toContainText("omicron folders add");
@@ -523,6 +525,9 @@ test("run rules are set in Project settings", async ({ page, request }) => {
   await startProjectIn(page, name);
   await page.getByRole("button", { name: "Project settings" }).click();
   const rules = page.getByLabel("Run rules");
+  // Folded on a new Project (#160).
+  await expect(rules).toBeHidden();
+  await page.getByRole("dialog").getByText("Claude sessions", { exact: true }).click();
   await rules.fill("Run the tests.\nCommit and push.");
   await rules.blur();
   await expect.poll(() => omicron.cli("projects", "rules", name, "--as-machine")).toContain("Run the tests.\nCommit and push.");
@@ -869,6 +874,8 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
   const name = unique("House");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Water the plants");
+  // No Claude sessions here: no Needs review filter either (#160).
+  await expect(page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Needs review" })).toHaveCount(0);
 
   // By topic with no topics yet: one "No topic" column, and how to add some.
   await page.getByRole("radio", { name: "Topic", exact: true }).click();

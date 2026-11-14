@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
-import { ProjectSettings } from "@/components/ProjectSettings";
+import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
 import { Textarea } from "@/components/ui/textarea";
@@ -455,7 +455,10 @@ export function ProjectPage({ id }: { id: string }) {
               ["review", "Needs review"],
               ["due", "Due soon"],
             ] as const
-          ).map(([k, label]) => (
+          )
+            // Needs review is a Claude session's mark: only where it can be.
+            .filter(([k]) => k !== "review" || filters.review || usesClaude(project) || project.tasks.some((t) => t.needs_review))
+            .map(([k, label]) => (
             <Button
               key={k}
               variant={filters[k] ? "secondary" : "ghost"}

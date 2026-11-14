@@ -158,8 +158,8 @@ async function escape(page) {
     await page.getByRole("button", { name: "Project settings" }).click();
     await page.getByRole("region", { name: "Labels" }).waitFor();
     await shot("3b-settings");
-    // The rest of the sheet: run rules, members, machines, folders, delete.
-    await page.getByRole("dialog").getByRole("region", { name: "Folders" }).scrollIntoViewIfNeeded();
+    // The rest of the sheet: members, Claude sessions (folded here), delete.
+    await page.getByRole("dialog").getByLabel("Delete Project").scrollIntoViewIfNeeded();
     await shot("3d-settings-lower");
     await escape(page);
     await page.getByRole("button", { name: "Back to Projects" }).click();

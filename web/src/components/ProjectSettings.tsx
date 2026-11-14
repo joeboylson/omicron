@@ -57,6 +57,8 @@ export function ProjectSettings({
   const { db, act, me } = useApp();
   const [name, setName] = useState(project.name);
   const [rules, setRules] = useState(project.run_rules);
+  // Open on a Project that uses Claude sessions; folded on one that doesn't.
+  const [claudeOpen, setClaudeOpen] = useState(usesClaude(project));
   useEffect(() => setRules(project.run_rules), [project.run_rules]);
   const [newStatus, setNewStatus] = useState("");
   const [newTopic, setNewTopic] = useState("");
@@ -90,6 +92,11 @@ export function ProjectSettings({
   // Machines on every Project are always in it; the rest can be picked
   // (switched-off ones only while they're still in it).
   const pickable = machines.filter((m) => !m.all_projects && (m.active || m.projectIds.includes(project.id)));
+  // A Project with a machine uses Claude sessions too: open, once they load.
+  const hasMachine = machines.some((m) => !m.all_projects && m.projectIds.includes(project.id));
+  useEffect(() => {
+    if (hasMachine) setClaudeOpen(true);
+  }, [hasMachine]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -114,25 +121,6 @@ export function ProjectSettings({
                 else if (n !== project.name) change(() => renameProject(db, project.id, n));
               }}
               className={cn(bare, "px-0")}
-            />
-          </Row>
-        </Group>
-
-        <Group
-          title={<label htmlFor="run-rules">Run rules</label>}
-          note="How this Project's Claude sessions work: given to a session with every task, beside its folder's CLAUDE.md. Like: test, take screenshots of page changes, commit and push, report on the task, ask in Waiting on Joe."
-        >
-          <Row className="py-2">
-            <Textarea
-              id="run-rules"
-              value={rules}
-              onChange={(e) => setRules(e.target.value)}
-              onBlur={() => {
-                if (rules.trim() !== project.run_rules.trim()) change(() => setRunRules(db, project.id, rules.trim()));
-              }}
-              placeholder="Run the tests the change touches. Commit and push. Report on the task in plain words, then move it to Review."
-              rows={5}
-              className={cn(bare, "min-h-24 px-0 py-1")}
             />
           </Row>
         </Group>
@@ -246,6 +234,32 @@ export function ProjectSettings({
           </Row>
         </Group>
 
+        {/* What only Claude sessions use, together and out of the way on a
+            Project without any (a household board). */}
+        <details open={claudeOpen} onToggle={(e) => setClaudeOpen((e.target as HTMLDetailsElement).open)} className="grid gap-5">
+          <summary className="cursor-pointer select-none px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Claude sessions
+          </summary>
+          <div className="mt-5 grid gap-5">
+        <Group
+          title={<label htmlFor="run-rules">Run rules</label>}
+          note="How this Project's Claude sessions work: given to a session with every task, beside its folder's CLAUDE.md. Like: test, take screenshots of page changes, commit and push, report on the task, ask in Waiting on Joe."
+        >
+          <Row className="py-2">
+            <Textarea
+              id="run-rules"
+              value={rules}
+              onChange={(e) => setRules(e.target.value)}
+              onBlur={() => {
+                if (rules.trim() !== project.run_rules.trim()) change(() => setRunRules(db, project.id, rules.trim()));
+              }}
+              placeholder="Run the tests the change touches. Commit and push. Report on the task in plain words, then move it to Review."
+              rows={5}
+              className={cn(bare, "min-h-24 px-0 py-1")}
+            />
+          </Row>
+        </Group>
+
         <Group title="Machines">
           <Row className="py-2">
             <MultiSelect
@@ -281,6 +295,9 @@ export function ProjectSettings({
             ))
           )}
         </Group>
+
+          </div>
+        </details>
 
         <Group
           title={<label htmlFor="delete-project">Delete Project</label>}
@@ -499,4 +516,9 @@ function AddMember({ people, onAdd }: { people: Person[]; onAdd: (id: string) =>
       </PopoverContent>
     </Popover>
   );
+}
+
+/** Whether a Project uses Claude sessions: it has sessions, folders, or run rules. */
+export function usesClaude(project: ProjectData): boolean {
+  return project.sessions.length > 0 || project.folders.length > 0 || project.run_rules.trim() !== "";
 }
