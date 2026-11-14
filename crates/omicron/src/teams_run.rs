@@ -493,65 +493,22 @@ fn part_done(board: &Board, team: &TeamRow, me: &str, job: &Job, k: i64, note: &
 pub fn ask(question: &str) -> Result<String> {
     let (board, team, me) = caller()?;
     let job = my_job(&board, &team, &me).ok();
-    let status = board.supabase.request_as(
-        &board.session,
-        "GET",
-        &format!("/rest/v1/statuses?project_id=eq.{}&is_done=eq.false&select=id&order=position&limit=1", team.project_id),
-        None,
-    )?;
-    let status_id = status.get(0).and_then(|r| r["id"].as_str()).context("the team's Project has no open status")?.to_string();
+    let status_id = board.first_open_status(&team.project_id)?.context("the team's Project has no open status")?;
     let asker = job.as_ref().map(|j| j.id.clone());
-    let to = match &asker {
-        Some(id) => {
-            let r = board.supabase.request_as(&board.session, "GET", &format!("/rest/v1/jobs?id=eq.{id}&select=created_by"), None)?;
-            let by = r.get(0).and_then(|r| r["created_by"].as_str()).map(String::from);
-            // Only a member of the Project can be given the task.
-            match by {
-                Some(p) => {
-                    let m = board.supabase.request_as(
-                        &board.session,
-                        "GET",
-                        &format!("/rest/v1/project_members?project_id=eq.{}&person_id=eq.{p}&select=person_id", team.project_id),
-                        None,
-                    )?;
-                    m.as_array().is_some_and(|a| !a.is_empty()).then_some(p)
-                }
-                None => None,
-            }
-        }
-        None => None,
+    // Given to whoever added the job, if they're a member of the Project.
+    let to = match job.as_ref().and_then(|j| j.created_by.clone()) {
+        Some(p) if board.is_member(&team.project_id, &p)? => Some(p),
+        _ => None,
     };
     let about = job.as_ref().map(|j| format!(" about job #{}", j.number)).unwrap_or_default();
-    // At the bottom of its status, like any task added (not position 0,
-    // which ties it with the top card: #118).
-    let last = board.supabase.request_as(
-        &board.session,
-        "GET",
-        &format!("/rest/v1/tasks?status_id=eq.{status_id}&select=position&order=position.desc&limit=1"),
-        None,
+    let (task_id, number) = board.add_task_at_bottom(
+        &team.project_id,
+        &status_id,
+        &format!("{}: {me} asks{about}", team.name),
+        &format!("{question}\n\nAnswer with a comment; it goes straight back to {me}."),
+        to.as_deref(),
     )?;
-    let position = last.get(0).and_then(|r| r["position"].as_f64()).map_or(0.0, |p| p + 1.0);
-    let task = board.supabase.request_as(
-        &board.session,
-        "POST",
-        "/rest/v1/tasks",
-        Some(serde_json::json!({
-            "project_id": team.project_id,
-            "status_id": status_id,
-            "title": format!("{}: {me} asks{about}", team.name),
-            "notes": format!("{question}\n\nAnswer with a comment; it goes straight back to {me}."),
-            "assignee_person_id": to,
-            "position": position,
-        })),
-    )?;
-    let task_id = task[0]["id"].as_str().context("the request wasn't saved")?.to_string();
-    let number = task[0]["number"].as_i64().unwrap_or(0);
-    board.supabase.request_as(
-        &board.session,
-        "POST",
-        "/rest/v1/team_requests",
-        Some(serde_json::json!({ "team_id": team.id, "job_id": asker, "worker": me, "task_id": task_id })),
-    )?;
+    board.add_team_request(&team, asker.as_deref(), &me, &task_id)?;
     if let Some(j) = &job {
         board.block_job(j, &format!("Asked: {question}"))?;
     }
@@ -677,9 +634,8 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
             }
             let b = board()?;
             let task = record["task_id"].as_str().unwrap_or("");
-            let reqs = b.supabase.request_as(&b.session, "GET", &format!("/rest/v1/team_requests?task_id=eq.{task}&state=eq.open&select=id,team_id,job_id,worker"), None)?;
-            let Some(req) = reqs.get(0) else { return Ok(()) };
-            let Ok(team) = b.team_by_id(req["team_id"].as_str().unwrap_or("")) else { return Ok(()) };
+            let Some(req) = b.open_request_for_task(task)? else { return Ok(()) };
+            let Ok(team) = b.team_by_id(&req.team_id) else { return Ok(()) };
             if team.machine_id != key.machine_id.to_string() {
                 return Ok(());
             }
@@ -688,7 +644,7 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
             if !omicron::gate::Orders::new(&b).takes(record["author_id"].as_str())? {
                 return Ok(());
             }
-            pass_answer(&b, &team, req, record)?;
+            pass_answer(&b, &team, &req, record)?;
         }
         ("jobs", "INSERT") => {
             let b = board()?;
@@ -743,21 +699,16 @@ fn clear_waiting(b: &Board, job: &omicron::board::Job) -> Result<()> {
 
 /// Pass an answer (a comment on the question's task) to the member who
 /// asked, or its lead, and mark the question answered.
-fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &serde_json::Value) -> Result<bool> {
-    let worker = req["worker"].as_str().unwrap_or("lead");
+fn pass_answer(b: &Board, team: &TeamRow, req: &omicron::board::TeamRequest, comment: &serde_json::Value) -> Result<bool> {
+    let worker = req.worker.as_str();
     let who = comment["author_name"].as_str().unwrap_or("someone");
     let body = comment["body"].as_str().unwrap_or("");
     // To who asked; failing that its lead (started if it must be), who passes it on.
     let told = tell(&team.name, worker, &format!("Answer from {who}: {body}"))?
         || (team.state == "running" && tell_lead(b, team, &format!("Answer for {worker} from {who}: {body}")).is_ok());
     if told {
-        b.supabase.request_as(
-            &b.session,
-            "PATCH",
-            &format!("/rest/v1/team_requests?id=eq.{}", req["id"].as_str().unwrap_or("")),
-            Some(serde_json::json!({ "state": "answered", "answer_comment_id": comment["id"], "answered_at": "now" })),
-        )?;
-        if let Some(job) = req["job_id"].as_str() {
+        b.mark_answered(req, &comment["id"])?;
+        if let Some(job) = &req.job_id {
             b.unblock_job(job, &format!("Answered by {who}: {body}"))?;
         }
     }
@@ -775,21 +726,10 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
     let me = key.machine_id.to_string();
     let orders = omicron::gate::Orders::new(&b);
     for team in b.teams()?.into_iter().filter(|t| t.machine_id == me && t.state == "running") {
-        let reqs = b.supabase.request_as(&b.session, "GET", &format!("/rest/v1/team_requests?team_id=eq.{}&state=eq.open&select=id,job_id,worker,task_id,created_at", team.id), None)?;
-        for req in reqs.as_array().into_iter().flatten() {
-            let comments = b.supabase.request_as(
-                &b.session,
-                "GET",
-                &format!(
-                    "/rest/v1/comments?task_id=eq.{}&session_id=is.null&created_at=gt.{}&select=id,author_id,author_name,body&order=created_at.desc",
-                    req["task_id"].as_str().unwrap_or(""),
-                    req["created_at"].as_str().unwrap_or("").replace('+', "%2B")
-                ),
-                None,
-            )?;
-            for c in comments.as_array().into_iter().flatten() {
+        for req in b.open_requests(&team)? {
+            for c in b.answers_to(&req)? {
                 if orders.takes(c["author_id"].as_str())? {
-                    pass_answer(&b, &team, req, c)?;
+                    pass_answer(&b, &team, &req, &c)?;
                     break;
                 }
             }

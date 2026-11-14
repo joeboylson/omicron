@@ -144,9 +144,8 @@ fn you(s: &Supabase) -> Check {
         }
         Err(e) => return Check::Fix(format!("couldn't look up {}: {e:#}", me.login)),
     };
-    let projects = s.admin_request("GET", &format!("/rest/v1/project_members?person_id=eq.{person}&select=projects(name)"), None);
-    let names: Vec<String> = match projects {
-        Ok(rows) => rows.as_array().into_iter().flatten().filter_map(|r| r["projects"]["name"].as_str().map(String::from)).collect(),
+    let names: Vec<String> = match s.person_project_names(&person.to_string()) {
+        Ok(names) => names,
         Err(e) => return Check::Fix(format!("couldn't read your Projects: {e:#}")),
     };
     if names.is_empty() {

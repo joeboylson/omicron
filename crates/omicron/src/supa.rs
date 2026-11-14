@@ -365,6 +365,19 @@ impl Supabase {
         Ok(rows.as_array().into_iter().flatten().filter_map(|r| r["project_id"].as_str().map(String::from)).collect())
     }
 
+    /// The names of every Project a person is in (seen past the rules).
+    pub fn person_project_names(&self, id: &str) -> Result<Vec<String>> {
+        let rows = self.admin_request("GET", &format!("/rest/v1/project_members?person_id=eq.{id}&select=projects(name)"), None)?;
+        Ok(rows.as_array().into_iter().flatten().filter_map(|r| r["projects"]["name"].as_str().map(String::from)).collect())
+    }
+
+    /// Switch a machine back on by name (seen now too, or the next clean-up
+    /// switches it straight back off). False if there's no such machine.
+    pub fn switch_on_machine(&self, name: &str) -> Result<bool> {
+        let rows = self.admin_request("PATCH", &format!("/rest/v1/machines?name=eq.{}", name.replace(' ', "%20")), Some(serde_json::json!({ "active": true, "last_seen": "now" })))?;
+        Ok(!rows.as_array().is_some_and(|a| a.is_empty()))
+    }
+
     /// Delete a person for good: their login, their identities and their
     /// place in every Project (the database follows their login). Tasks
     /// given to them are given to nobody; machines they owned have no owner.

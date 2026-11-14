@@ -436,25 +436,20 @@ fn machines(m: Machines) -> Result<()> {
             Ok(())
         }
         Machines::Owner { login } => {
-            let supabase = config.supabase()?;
-            let session = supabase.sign_in_machine(&config.machine_key()?)?;
+            let board = omicron::board::Board::as_machine(&config.supabase()?, &config.machine_key()?)?;
             let login = match login {
                 Some(l) => l,
                 None => omicron::identity::local_person().context("couldn't tell who you are: give a Tailscale login")?.login,
             };
-            let name = supabase.request_as(&session, "POST", "/rest/v1/rpc/set_machine_owner", Some(json!({ "login": login })))?;
-            println!("{} owns this machine now: only they can send it orders, while its gate is open.", name.as_str().unwrap_or(&login));
+            let name = board.set_owner(&login)?;
+            println!("{} owns this machine now: only they can send it orders, while its gate is open.", name.as_deref().unwrap_or(&login));
             Ok(())
         }
         Machines::CheckIn => {
-            let supabase = config.supabase()?;
-            let key = config.machine_key()?;
-            let session = supabase.sign_in_machine(&key)?;
-            supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
-            let rows = supabase.request_as(&session, "GET", &format!("/rest/v1/machines?id=eq.{}&select=name,active", key.machine_id), None)?;
-            let row = rows.get(0).context("this machine's record is missing")?;
-            let name = row["name"].as_str().unwrap_or("?");
-            if row["active"].as_bool() == Some(false) {
+            let board = omicron::board::Board::as_machine(&config.supabase()?, &config.machine_key()?)?;
+            board.check_in()?;
+            let (name, active) = board.my_machine()?;
+            if !active {
                 println!("{name} is switched off.");
             } else {
                 println!("{name} checked in.");
@@ -463,14 +458,7 @@ fn machines(m: Machines) -> Result<()> {
         }
         Machines::List | Machines::Add { .. } | Machines::Remove { .. } => unreachable!("handled in run"),
         Machines::SwitchOn { machine } => {
-            let supabase = config.supabase()?;
-            let rows = supabase.admin_request(
-                "PATCH",
-                &format!("/rest/v1/machines?name=eq.{}", machine.replace(' ', "%20")),
-                // Seen now too, or the next clean-up switches it straight back off.
-                Some(json!({ "active": true, "last_seen": "now" })),
-            )?;
-            if rows.as_array().is_some_and(|a| a.is_empty()) {
+            if !config.supabase()?.switch_on_machine(&machine)? {
                 bail!("no machine called {machine}");
             }
             println!("Switched {machine} on.");
@@ -572,11 +560,8 @@ fn daemon() -> Result<()> {
     let config = Config::load()?;
     let supabase = config.supabase()?;
     let key = config.machine_key()?;
-    let first = supabase.sign_in_machine(&key)?;
-    let me = supabase.request_as(&first, "GET", &format!("/rest/v1/machines?id=eq.{}&select=name,active", key.machine_id), None)?;
-    let row = me.get(0).context("this machine's record is missing")?;
-    let name = row["name"].as_str().unwrap_or("?").to_string();
-    if row["active"].as_bool() == Some(false) {
+    let (name, active) = omicron::board::Board::as_machine(&supabase, &key)?.my_machine()?;
+    if !active {
         let why = format!("{name} is switched off (machines are switched off after 30 days unseen). Switch it back on from a Web Machine with `omicron machines switch-on {name}`.");
         // Started at login, this is a normal stop, so the service doesn't
         // keep restarting it.
@@ -603,9 +588,7 @@ fn daemon() -> Result<()> {
                     }
                     if let Ok(Some(info)) = omicron::accounts::report() {
                         if last_sent.as_ref() != Some(&info) {
-                            let sent = supabase.sign_in_machine(&key).and_then(|login| {
-                                supabase.request_as(&login, "POST", "/rest/v1/rpc/report_claude_accounts", Some(json!({ "info": info })))
-                            });
+                            let sent = omicron::board::Board::as_machine(&supabase, &key).and_then(|b| b.report_claude_accounts(&info));
                             match sent {
                                 Ok(_) => last_sent = Some(info),
                                 Err(e) => eprintln!("omicron daemon: reporting accounts: {e:#}"),
@@ -632,8 +615,9 @@ fn daemon() -> Result<()> {
     // this machine is still around, so one in use never hits the 30-day
     // switch-off.
     let login = || {
-        let session = supabase.sign_in_machine(&key)?;
-        supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
+        let board = omicron::board::Board::as_machine(&supabase, &key)?;
+        board.check_in()?;
+        let session = board.session;
         // And its gate, in case it closed by itself or changed by hand.
         if let Err(e) = omicron::gate::report(&supabase, &session) {
             eprintln!("couldn't tell Omicron about the gate: {e:#}");

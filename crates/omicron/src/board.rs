@@ -264,6 +264,18 @@ pub struct Worker {
     pub job_id: Option<String>,
 }
 
+/// A question a team member asked a person: a task in the team's Project,
+/// open until its answer (a comment there) is passed back.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TeamRequest {
+    pub id: String,
+    pub team_id: String,
+    pub job_id: Option<String>,
+    pub worker: String,
+    pub task_id: String,
+    pub created_at: String,
+}
+
 /// What `TaskRow` reads.
 const TASK_ROW: &str = "id,number,title,status_id,assignee_person_id,assignee_session_id,task_labels(label_id),task_jobs(job_id)";
 
@@ -1269,6 +1281,89 @@ impl Board {
         let rows = self.get(&format!("/rest/v1/tasks?id=eq.{id}&select={TASK_FIELDS},projects(name)"))?;
         let v = rows.get(0).context("the task is gone")?;
         Ok((v["projects"]["name"].as_str().unwrap_or("").to_string(), task_from(v)?))
+    }
+
+    /// A Project's first status that isn't a done one (To do, usually).
+    pub fn first_open_status(&self, project_id: &str) -> Result<Option<String>> {
+        let rows = self.get(&format!("/rest/v1/statuses?project_id=eq.{project_id}&is_done=eq.false&select=id&order=position&limit=1"))?;
+        Ok(rows.get(0).and_then(|r| r["id"].as_str()).map(String::from))
+    }
+
+    /// Whether a person is a member of a Project.
+    pub fn is_member(&self, project_id: &str, person_id: &str) -> Result<bool> {
+        let rows = self.get(&format!("/rest/v1/project_members?project_id=eq.{project_id}&person_id=eq.{person_id}&select=person_id"))?;
+        Ok(rows.as_array().is_some_and(|a| !a.is_empty()))
+    }
+
+    /// Add a task at the bottom of a status (not position 0, which ties it
+    /// with the top card: #118), given to `to` if anyone. Its id and number.
+    pub fn add_task_at_bottom(&self, project_id: &str, status_id: &str, title: &str, notes: &str, to: Option<&str>) -> Result<(String, i64)> {
+        let last = self.get(&format!("/rest/v1/tasks?status_id=eq.{status_id}&select=position&order=position.desc&limit=1"))?;
+        let position = last.get(0).and_then(|r| r["position"].as_f64()).map_or(0.0, |p| p + 1.0);
+        let rows = self.send(
+            "POST",
+            "/rest/v1/tasks",
+            json!({ "project_id": project_id, "status_id": status_id, "title": title, "notes": notes, "assignee_person_id": to, "position": position }),
+        )?;
+        let id = rows[0]["id"].as_str().context("the task wasn't saved")?.to_string();
+        Ok((id, rows[0]["number"].as_i64().unwrap_or(0)))
+    }
+
+    /// Record a team member's question, asked as the task `task_id`.
+    pub fn add_team_request(&self, team: &TeamRow, job_id: Option<&str>, worker: &str, task_id: &str) -> Result<()> {
+        self.send("POST", "/rest/v1/team_requests", json!({ "team_id": team.id, "job_id": job_id, "worker": worker, "task_id": task_id }))?;
+        Ok(())
+    }
+
+    /// The open question asked as this task, if there is one.
+    pub fn open_request_for_task(&self, task_id: &str) -> Result<Option<TeamRequest>> {
+        let rows: Vec<TeamRequest> = serde_json::from_value(self.get(&format!("/rest/v1/team_requests?task_id=eq.{task_id}&state=eq.open"))?)?;
+        Ok(rows.into_iter().next())
+    }
+
+    /// A team's open questions.
+    pub fn open_requests(&self, team: &TeamRow) -> Result<Vec<TeamRequest>> {
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/team_requests?team_id=eq.{}&state=eq.open", team.id))?)?)
+    }
+
+    /// People's comments on a question's task since it was asked, newest first.
+    pub fn answers_to(&self, req: &TeamRequest) -> Result<Vec<Value>> {
+        let rows = self.get(&format!(
+            "/rest/v1/comments?task_id=eq.{}&session_id=is.null&created_at=gt.{}&select=id,author_id,author_name,body&order=created_at.desc",
+            req.task_id,
+            req.created_at.replace('+', "%2B")
+        ))?;
+        Ok(rows.as_array().cloned().unwrap_or_default())
+    }
+
+    /// A question was answered, by this comment.
+    pub fn mark_answered(&self, req: &TeamRequest, comment_id: &Value) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/team_requests?id=eq.{}", req.id), json!({ "state": "answered", "answer_comment_id": comment_id, "answered_at": "now" }))?;
+        Ok(())
+    }
+
+    /// This machine's name, and whether it's switched on.
+    pub fn my_machine(&self) -> Result<(String, bool)> {
+        let rows = self.get(&format!("/rest/v1/machines?id=eq.{}&select=name,active", self.session.user.id))?;
+        let row = rows.get(0).context("this machine's record is missing")?;
+        Ok((row["name"].as_str().unwrap_or("?").to_string(), row["active"].as_bool() != Some(false)))
+    }
+
+    /// This machine is still around (so it isn't switched off after 30 days).
+    pub fn check_in(&self) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/machine_check_in", json!({}))?;
+        Ok(())
+    }
+
+    /// Make the person with this Tailscale login this machine's owner: their name.
+    pub fn set_owner(&self, login: &str) -> Result<Option<String>> {
+        Ok(self.send("POST", "/rest/v1/rpc/set_machine_owner", json!({ "login": login }))?.as_str().map(String::from))
+    }
+
+    /// Tell Omicron which Claude account this machine uses and what's left.
+    pub fn report_claude_accounts(&self, info: &Value) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/report_claude_accounts", json!({ "info": info }))?;
+        Ok(())
     }
 
     /// Signed in as a person (not a machine).
