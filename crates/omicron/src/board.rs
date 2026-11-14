@@ -1103,10 +1103,12 @@ impl Board {
         self.task(project, number)
     }
 
-    /// Give a task anew, to `session` or to the session it's with: new again
-    /// to that session, given by whoever this board is signed in as (the
-    /// database sets who). Signed in as a machine, the session takes it as
-    /// its own machine's order, gate or not.
+    /// The one way Omicron gives a task to a session: to `session`, or anew
+    /// to the session it's with. It's new again to that session, given by
+    /// whoever this board is signed in as: the database sets who (0026's
+    /// task_given_by trigger); writing `given_by` here only says "anew".
+    /// Signed in as a machine, the session takes it as its own machine's
+    /// order, gate or not. (The web page's own assigning is separate.)
     pub fn give_anew(&self, task_id: &str, session: Option<&str>) -> Result<()> {
         let change = match session {
             Some(s) => json!({ "assignee_session_id": s, "assignee_person_id": null, "given_by": null }),

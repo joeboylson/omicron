@@ -310,3 +310,39 @@ fn outsiders_can_see_and_change_nothing_of_a_project() {
     assert_eq!(rows(&s, &format!("/rest/v1/machines?id=eq.{mac_id}&select=active"))[0]["active"], true);
     assert!(s.download_as(&pat, "comment-images", &file).is_ok(), "the Project's image is still there");
 }
+
+/// Who gave a task is set by the database (0026's task_given_by), never by
+/// whoever writes it: giving it again (writing any given_by) records the
+/// giver, so nobody can pass work off as someone else's (#129).
+#[test]
+fn giving_a_task_again_records_who_gave_it() {
+    let Some(s) = admin() else {
+        eprintln!("skipped: no test Supabase set up");
+        return;
+    };
+    let pat = person(&s, "Pat");
+    let (mac, mac_id) = machine(&s);
+    let project = call(&s, &pat, "POST", "/rest/v1/rpc/start_project", json!({ "name": unique("Given") }));
+    let pid = project["id"].as_str().unwrap();
+    call(&s, &pat, "POST", "/rest/v1/project_machines", json!({ "project_id": pid, "machine_id": mac_id }));
+    let session = call(&s, &mac, "POST", "/rest/v1/sessions", json!({ "project_id": pid, "machine_id": mac_id, "name": "worker", "folder": "/code" }));
+    let sid = session[0]["id"].as_str().unwrap();
+    let status = call(&s, &pat, "GET", &format!("/rest/v1/statuses?project_id=eq.{pid}&select=id&limit=1"), Value::Null);
+    let task = call(&s, &pat, "POST", "/rest/v1/tasks", json!({ "project_id": pid, "status_id": status[0]["id"], "title": "Fix it" }));
+    let tid = task[0]["id"].as_str().unwrap();
+    let given_by = || rows(&s, &format!("/rest/v1/tasks?id=eq.{tid}&select=given_by"))[0]["given_by"].clone();
+    let give = |who: &Session, body: Value| call(&s, who, "PATCH", &format!("/rest/v1/tasks?id=eq.{tid}"), body);
+
+    // Pat gives it to the session: given by Pat.
+    give(&pat, json!({ "assignee_session_id": sid, "assignee_person_id": null }));
+    assert_eq!(given_by(), json!(pat.user.id));
+    // The machine gives it again: given by the machine.
+    give(&mac, json!({ "assignee_session_id": sid, "assignee_person_id": null, "given_by": null }));
+    assert_eq!(given_by(), json!(mac.user.id));
+    // Pat writing someone else as the giver: given by Pat.
+    give(&pat, json!({ "given_by": Uuid::new_v4() }));
+    assert_eq!(given_by(), json!(pat.user.id));
+    // Writing who gave it last, unchanged, isn't giving it again.
+    give(&pat, json!({ "given_by": pat.user.id, "title": "Fix it now" }));
+    assert_eq!(given_by(), json!(pat.user.id));
+}
