@@ -149,6 +149,21 @@ for (const [kind, device] of [
       await holdAndDrag(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
       await expect.poll(order).toEqual(["Prune the roses", "Plant the tulips before the first frost comes", "Fix the gate"]);
 
+      // On a phone, every column's name and count is above the board; a tap
+      // goes to that column (#142).
+      if (kind === "phone") {
+        const jump = page.getByRole("navigation", { name: "Go to column" });
+        const last = statuses[statuses.length - 1].name;
+        await expect(jump.getByRole("button", { name: `${statuses[0].name} 3` })).toHaveAttribute("aria-current", "true");
+        const lastColumn = page.getByRole("region", { name: last, exact: true });
+        await expect(lastColumn).not.toBeInViewport({ ratio: 0.9 });
+        await jump.getByRole("button", { name: new RegExp(`^${last} `) }).tap();
+        await expect(lastColumn).toBeInViewport({ ratio: 0.9 });
+        await expect(jump.getByRole("button", { name: new RegExp(`^${last} `) })).toHaveAttribute("aria-current", "true");
+        await jump.getByRole("button", { name: new RegExp(`^${statuses[0].name} `) }).tap();
+        await expect(todo).toBeInViewport({ ratio: 0.9 });
+      }
+
       // A task's sheet.
       await page.getByRole("button", { name: /Plant the tulips/ }).tap();
       const sheet = page.getByRole("dialog");

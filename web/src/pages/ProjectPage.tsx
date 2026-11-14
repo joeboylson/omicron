@@ -83,6 +83,7 @@ export function ProjectPage({ id }: { id: string }) {
   const searchBox = useRef<HTMLInputElement>(null);
   // Bumped to open "Add a task" in the first column (c, or the menu).
   const [addSignal, setAddSignal] = useState(0);
+  const board = useRef<HTMLDivElement>(null);
   // A new task is typed into the board's first column; from the list, the
   // board comes back first. (A ref, so the key handler always has the latest.)
   const newTask = useRef(() => {});
@@ -244,6 +245,23 @@ export function ProjectPage({ id }: { id: string }) {
     (!filters.review || t.needs_review) &&
     (!filters.due || (t.due_on !== null && new Date(t.due_on).getTime() <= soon)) &&
     (filters.label === null || t.labelIds.includes(filters.label));
+  // The board's columns, and the list's groups: statuses or topics.
+  const groups: Group[] =
+    groupBy === "status"
+      ? project.statuses.map((s) => ({
+          key: s.id,
+          name: s.name,
+          status: s,
+          topicId: null,
+          tasks: inOrder(project.tasks.filter((t) => t.status_id === s.id && matches(t))),
+        }))
+      : topicColumns(project).map((c) => ({
+          key: c.key,
+          name: c.name,
+          status: null,
+          topicId: c.topicId,
+          tasks: byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t))),
+        }));
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
 
@@ -251,7 +269,7 @@ export function ProjectPage({ id }: { id: string }) {
     dragOn.current = true;
     setDragging(project.tasks.find((t) => t.id === e.active.id) ?? null);
   };
-  // Dropped: work out the column (a status, and a topic in topic rows) and
+  // Dropped: work out the column (a status or a topic) and
   // the place in it, show it at once, then save.
   const onDragEnd = (e: DragEndEvent) => {
     dragOn.current = false;
@@ -452,16 +470,7 @@ export function ProjectPage({ id }: { id: string }) {
       {layout === "list" ? (
         <TaskList
           project={project}
-          groups={
-            groupBy === "status"
-              ? project.statuses.map((s) => ({ key: s.id, name: s.name, status: s, tasks: inOrder(project.tasks.filter((t) => t.status_id === s.id && matches(t))) }))
-              : topicColumns(project).map((c) => ({
-                  key: c.key,
-                  name: c.name,
-                  status: null,
-                  tasks: byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t))),
-                }))
-          }
+          groups={groups}
           showStatus={groupBy === "topic"}
           filtering={filtering}
           onOpen={(t) => setOpenTask(t.number)}
@@ -483,36 +492,25 @@ export function ProjectPage({ id }: { id: string }) {
           },
         }}
       >
-      <div className={cn(boardRow, "min-h-0")}>
-        {groupBy === "status"
-          ? project.statuses.map((s, i) => (
-              <Column
-                key={s.id}
-                addSignal={i === 0 ? addSignal : 0}
-                onAddShown={() => setAddSignal(0)}
-                project={project}
-                status={s}
-                topicId={null}
-                label={s.name}
-                tasks={project.tasks.filter((t) => t.status_id === s.id && matches(t))}
-                onOpen={(t) => setOpenTask(t.number)}
-                onAdded={added}
-              />
-            ))
-          : topicColumns(project).map((c, i) => (
-              <Column
-                key={c.key}
-                addSignal={i === 0 ? addSignal : 0}
-                onAddShown={() => setAddSignal(0)}
-                project={project}
-                status={null}
-                topicId={c.topicId}
-                label={c.name}
-                tasks={byStatus(project, project.tasks.filter((t) => t.topic_id === c.topicId && matches(t)))}
-                onOpen={(t) => setOpenTask(t.number)}
-                onAdded={added}
-              />
-            ))}
+      <ColumnJump groups={groups} board={board} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={board} className={cn(boardRow, "min-h-0")}>
+          {groups.map((g, i) => (
+            <Column
+              key={g.key}
+              addSignal={i === 0 ? addSignal : 0}
+              onAddShown={() => setAddSignal(0)}
+              project={project}
+              status={g.status}
+              topicId={g.topicId}
+              label={g.name}
+              tasks={g.tasks}
+              onOpen={(t) => setOpenTask(t.number)}
+              onAdded={added}
+            />
+          ))}
+        </div>
+        <MoreToTheRight board={board} />
       </div>
         <DragOverlay>
           {dragging && (
@@ -844,7 +842,7 @@ function TaskList({
   onOpen,
 }: {
   project: ProjectData;
-  groups: { key: string; name: string; status: Status | null; tasks: Task[] }[];
+  groups: Group[];
   showStatus: boolean;
   filtering: boolean;
   onOpen: (t: Task) => void;
@@ -875,4 +873,66 @@ function TaskList({
       </div>
     </div>
   );
+}
+
+/** A board column or list group: a status, or (status null) a topic. */
+type Group = { key: string; name: string; status: Status | null; topicId: string | null; tasks: Task[] };
+
+/** Which column is at the board's left edge, and whether more are off to the right. */
+function useBoardScroll(board: React.RefObject<HTMLDivElement | null>) {
+  const [at, setAt] = useState({ first: 0, more: false });
+  useEffect(() => {
+    const el = board.current;
+    if (!el) return;
+    const look = () => {
+      const cols = [...el.children] as HTMLElement[];
+      const left = el.scrollLeft + el.offsetLeft;
+      let first = 0;
+      cols.forEach((c, i) => {
+        if (Math.abs(c.offsetLeft - left) < Math.abs((cols[first]?.offsetLeft ?? 0) - left)) first = i;
+      });
+      setAt({ first, more: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+    };
+    look();
+    el.addEventListener("scroll", look, { passive: true });
+    const seen = new ResizeObserver(look);
+    seen.observe(el);
+    return () => {
+      el.removeEventListener("scroll", look);
+      seen.disconnect();
+    };
+  }, [board]);
+  return at;
+}
+
+/** On a phone: every column's name and count, tapped to go to it. */
+function ColumnJump({ groups, board }: { groups: Group[]; board: React.RefObject<HTMLDivElement | null> }) {
+  const { first } = useBoardScroll(board);
+  return (
+    <nav aria-label="Go to column" className="flex gap-1 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-2 sm:hidden">
+      {groups.map((g, i) => (
+        <button
+          key={g.key}
+          type="button"
+          aria-current={i === first ? "true" : undefined}
+          onClick={() => (board.current?.children[i] as HTMLElement | undefined)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}
+          className={cn(
+            "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            i === first ? "bg-secondary font-medium" : "text-foreground/75",
+          )}
+        >
+          {g.status && <ColorDot color={statusColor(g.status)} />}
+          {g.name}
+          <span className="font-mono text-muted-foreground">{g.tasks.length}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** A fade on the board's right edge while columns are hidden past it. */
+function MoreToTheRight({ board }: { board: React.RefObject<HTMLDivElement | null> }) {
+  const { more } = useBoardScroll(board);
+  if (!more) return null;
+  return <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />;
 }
