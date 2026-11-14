@@ -1252,11 +1252,14 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   const card = page.getByRole("button", { name: "#1 Write the parser" });
   await expect(card).toContainText("parser· ended");
   await card.click();
-  await expect(page.getByTestId("ended-session")).toHaveText("It was given to parser, which has ended. Give it to someone else.");
+  // The sheet says what the card says, and offers Give to… right there (#172).
+  await expect(page.getByLabel("Given to", { exact: true })).toHaveText("parser (ended)");
+  await expect(page.getByTestId("ended-session")).toHaveText("parser has ended.");
   await expect(page.getByRole("button", { name: /^Send (now|again)$/ })).toHaveCount(0);
 
-  // Given to a person: no longer flagged.
-  await pick(page, "Given to", "Robin Example");
+  // Given to a person, from the warning: no longer flagged.
+  await page.getByRole("button", { name: "Give to…" }).click();
+  await page.getByRole("option", { name: "Robin Example" }).click();
   await expect(page.getByTestId("ended-session")).toHaveCount(0);
   await escape(page);
   await expect(card).toContainText("RE");

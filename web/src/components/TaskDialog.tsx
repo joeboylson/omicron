@@ -47,6 +47,8 @@ import { LabelBadge, NeedsReview } from "@/components/TaskCard";
 import { Comments } from "@/components/Comments";
 
 const NOBODY = "nobody";
+/** Given to: a session that has ended (shown, not chosen). */
+const ENDED = "ended";
 
 export function TaskDialog({
   project,
@@ -148,6 +150,9 @@ function TaskForm({
   // Saves go one after another, in the order made: two quick changes to
   // one field (a date picked, then another) can't land the wrong way round.
   const saving = useRef<Promise<unknown>>(Promise.resolve());
+  // Given to's list, opened from the ended-session warning too.
+  const [pickingWho, setPickingWho] = useState(false);
+  const ended = !task.assignee_session_id && !task.assignee_person_id ? task.ended_session : null;
   const save = (c: Parameters<typeof updateTask>[3]) => {
     const done = onPatch(task.id, c);
     const next = saving.current
@@ -273,14 +278,19 @@ function TaskForm({
             Given to
           </Label>
           <Select
+            open={pickingWho}
+            onOpenChange={setPickingWho}
             value={
               task.assignee_session_id
                 ? `session:${task.assignee_session_id}`
                 : task.assignee_person_id
                   ? `person:${task.assignee_person_id}`
-                  : NOBODY
+                  : ended
+                    ? ENDED
+                    : NOBODY
             }
             onValueChange={(v) => {
+              if (v === ENDED) return;
               const [kind, id] = v.split(":");
               save({
                 assignee_person_id: kind === "person" ? id : null,
@@ -292,6 +302,14 @@ function TaskForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
+              {/* As on its card: still shown as its ended session's, until given out. */}
+              {ended && (
+                <SelectItem value={ENDED} disabled className="hidden">
+                  <span className="flex items-center gap-1.5 text-[var(--sys-orange)]">
+                    <AlertCircle className="h-4 w-4" aria-hidden /> {ended} (ended)
+                  </span>
+                </SelectItem>
+              )}
               <SelectItem value={NOBODY}>Nobody</SelectItem>
               <SelectGroup>
                 <SelectLabel>People</SelectLabel>
@@ -319,8 +337,11 @@ function TaskForm({
           <Row className="text-sm text-muted-foreground">
             <AlertCircle className="h-4 w-4 shrink-0 text-[var(--sys-orange)]" aria-hidden />
             <span data-testid="ended-session" className="flex-1">
-              It was given to {task.ended_session}, which has ended. Give it to someone else.
+              {task.ended_session} has ended.
             </span>
+            <Button variant="ghost" size="sm" className="h-8 shrink-0 text-link" onClick={() => setPickingWho(true)}>
+              Give to…
+            </Button>
           </Row>
         )}
       </Group>

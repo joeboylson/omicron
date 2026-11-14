@@ -221,7 +221,7 @@ async function escape(page) {
     await page.getByRole("dialog").waitFor({ state: "detached" });
     // Given to a session that has ended (its window died): flagged, to give to someone else.
     await page.getByRole("button", { name: /Document the hooks/ }).click();
-    await page.getByText(/which has ended/).waitFor();
+    await page.getByTestId("ended-session").waitFor();
     await shot("4c-ended-session");
     await escape(page);
     await page.getByRole("button", { name: "Back to Projects" }).click();
