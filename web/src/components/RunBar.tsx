@@ -39,14 +39,16 @@ function runQueue(project: ProjectData, labelId: string | null, skip?: string | 
   return inOrder(project.tasks.filter((t) => t.status_id === first.id && (!labelId || t.labelIds.includes(labelId)) && t.id !== skip));
 }
 
-export function RunBar({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
+/** `machineId`: only runs on that computer, and only its sessions (the Dev view, about this computer). */
+export function RunBar({ project, onChanged, machineId }: { project: ProjectData; onChanged: () => void; machineId?: string }) {
   const { db, act } = useApp();
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const run = project.runs.find(active) ?? project.runs[0] ?? null;
+  const runs = machineId ? project.runs.filter((r) => r.machine_id === machineId) : project.runs;
+  const run = runs.find(active) ?? runs[0] ?? null;
   const session = run && project.sessions.find((s) => s.id === run.session_id);
-  if (!run && project.sessions.length === 0) return null;
+  if (!run && !project.sessions.some((s) => !machineId || s.machine_id === machineId)) return null;
   const going = run !== null && active(run);
   const label = run?.label_id ? project.labels.find((l) => l.id === run.label_id)?.name : null;
 

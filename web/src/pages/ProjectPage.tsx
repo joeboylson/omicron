@@ -418,7 +418,7 @@ export function ProjectPage({ id }: { id: string }) {
     return (
       <main className="flex h-dvh min-h-0 flex-col">
         {nav}
-        <RunBar project={project} onChanged={reload} />
+        <RunBar project={project} onChanged={reload} machineId={dev.machine_id} />
         <DevView
           project={project}
           dev={dev}

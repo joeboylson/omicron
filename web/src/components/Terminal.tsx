@@ -65,7 +65,7 @@ export function Terminal({ session, active }: { session: string; active: boolean
 
   useEffect(() => {
     const xterm = new XTerm({
-      fontFamily: '"Geist Mono", ui-monospace, monospace',
+      fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
       fontSize: 13,
       cursorBlink: true,
       scrollback: 5000,
@@ -80,6 +80,17 @@ export function Terminal({ session, active }: { session: string; active: boolean
     fit.current = fitter;
     term.loadAddon(fitter);
     term.open(box.current!);
+    // Geist Mono may still be loading: once it has, measure again, or the
+    // terminal keeps the fallback font's size (and looks like Courier).
+    let gone = false;
+    document.fonts
+      ?.load('13px "Geist Mono Variable"')
+      .then(() => {
+        if (gone) return;
+        term.options.fontFamily = '"Geist Mono Variable", ui-monospace, monospace ';
+        fitter.fit();
+      })
+      .catch(() => {});
     const stop = new AbortController();
     const base = `/api/dev/term/${encodeURIComponent(session)}`;
     const post = async (path: string, body: unknown) =>
@@ -147,6 +158,7 @@ export function Terminal({ session, active }: { session: string; active: boolean
     });
     resized.observe(box.current!);
     return () => {
+      gone = true;
       stop.abort();
       stopTheme();
       typed.dispose();

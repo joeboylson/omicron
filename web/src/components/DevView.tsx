@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Folder as FolderIcon, LogOut, Plus, Terminal as TerminalIcon, Undo2, X } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
-import type { ProjectData, Task } from "@/lib/data";
+import type { Folder, ProjectData, Task } from "@/lib/data";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn } from "@/lib/utils";
@@ -106,8 +107,10 @@ export function DevView({
       ))}
     </div>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-px border-t bg-border lg:grid-cols-[15rem_minmax(0,1fr)_19rem] lg:grid-rows-1">
-      <aside aria-label="Folders and sessions" className={cn("overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
-        <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Folders on {dev.machine}</h2>
+      <aside aria-label="Folders and sessions" className={cn("flex flex-col overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
+        <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Folders <span className="normal-case tracking-normal">on {dev.machine}</span>
+        </h2>
         {folders.length === 0 ? (
           <p className="px-1 pb-1 text-muted-foreground">No folders yet.</p>
         ) : (
@@ -116,9 +119,9 @@ export function DevView({
               <li key={f.id} className="group flex items-center gap-2 rounded px-1 py-1" title={f.path}>
                 <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 {/* Its name first; the rest of the path dimmed, cut from the start (like VS Code's Recent). */}
-                <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                  <span className="shrink-0 font-medium">{folderParts(f.path).name}</span>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground [direction:rtl]">
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
+                  <span className="min-w-0 shrink truncate font-medium">{folderParts(f.path).name}</span>
+                  <span className="min-w-0 shrink-[999] truncate text-xs text-muted-foreground [direction:rtl]">
                     <bdi>{folderParts(f.path).parent}</bdi>
                   </span>
                 </span>
@@ -184,7 +187,10 @@ export function DevView({
             ))}
           </ul>
         )}
-        <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
+        {/* This computer is the machine itself, not a session: set apart at the bottom. */}
+        <div className="mt-auto border-t pt-2">
+          <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
+        </div>
       </aside>
 
       <section aria-label="Terminals" className={cn("flex min-h-0 min-w-0 flex-col bg-background", pane !== "terminal" && "max-lg:hidden")}>
@@ -200,6 +206,12 @@ export function DevView({
               </button>
             </div>
           ))}
+          <NewTab
+            sessions={here.map((s) => s.name).filter((n) => !tabs.includes(n))}
+            folders={folders}
+            onOpen={open}
+            onNew={openIn}
+          />
         </div>
         {active && (
           <div className="flex shrink-0 items-center gap-1 border-b bg-background px-2 py-1 text-xs text-muted-foreground">
@@ -218,7 +230,7 @@ export function DevView({
             ) : (
               <button
                 type="button"
-                className="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent hover:text-foreground"
+                className="flex items-center gap-1 rounded px-2 py-1 text-destructive hover:bg-destructive/10"
                 onClick={() => setEnding(active)}
                 title="Quit Claude, which ends the session"
               >
@@ -397,3 +409,33 @@ function AddFolder() {
     </Popover>
   );
 }
+
+/** + at the end of the tabs: a session running here that isn't open yet, or a new one in a folder. */
+function NewTab({ sessions, folders, onOpen, onNew }: { sessions: string[]; folders: Folder[]; onOpen: (name: string) => void; onNew: (folderId: string) => void }) {
+  if (sessions.length === 0 && folders.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="mx-1 flex h-9 w-9 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Open a terminal">
+          <Plus className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {sessions.length > 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Running here</div>}
+        {sessions.map((n) => (
+          <DropdownMenuItem key={n} onSelect={() => onOpen(n)}>
+            <TerminalIcon /> {n}
+          </DropdownMenuItem>
+        ))}
+        {sessions.length > 0 && folders.length > 0 && <DropdownMenuSeparator />}
+        {folders.length > 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">New session in</div>}
+        {folders.map((f) => (
+          <DropdownMenuItem key={f.id} onSelect={() => onNew(f.id)}>
+            <FolderIcon /> {folderParts(f.path).name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
