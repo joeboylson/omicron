@@ -24,7 +24,7 @@ export function ShareButton({ project, onClick }: { project: ProjectData; onClic
     <Button variant="ghost" className="gap-1.5 px-2" aria-label={`Share, ${n} ${n === 1 ? "member" : "members"}`} onClick={onClick}>
       <span aria-hidden className="flex -space-x-2">
         {shown.map((m) => (
-          <span key={m.id} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-secondary text-[11px] font-medium">
+          <span key={m.id} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-secondary text-[0.6875rem] font-medium">
             {initials(m.display_name)}
           </span>
         ))}

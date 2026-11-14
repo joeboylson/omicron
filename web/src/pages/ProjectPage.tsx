@@ -1029,7 +1029,7 @@ function Column({
       data-group={groupKey}
       className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", landing && "bg-accent/80")}
     >
-      <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
+      <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[0.9375rem] font-semibold sm:text-sm">
         {status && <ColorDot color={statusColor(status)} />}
         {status ? status.name : label}
         <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>
@@ -1320,7 +1320,7 @@ function TaskList({
       <div className="mx-auto flex max-w-4xl flex-col gap-4">
         {shown.map((g) => (
           <section key={g.key} aria-label={g.name}>
-            <h2 className="sticky top-0 z-10 flex min-h-9 items-center gap-2 bg-background px-3 text-[15px] font-semibold sm:text-sm">
+            <h2 className="sticky top-0 z-10 flex min-h-9 items-center gap-2 bg-background px-3 text-[0.9375rem] font-semibold sm:text-sm">
               {g.status && <ColorDot color={statusColor(g.status)} />}
               {g.name}
               <span className="font-normal tabular-nums text-muted-foreground">{g.tasks.length}</span>
@@ -1396,7 +1396,7 @@ function ColumnJump({ groups, board }: { groups: Group[]; board: React.RefObject
           aria-current={i === first ? "true" : undefined}
           onClick={() => (board.current?.children[i] as HTMLElement | undefined)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}
           className={cn(
-            "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[0.9375rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             i === first ? "bg-secondary font-medium" : "text-foreground/75",
           )}
         >

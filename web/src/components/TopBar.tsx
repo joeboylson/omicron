@@ -47,7 +47,7 @@ export function TopBar({ here, title, actions }: { here: (typeof PAGES)[number][
                 className={cn(
                   "max-w-44 shrink-0 gap-2 truncate px-1.5 text-muted-foreground",
                   // The initials, drawn by CSS so the button's text is just the name.
-                  "before:flex before:h-7 before:w-7 before:shrink-0 before:items-center before:justify-center before:rounded-full before:bg-secondary before:text-[11px] before:font-medium before:text-secondary-foreground before:content-[attr(data-initials)]",
+                  "before:flex before:h-7 before:w-7 before:shrink-0 before:items-center before:justify-center before:rounded-full before:bg-secondary before:text-[0.6875rem] before:font-medium before:text-secondary-foreground before:content-[attr(data-initials)]",
                   here === "/settings" && "text-foreground",
                 )}
                 data-testid="me"

@@ -35,7 +35,7 @@ export function TaskRow({
       onClick={onOpen}
       aria-label={`#${task.number} ${task.title}`}
       aria-describedby={summary ? summaryId : undefined}
-      className="relative flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent sm:text-sm"
+      className="relative flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent sm:text-sm"
     >
       {summary && (
         <span id={summaryId} className="sr-only">
@@ -80,7 +80,7 @@ export function TaskRow({
           )}
           {assignee && (
             <span
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[11px] font-medium text-secondary-foreground"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[0.6875rem] font-medium text-secondary-foreground"
               title={assignee.display_name}
             >
               {initials(assignee.display_name)}

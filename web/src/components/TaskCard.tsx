@@ -39,7 +39,7 @@ export function TaskCard({
       onClick={onOpen}
       // Enter opens it; Space picks it up to move it (on the board).
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), onOpen())}
-      className="relative cursor-pointer p-3 text-[15px] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="relative cursor-pointer p-3 text-[0.9375rem] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`#${task.number} ${task.title}`}
       aria-describedby={[summary ? summaryId : "", describedBy ?? ""].filter(Boolean).join(" ") || undefined}
     >
@@ -110,7 +110,7 @@ export function TaskCard({
             </span>
           )}
           {assignee && (
-            <span className="ml-auto flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[11px] font-medium text-secondary-foreground" title={assignee.display_name}>
+            <span className="ml-auto flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[0.6875rem] font-medium text-secondary-foreground" title={assignee.display_name}>
               {initials(assignee.display_name)}
             </span>
           )}

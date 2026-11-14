@@ -71,7 +71,7 @@ export function Sessions({
                   <Repeat className="h-3 w-3 text-[var(--sys-blue)]" aria-label="looping" />
                 )}
                 <span className="text-muted-foreground">
-                  <span className="tabular-nums text-[11px]">{s.machine}</span>
+                  <span className="tabular-nums text-[0.6875rem]">{s.machine}</span>
                 </span>
               </Badge>
             </button>
@@ -160,7 +160,7 @@ function SessionNotes({
         <Group title="Open tasks">
           <ul aria-label="Open tasks" className="divide-y">
             {tasks.map((t) => (
-              <li key={t.id} className="flex items-center gap-2 px-4 py-1.5 text-[15px] sm:text-sm">
+              <li key={t.id} className="flex items-center gap-2 px-4 py-1.5 text-[0.9375rem] sm:text-sm">
                 {/* The row opens the task; Give to… hands just this one over. */}
                 <button
                   type="button"
@@ -233,7 +233,7 @@ function SessionNotes({
                     )}
                   </Button>
                 </div>
-                <Markdown text={n.body} className="line-clamp-[12] text-[15px] sm:text-sm" />
+                <Markdown text={n.body} className="line-clamp-[12] text-[0.9375rem] sm:text-sm" />
               </li>
             ))}
           </ul>
@@ -277,12 +277,12 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
   return (
     <Group title="Loop">
       <div className="grid gap-1.5 px-4 py-3" data-testid="loop">
-        <p className="flex items-center gap-2 text-[15px] sm:text-sm">
+        <p className="flex items-center gap-2 text-[0.9375rem] sm:text-sm">
           <Repeat className="h-4 w-4 shrink-0 text-[var(--sys-blue)]" aria-hidden />
           <span className="tabular-nums">every {sayEvery(loop.every_seconds)}</span>
           <span className="text-muted-foreground">· {end}</span>
         </p>
-        <blockquote className="whitespace-pre-wrap break-words border-l-2 pl-3 text-[15px] sm:text-sm">{loop.prompt}</blockquote>
+        <blockquote className="whitespace-pre-wrap break-words border-l-2 pl-3 text-[0.9375rem] sm:text-sm">{loop.prompt}</blockquote>
         <p className="text-sm text-muted-foreground">
           Next run {inAbout(loop.next_run_at, now)}
           {loop.last_run_at && <> · last {new Date(loop.last_run_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</>}

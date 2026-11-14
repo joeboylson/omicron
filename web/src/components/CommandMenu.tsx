@@ -80,9 +80,9 @@ export function CommandMenu() {
             aria-expanded
             aria-controls="command-list"
             aria-activedescendant={shown[at] ? `command-${at}` : undefined}
-            className="h-12 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground sm:text-sm"
+            className="h-12 flex-1 bg-transparent text-[0.9375rem] outline-none placeholder:text-muted-foreground sm:text-sm"
           />
-          <kbd className="hidden rounded border px-1.5 tabular-nums text-[11px] text-muted-foreground sm:block">esc</kbd>
+          <kbd className="hidden rounded border px-1.5 tabular-nums text-[0.6875rem] text-muted-foreground sm:block">esc</kbd>
         </div>
         <div id="command-list" ref={list} role="listbox" aria-label="Commands" className="max-h-[min(60vh,28rem)] overflow-y-auto p-2">
           {shown.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">No commands match.</p>}
@@ -103,7 +103,7 @@ export function CommandMenu() {
                     aria-selected={i === at}
                     onMouseMove={() => setAt(i)}
                     onClick={() => choose(c)}
-                    className={cn("flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2 text-[15px] sm:text-sm", i === at && "bg-primary text-primary-foreground")}
+                    className={cn("flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2 text-[0.9375rem] sm:text-sm", i === at && "bg-primary text-primary-foreground")}
                   >
                     <span className="flex-1">
                       {c.label}
@@ -111,7 +111,7 @@ export function CommandMenu() {
                     </span>
                     {on && <Check className="h-4 w-4" aria-hidden />}
                     {c.shortcut && (
-                      <kbd className={cn("rounded border px-1.5 tabular-nums text-[11px]", i === at ? "border-primary-foreground/50" : "text-muted-foreground")}>{c.shortcut}</kbd>
+                      <kbd className={cn("rounded border px-1.5 tabular-nums text-[0.6875rem]", i === at ? "border-primary-foreground/50" : "text-muted-foreground")}>{c.shortcut}</kbd>
                     )}
                   </div>
                 );

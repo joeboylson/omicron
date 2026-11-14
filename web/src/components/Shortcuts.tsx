@@ -22,7 +22,7 @@ export const SHORTCUTS: [string, string][] = [
 
 export function ShortcutList() {
   return (
-    <dl className="divide-y text-[15px] sm:text-sm">
+    <dl className="divide-y text-[0.9375rem] sm:text-sm">
       {SHORTCUTS.map(([k, what]) => (
         <div key={k} className="flex min-h-11 items-center gap-3 px-4 py-1.5">
           <dt className="w-44 shrink-0">

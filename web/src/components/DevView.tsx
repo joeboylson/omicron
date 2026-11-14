@@ -175,11 +175,11 @@ export function DevView({
                   {/* Its name, then where and what it's doing. */}
                   <span className="grid min-w-0">
                     <span className="truncate font-medium">{s.name}</span>
-                    <span className="truncate text-[11px] text-muted-foreground" data-testid={`doing-${s.name}`}>
+                    <span className="truncate text-xs text-muted-foreground" data-testid={`doing-${s.name}`}>
                       {sessionDoing(project, s, done)}
                     </span>
                   </span>
-                  <span className="ml-auto shrink-0 tabular-nums text-[11px] text-muted-foreground">
+                  <span className="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">
                     {project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id)).length || ""}
                   </span>
                 </button>
@@ -294,11 +294,11 @@ export function DevView({
                         aria-label={`#${t.number} ${t.title}`}
                       >
                         <span className={cn("break-words", isDone && "text-muted-foreground line-through")}>
-                          <span className="mr-1 tabular-nums text-[11px] text-muted-foreground">#{t.number}</span>
+                          <span className="mr-1 tabular-nums text-xs text-muted-foreground">#{t.number}</span>
                           {t.title}
                         </span>
                         {(t.needs_review || labels.length > 0 || t.due_on) && (
-                          <span className="flex flex-wrap items-center gap-1 text-[11px]">
+                          <span className="flex flex-wrap items-center gap-1 text-xs">
                             {t.needs_review && <NeedsReview />}
                             {labels.map((l) => (
                               <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />
@@ -309,13 +309,13 @@ export function DevView({
                       </button>
                       {/* Who has it, as a chip; or, if nobody here, Give to… (not on Done). */}
                       {session && here.some((h) => h.id === session.id) ? (
-                        <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 tabular-nums text-[11px]">
+                        <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 tabular-nums text-xs">
                           <TerminalIcon className="h-3 w-3" aria-hidden /> {session.name}
                         </span>
                       ) : !isDone && here.length > 0 ? (
                         <select
                           aria-label={`Give #${t.number} to a session here`}
-                          className="mt-0.5 min-h-11 max-w-28 shrink-0 truncate rounded-md border bg-transparent px-1 text-sm lg:min-h-0 lg:text-[11px]"
+                          className="mt-0.5 min-h-11 max-w-28 shrink-0 truncate rounded-md border bg-transparent px-1 text-base lg:min-h-0 lg:text-xs"
                           value=""
                           onChange={(e) => e.target.value && give(t, e.target.value)}
                         >
@@ -327,7 +327,7 @@ export function DevView({
                           ))}
                         </select>
                       ) : person ? (
-                        <span className="mt-0.5 shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px]" title={person.display_name}>
+                        <span className="mt-0.5 shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs" title={person.display_name}>
                           {initials(person.display_name)}
                         </span>
                       ) : null}

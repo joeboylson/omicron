@@ -41,7 +41,7 @@ export function SettingsPage() {
       <main className="mx-auto grid w-full max-w-3xl gap-6 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
         <Group title="Signed in as">
           <div className="grid gap-0.5 px-4 py-3">
-            <span className="text-[15px] font-medium sm:text-sm">{me.displayName}</span>
+            <span className="text-[0.9375rem] font-medium sm:text-sm">{me.displayName}</span>
             <span className="tabular-nums text-xs text-muted-foreground">{me.login}</span>
           </div>
         </Group>
@@ -49,7 +49,7 @@ export function SettingsPage() {
           <button
             type="button"
             onClick={() => go("/machines")}
-            className="flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
+            className="flex min-h-11 w-full items-center px-4 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm"
           >
             <span className="flex-1">Machines and their keys</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
@@ -67,7 +67,7 @@ export function SettingsPage() {
                 disabled={appearance === null}
                 onClick={() => choose(c.value)}
                 className={cn(
-                  "flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-sm",
+                  "flex min-h-11 w-full items-center px-4 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-sm",
                 )}
               >
                 <span className="flex-1">{c.label}</span>
@@ -121,7 +121,7 @@ function RemoteControl() {
     <Group title="Remote control">
       {saved ? (
         <Row>
-          <span className="flex-1 text-[15px] sm:text-sm">{dev ? `This browser can control ${dev.machine}.` : "This browser's token no longer works."}</span>
+          <span className="flex-1 text-[0.9375rem] sm:text-sm">{dev ? `This browser can control ${dev.machine}.` : "This browser's token no longer works."}</span>
           <Button variant="ghost" size="sm" className="text-destructive" onClick={forget}>
             Forget token
           </Button>

@@ -54,7 +54,7 @@ export function TaskChecklist({ task, change }: SectionProps) {
               />
               <label
                 htmlFor={`item-${item.id}`}
-                className={cn("flex-1 py-2 text-[15px] sm:text-sm", (ticked[item.id] ?? item.done) && "text-muted-foreground line-through")}
+                className={cn("flex-1 py-2 text-[0.9375rem] sm:text-sm", (ticked[item.id] ?? item.done) && "text-muted-foreground line-through")}
               >
                 {item.text}
               </label>

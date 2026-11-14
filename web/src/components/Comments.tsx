@@ -130,7 +130,7 @@ export function Comments({
           {task.comments.map((c) => (
             <li
               key={c.id}
-              className={cn("grid gap-1 px-4 py-3 text-[15px] sm:text-sm", c.id === report && "border-l-4 border-l-[var(--sys-indigo)] bg-[var(--sys-indigo)]/5")}
+              className={cn("grid gap-1 px-4 py-3 text-[0.9375rem] sm:text-sm", c.id === report && "border-l-4 border-l-[var(--sys-indigo)] bg-[var(--sys-indigo)]/5")}
             >
               {c.id === report && (
                 <span className="text-xs font-medium text-[var(--indigo-text)]" data-testid="report-mark">
