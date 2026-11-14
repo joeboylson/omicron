@@ -425,6 +425,8 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
   }
 });
 
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
 test("the Dev view on a phone, through the home lab's gate, for the computer's owner", async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const robin = await newPerson(page, request);
@@ -460,10 +462,28 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
     await term.locator(".xterm").click();
     await page.keyboard.type("from the phone");
     await expect(term.locator(".xterm-rows")).toContainText("from the phone");
+    // Keys a phone's keyboard doesn't have (#150): each sends what a
+    // keyboard would; Ctrl applies to the next letter typed.
+    const keys = term.getByRole("toolbar", { name: "Extra keys" });
+    const sent = (data) => page.waitForRequest((r) => r.url().endsWith("/input") && JSON.parse(r.postData() ?? "{}").data === data);
+    const ctrl = keys.getByRole("button", { name: "Control", exact: true });
+    await ctrl.tap();
+    await expect(ctrl).toHaveAttribute("aria-pressed", "true");
+    const ctrlA = sent("\x01");
+    await page.keyboard.type("a");
+    await ctrlA;
+    await expect(ctrl).toHaveAttribute("aria-pressed", "false");
+    // Last: Ctrl-C ends the stand-in session.
+    for (const [name, data] of [["Escape", "\x1b"], ["Shift+Tab", "\x1b[Z"], ["Up", "\x1b[A"], ["Control+C", "\x03"]]) {
+      const req = sent(data);
+      await keys.getByRole("button", { name, exact: true }).tap();
+      await req;
+    }
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-phone.png`, fullPage: true });
   } finally {
     win.kill();
   }
+});
 });
 
 test("run rules are set in Project settings", async ({ page, request }) => {
