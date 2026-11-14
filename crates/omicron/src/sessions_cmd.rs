@@ -691,7 +691,7 @@ fn link_in_folder(claude_id: &str, folder: &str) -> Result<Option<(String, Strin
 
 /// A session name not taken on this machine: the name, or name-2, name-3...
 fn free_name(board: &omicron::board::Board, base: &str) -> Result<String> {
-    let me = board.session.user.id.to_string();
+    let me = board.me();
     let taken: Vec<String> = board.sessions(None)?.into_iter().filter(|s| s.machine_id == me).map(|s| s.name.to_lowercase()).collect();
     let mut name = base.to_string();
     let mut n = 1;

@@ -319,7 +319,7 @@ fn run(cli: Cli) -> Result<()> {
             if changes {
                 let config = Config::load()?;
                 if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
-                    if let Err(e) = supabase.sign_in_machine(&key).and_then(|s| omicron::gate::report(&supabase, &s)) {
+                    if let Err(e) = omicron::board::Board::as_machine(&supabase, &key).and_then(|b| omicron::gate::report(&b)) {
                         eprintln!("couldn't tell Omicron about the gate: {e:#}");
                     }
                 }
@@ -530,10 +530,10 @@ fn people(p: People) -> Result<()> {
         People::Delete { person } => {
             let board = board_cmd::sign_in(false)?;
             let p = board.person(&person)?;
-            if p.id == board.session.user.id.to_string() {
+            if p.id == board.me() {
                 bail!("you can't delete yourself");
             }
-            board.supabase.delete_person(p.id.parse()?)?;
+            board.supabase().delete_person(p.id.parse()?)?;
             println!("Deleted {}: their login and their place in every Project.", p.name);
             Ok(())
         }
@@ -617,12 +617,11 @@ fn daemon() -> Result<()> {
     let login = || {
         let board = omicron::board::Board::as_machine(&supabase, &key)?;
         board.check_in()?;
-        let session = board.session;
         // And its gate, in case it closed by itself or changed by hand.
-        if let Err(e) = omicron::gate::report(&supabase, &session) {
+        if let Err(e) = omicron::gate::report(&board) {
             eprintln!("couldn't tell Omicron about the gate: {e:#}");
         }
-        Ok(session)
+        Ok(board.login().clone())
     };
     // Things this machine does when it hears about them, each in its own
     // thread so listening carries on. Each is safe to run twice.
@@ -650,8 +649,8 @@ fn daemon() -> Result<()> {
                 // Only a failure to save what's handled (this computer's own
                 // disk) ends the daemon.
                 let mut disk = None;
-                let caught_up = supabase.sign_in_machine(&key).and_then(|session| {
-                    let source = omicron::changes::SupabaseChanges { supabase: &supabase, session: &session };
+                let caught_up = omicron::board::Board::as_machine(&supabase, &key).and_then(|board| {
+                    let source = omicron::changes::SupabaseChanges(&board);
                     let mut save = |s: &State| {
                         s.save().inspect_err(|e| disk = Some(anyhow::anyhow!("couldn't save which changes are handled: {e:#}")))
                     };

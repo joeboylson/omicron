@@ -14,8 +14,8 @@ const PAGE: usize = 1000;
 /// Someone signed in: a person, or a machine (which is how Claude sessions act).
 #[derive(Clone)]
 pub struct Board {
-    pub supabase: Supabase,
-    pub session: Session,
+    supabase: Supabase,
+    session: Session,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -486,8 +486,46 @@ impl Board {
     }
 
     /// On a login already made (like the web page's, for the person using it).
-    pub fn on_login(supabase: &Supabase, session: &Session) -> Board {
+    pub fn signed_in(supabase: &Supabase, session: &Session) -> Board {
         Board { supabase: supabase.clone(), session: session.clone() }
+    }
+
+    /// Who's signed in: a person's or a machine's id.
+    pub fn me(&self) -> String {
+        self.session.user.id.to_string()
+    }
+
+    /// The login itself (for Realtime, which listens on it).
+    pub fn login(&self) -> &Session {
+        &self.session
+    }
+
+    /// The Supabase it talks to (for what needs the secret key).
+    pub fn supabase(&self) -> &Supabase {
+        &self.supabase
+    }
+
+    /// The change list's lines from the last moment (in case one finished
+    /// saving late; see `changes`).
+    pub fn recent_changes(&self) -> Result<Vec<Value>> {
+        Ok(self.send("POST", "/rest/v1/rpc/recent_changes", json!({}))?.as_array().cloned().unwrap_or_default())
+    }
+
+    /// The newest change line's number, if there are any.
+    pub fn newest_change(&self) -> Result<Option<i64>> {
+        Ok(self.get("/rest/v1/changes?select=seq&order=seq.desc&limit=1")?.get(0).and_then(|r| r["seq"].as_i64()))
+    }
+
+    /// Up to `limit` change lines after `seq`, in order.
+    pub fn changes_after(&self, seq: i64, limit: usize) -> Result<Vec<Value>> {
+        Ok(self.get(&format!("/rest/v1/changes?seq=gt.{seq}&order=seq.asc&limit={limit}"))?.as_array().cloned().unwrap_or_default())
+    }
+
+    /// Tell Omicron when this machine's gate closes (None: it's closed), for
+    /// pages to show. Display only: the machine decides from its own file.
+    pub fn report_gate(&self, until: Option<String>) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/machine_report_gate", json!({ "until": until }))?;
+        Ok(())
     }
 
     /// Read rows. The database hands back at most a page of rows per

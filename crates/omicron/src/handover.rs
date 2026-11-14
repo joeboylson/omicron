@@ -30,7 +30,7 @@ pub fn hand_off_and_clear(supabase: &Supabase, board: &Board, session: &SessionR
     let listen = Listen { tables: &["changes"], announce: None };
     let mut asked = false;
     let mut saved = false;
-    realtime::listen(supabase, &listen, || Ok(board.session.clone()), &stop, |event| {
+    realtime::listen(supabase, &listen, || Ok(board.login().clone()), &stop, |event| {
         match event {
             // Listening first, so the note can't be missed.
             Event::Listening if !asked => {

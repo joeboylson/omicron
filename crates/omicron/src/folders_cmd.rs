@@ -114,7 +114,7 @@ fn keep_out_of_git(folder: &Path) {
 
 /// Write this machine's folders to this computer, for the start hook.
 pub fn sync(board: &Board) -> Result<()> {
-    let me = board.session.user.id.to_string();
+    let me = board.me();
     let mine = board.folders(None)?.into_iter().filter(|f| f.machine_id == me).map(|f| (f.path, f.project)).collect();
     omicron::known_folders::save(&mine)
 }
@@ -138,7 +138,7 @@ pub fn only_project(board: &Board) -> Result<Project> {
 
 /// This machine's folder at a path, if it's one.
 pub fn here(board: &Board, path: &Path) -> Result<Option<Folder>> {
-    let me = board.session.user.id.to_string();
+    let me = board.me();
     let path = path.to_string_lossy();
     Ok(board.folders(None)?.into_iter().find(|f| f.machine_id == me && f.path == path))
 }

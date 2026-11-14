@@ -58,7 +58,7 @@ pub fn runs(cmd: RunsCmd, as_machine: bool) -> Result<()> {
             let board = sign_in(true)?;
             let p = board.project(&project)?;
             let s = board.session(&p, &session)?;
-            if s.machine_id != board.session.user.id.to_string() {
+            if s.machine_id != board.me() {
                 bail!("{} runs on {}: start the run there", s.name, s.machine);
             }
             board.start_run(&p, &s, label.as_deref())?;
@@ -267,7 +267,7 @@ fn step(supabase: &Supabase, board: &Board, id: &str) -> Result<()> {
         Some(n) => Some(board.label_id(&project, &n)?),
         None => None,
     };
-    let me = board.session.user.id.to_string();
+    let me = board.me();
     let team = board.teams()?.into_iter().find(|t| t.machine_id == me && t.project_id == run.project_id && t.state == "running");
     let mut next = None;
     for t in board.task_rows_in(&run.project_id, &first.id)? {

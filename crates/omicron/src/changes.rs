@@ -8,7 +8,6 @@
 //! lower number arriving after a higher one) are still handled, once.
 
 use crate::config::State;
-use crate::supa::{Session, Supabase};
 use anyhow::Result;
 use serde_json::{json, Value};
 use std::io::Write;
@@ -24,25 +23,19 @@ pub trait ChangeSource {
 }
 
 /// The change list in Supabase, read as a signed-in machine.
-pub struct SupabaseChanges<'a> {
-    pub supabase: &'a Supabase,
-    pub session: &'a Session,
-}
+pub struct SupabaseChanges<'a>(pub &'a crate::board::Board);
 
 impl ChangeSource for SupabaseChanges<'_> {
     fn recent(&self) -> Result<Vec<Value>> {
-        let rows = self.supabase.request_as(self.session, "POST", "/rest/v1/rpc/recent_changes", Some(json!({})))?;
-        Ok(rows.as_array().cloned().unwrap_or_default())
+        self.0.recent_changes()
     }
 
     fn newest(&self) -> Result<Option<i64>> {
-        let rows = self.supabase.request_as(self.session, "GET", "/rest/v1/changes?select=seq&order=seq.desc&limit=1", None)?;
-        Ok(rows.get(0).and_then(|r| r["seq"].as_i64()))
+        self.0.newest_change()
     }
 
     fn after(&self, seq: i64, limit: usize) -> Result<Vec<Value>> {
-        let rows = self.supabase.request_as(self.session, "GET", &format!("/rest/v1/changes?seq=gt.{seq}&order=seq.asc&limit={limit}"), None)?;
-        Ok(rows.as_array().cloned().unwrap_or_default())
+        self.0.changes_after(seq, limit)
     }
 }
 

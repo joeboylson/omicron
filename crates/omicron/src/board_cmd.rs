@@ -241,7 +241,7 @@ pub fn sign_in(as_machine: bool) -> Result<Board> {
         let key = config.machine_key()?;
         kept_login(&format!("machine {} {}", supabase.url, key.machine_id), || supabase.sign_in_machine(&key))?
     };
-    Ok(Board { supabase, session })
+    Ok(Board::signed_in(&supabase, &session))
 }
 
 /// A login is good for an hour; each command used to make a new one, and
@@ -587,7 +587,7 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             // "The gate"). From anywhere else it's only to read until then.
             let here = Config::load()?.machine_key().ok().map(|k| k.machine_id.to_string());
             let t = match here {
-                Some(id) if board.session(&p, &session)?.machine_id == id && board.session.user.id.to_string() != id => {
+                Some(id) if board.session(&p, &session)?.machine_id == id && board.me() != id => {
                     sign_in(true)?.send_task(&p, number, &session)?
                 }
                 _ => board.send_task(&p, number, &session)?,

@@ -55,10 +55,8 @@ pub fn open(until: &str) -> Result<DateTime<Local>> {
 
 /// Tell Omicron when this machine's gate closes (null when it's closed), for
 /// pages to show. Display only: this machine still decides from its file.
-pub fn report(supabase: &crate::supa::Supabase, session: &crate::supa::Session) -> Result<()> {
-    let until = open_until().map(|t| t.to_rfc3339());
-    supabase.request_as(session, "POST", "/rest/v1/rpc/machine_report_gate", Some(serde_json::json!({ "until": until })))?;
-    Ok(())
+pub fn report(board: &crate::board::Board) -> Result<()> {
+    board.report_gate(open_until().map(|t| t.to_rfc3339()))
 }
 
 pub fn close() -> Result<()> {
@@ -95,7 +93,7 @@ pub struct Orders<'a> {
 
 impl<'a> Orders<'a> {
     pub fn new(board: &'a crate::board::Board) -> Self {
-        Orders { board, me: board.session.user.id.to_string(), gate_open: open_until().is_some(), owner: Default::default() }
+        Orders { board, me: board.me(), gate_open: open_until().is_some(), owner: Default::default() }
     }
 
     /// With the owner already known (read earlier and kept).

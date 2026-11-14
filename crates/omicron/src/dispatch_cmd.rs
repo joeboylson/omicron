@@ -76,7 +76,7 @@ fn request_and_wait(board: &Board, task: &Task, session: &SessionRecord) -> Resu
     let mut grace: Option<std::thread::JoinHandle<()>> = None;
     let listen = Listen { tables: &["changes"], announce: None };
     let started = Instant::now();
-    realtime::listen(&board.supabase, &listen, || Ok(board.session.clone()), &stop, |event| {
+    realtime::listen(board.supabase(), &listen, || Ok(board.login().clone()), &stop, |event| {
         match event {
             Event::Listening => listening = true,
             Event::Connected(who) => {

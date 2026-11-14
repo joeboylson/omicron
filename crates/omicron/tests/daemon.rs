@@ -303,6 +303,9 @@ fn the_daemon_stops_on_a_bad_key() {
 fn lines_older_than_30_days_are_cleared_out() {
     let s = supabase_or_skip!();
     let marker = unique("ancient");
+    // Where the change list is now: searching only past here stays quick
+    // on a big list.
+    let from = s.admin_request("GET", "/rest/v1/changes?select=seq&order=seq.desc&limit=1", None).unwrap()[0]["seq"].as_i64().unwrap_or(0);
     // Two old lines, written past the rules with the secret key.
     for (days, name) in [(31, marker.clone()), (29, format!("{marker}-recent"))] {
         let at = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
@@ -314,7 +317,7 @@ fn lines_older_than_30_days_are_cleared_out() {
     for i in 0..30 {
         start_project(&s, &me, &format!("{marker}-{i}"));
     }
-    let left = |name: &str| s.admin_request("GET", &format!("/rest/v1/changes?record->>name=eq.{name}&select=seq"), None).unwrap();
+    let left = |name: &str| s.admin_request("GET", &format!("/rest/v1/changes?seq=gt.{from}&record->>name=eq.{name}&select=seq"), None).unwrap();
     assert_eq!(left(&marker), json!([]), "the 31-day-old line should be gone");
     assert_eq!(left(&format!("{marker}-recent")).as_array().unwrap().len(), 1, "the 29-day-old line should stay");
 }

@@ -215,7 +215,7 @@ impl WebMachine {
             return fail(401, "sign in first");
         };
         let Ok(login) = self.supabase.session_for_token(&token) else { return fail(401, "that login doesn't work any more; reload the page") };
-        let as_person = crate::board::Board::on_login(&self.supabase, &login);
+        let as_person = crate::board::Board::signed_in(&self.supabase, &login);
         if !as_person.is_person()? {
             return fail(403, "only people can delete people");
         }
@@ -250,7 +250,7 @@ impl WebMachine {
             return fail(401, "sign in first");
         };
         let Ok(login) = self.supabase.session_for_token(&token) else { return fail(401, "that login doesn't work any more; reload the page") };
-        let as_person = crate::board::Board::on_login(&self.supabase, &login);
+        let as_person = crate::board::Board::signed_in(&self.supabase, &login);
         if !as_person.is_person()? {
             return fail(403, "only people can manage API keys");
         }
@@ -390,7 +390,7 @@ impl WebMachine {
         if let Some(r) = reply {
             return Ok(r);
         }
-        let me = visit.board.session.user.id.to_string();
+        let me = visit.board.me();
         let name = visit.board.machines()?.into_iter().find(|m| m.id == me).map(|m| m.name).unwrap_or_default();
         answer(
             200,
@@ -537,7 +537,7 @@ impl WebMachine {
         // A new session in one of this computer's folders, in the
         // background (the page opens its terminal).
         let folder = input["folder_id"].as_str().unwrap_or("");
-        let me = visit.board.session.user.id.to_string();
+        let me = visit.board.me();
         let Some(f) = visit.board.folders(None)?.into_iter().find(|f| f.id == folder && f.machine_id == me) else {
             return Ok(Some(json_reply(404, json!({ "error": "that folder isn't on this computer" }))));
         };
@@ -566,7 +566,7 @@ impl WebMachine {
             crate::host::say(&name, "/exit")?;
             return Ok(Some(json_reply(200, json!({ "said": format!("Asked {name} to quit.") }))));
         }
-        let me = visit.board.session.user.id.to_string();
+        let me = visit.board.me();
         let Some(s) = visit.board.sessions(None)?.into_iter().find(|s| s.name == name && s.machine_id == me) else {
             return Ok(Some(json_reply(404, json!({ "error": format!("{name} isn't a session here") }))));
         };
@@ -586,11 +586,11 @@ impl WebMachine {
         if task.parse::<uuid::Uuid>().is_err() || session.parse::<uuid::Uuid>().is_err() {
             return Ok(Some(json_reply(400, json!({ "error": "which task, to which session?" }))));
         }
-        let as_person = crate::board::Board::on_login(&self.supabase, &visit.login);
+        let as_person = crate::board::Board::signed_in(&self.supabase, &visit.login);
         if !as_person.sees_task(task)? {
             return Ok(Some(json_reply(404, json!({ "error": "no such task" }))));
         }
-        let me = visit.board.session.user.id.to_string();
+        let me = visit.board.me();
         if visit.board.session_machine(session)?.as_deref() != Some(me.as_str()) {
             return Ok(Some(json_reply(409, json!({ "error": "that session isn't on this computer" }))));
         }
@@ -638,7 +638,7 @@ impl WebMachine {
             return answer(400, json!({ "error": "which task?" }));
         };
         // The person must see the task too (the rules say what they may see).
-        let as_person = crate::board::Board::on_login(&self.supabase, &login);
+        let as_person = crate::board::Board::signed_in(&self.supabase, &login);
         if !as_person.sees_task(&task_id.to_string())? {
             return answer(404, json!({ "error": "no such task" }));
         }

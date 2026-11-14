@@ -680,7 +680,7 @@ const WAITING: &str = "Waiting: it was added from elsewhere.";
 /// Say on a job why this machine won't start it yet (once; a job's own
 /// change isn't reacted to, so this can't go round).
 fn note_waiting(b: &Board, orders: &omicron::gate::Orders, job: &str, now: Option<&str>, who: Option<&str>) -> Result<()> {
-    let machine = b.machine(&b.session.user.id.to_string()).map(|m| m.name).unwrap_or_else(|_| "This computer".into());
+    let machine = b.machine(&b.me()).map(|m| m.name).unwrap_or_else(|_| "This computer".into());
     let Some(why) = orders.refusal(who, &machine)? else { return Ok(()) };
     let note = format!("{WAITING} {why}");
     if now != Some(note.as_str()) && !job.is_empty() {

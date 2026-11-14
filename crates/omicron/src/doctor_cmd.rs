@@ -106,7 +106,7 @@ fn machine(s: &Supabase, key: &MachineKey) -> (Check, Option<String>) {
         Ok(x) => x,
         Err(e) => return (Check::Fix(format!("its key doesn't work: {e:#}")), None),
     };
-    let board = omicron::board::Board { supabase: s.clone(), session };
+    let board = omicron::board::Board::signed_in(s, &session);
     let me = match board.machines().map(|ms| ms.into_iter().find(|m| m.id == key.machine_id.to_string())) {
         Ok(Some(m)) => m,
         Ok(None) => return (Check::Fix("its record is missing. Register it again with `omicron machines register <name>`.".into()), None),
