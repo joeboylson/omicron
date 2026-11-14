@@ -525,6 +525,11 @@ export function ProjectPage({ id }: { id: string }) {
               <span className="tabular-nums">{project.sessions.length}</span>
             </Button>
           )}
+          {view !== "dev" && (
+            <Button size="sm" className="hidden gap-1 sm:inline-flex" onClick={() => newTask.current()}>
+              <Plus className="h-4 w-4" aria-hidden /> New Task
+            </Button>
+          )}
           <ShareButton project={project} onClick={() => setShareOpen(true)} />
           <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
             <Settings />
@@ -572,79 +577,11 @@ export function ProjectPage({ id }: { id: string }) {
             className="h-11 pl-8 sm:h-9"
           />
         </div>
-        {/* On a phone, Show and Columns fold into one menu beside the search. */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="relative size-11 shrink-0 sm:hidden" aria-label={filtering ? "View and filters (filtering)" : "View and filters"}>
-              <SlidersHorizontal />
-              {filtering && <span aria-hidden className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--sys-blue)]" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">Show</div>
-            <DropdownMenuRadioGroup value={layout} onValueChange={(v) => setLayout(v as "board" | "list")}>
-              <DropdownMenuRadioItem value="board">Board</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="list">List</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">{layout === "board" ? "Columns" : "Group by"}</div>
-            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as "status" | "topic" | "person")}>
-              <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="topic">Topic</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="person">Person</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">Filter</div>
-            {(
-              [
-                ["mine", "Mine"],
-                ["review", "Needs review"],
-                ["due", "Due in 7 days"],
-              ] as const
-            )
-              .filter(([k]) => k !== "review" || filters.review || usesClaude(project) || project.tasks.some((t) => t.needs_review))
-              .map(([k, label]) => (
-                <DropdownMenuItem
-                  key={k}
-                  role="menuitemcheckbox"
-                  aria-checked={filters[k]}
-                  // Stays open, to pick more than one.
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setFilters({ ...filters, [k]: !filters[k] });
-                  }}
-                >
-                  <span className="flex-1">{label}</span>
-                  {filters[k] && <Check className="h-4 w-4" aria-hidden />}
-                </DropdownMenuItem>
-              ))}
-            {project.labels.length > 0 && (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>{filters.label ? `Label: ${project.labels.find((l) => l.id === filters.label)?.name ?? ""}` : "Any label"}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuRadioGroup value={filters.label ?? "any"} onValueChange={(v) => setFilters({ ...filters, label: v === "any" ? null : v })}>
-                    <DropdownMenuRadioItem value="any">Any label</DropdownMenuRadioItem>
-                    {project.labels.map((l) => (
-                      <DropdownMenuRadioItem key={l.id} value={l.id}>
-                        {l.name}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            )}
-            {filtering && (
-              <DropdownMenuItem className="text-link" onSelect={clearFilters}>
-                Clear filters
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {/* One row that scrolls sideways on a phone; wraps on wider screens. */}
+        {/* Filters as chips on a wide screen; below that they fold into the View menu (#229). */}
         <div
           role="group"
           aria-label="Filters"
-          className="flex flex-wrap items-center gap-1.5 max-sm:hidden"
+          className="flex flex-wrap items-center gap-1.5 max-lg:hidden"
         >
           {(
             [
@@ -696,27 +633,76 @@ export function ProjectPage({ id }: { id: string }) {
           )}
         </div>
         <span className="hidden flex-1 sm:block" />
-        <Segmented
-          className="hidden sm:inline-flex"
-          label="Show"
-          value={layout}
-          options={[
-            ["board", "Board"],
-            ["list", "List"],
-          ]}
-          onChange={setLayout}
-        />
-        <Segmented
-          className="hidden sm:inline-flex"
-          label={layout === "board" ? "Columns" : "Group by"}
-          value={groupBy}
-          options={[
-            ["status", "Status"],
-            ["topic", "Topic"],
-            ["person", "Person"],
-          ]}
-          onChange={setGroupBy}
-        />
+        {/* One View menu: Board or List, and the columns; below a wide screen, the filters too. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="relative size-11 shrink-0 gap-2 p-0 sm:h-9 sm:w-auto sm:px-3" aria-label={filtering ? "View and filters (filtering)" : "View and filters"}>
+              <SlidersHorizontal />
+              <span className="hidden sm:inline">View</span>
+              {filtering && <span aria-hidden className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--sys-blue)] lg:hidden" />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">Show</div>
+            <DropdownMenuRadioGroup value={layout} onValueChange={(v) => setLayout(v as "board" | "list")}>
+              <DropdownMenuRadioItem value="board">Board</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="list">List</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">{layout === "board" ? "Columns" : "Group by"}</div>
+            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as "status" | "topic" | "person")}>
+              <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="topic">Topic</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="person">Person</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator className="lg:hidden" />
+            <div className="px-2 py-1.5 text-xs text-muted-foreground lg:hidden">Filter</div>
+            {(
+              [
+                ["mine", "Mine"],
+                ["review", "Needs review"],
+                ["due", "Due in 7 days"],
+              ] as const
+            )
+              .filter(([k]) => k !== "review" || filters.review || usesClaude(project) || project.tasks.some((t) => t.needs_review))
+              .map(([k, label]) => (
+                <DropdownMenuItem
+                  key={k}
+                  className="lg:hidden"
+                  role="menuitemcheckbox"
+                  aria-checked={filters[k]}
+                  // Stays open, to pick more than one.
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setFilters({ ...filters, [k]: !filters[k] });
+                  }}
+                >
+                  <span className="flex-1">{label}</span>
+                  {filters[k] && <Check className="h-4 w-4" aria-hidden />}
+                </DropdownMenuItem>
+              ))}
+            {project.labels.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="lg:hidden">{filters.label ? `Label: ${project.labels.find((l) => l.id === filters.label)?.name ?? ""}` : "Any label"}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup value={filters.label ?? "any"} onValueChange={(v) => setFilters({ ...filters, label: v === "any" ? null : v })}>
+                    <DropdownMenuRadioItem value="any">Any label</DropdownMenuRadioItem>
+                    {project.labels.map((l) => (
+                      <DropdownMenuRadioItem key={l.id} value={l.id}>
+                        {l.name}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            {filtering && (
+              <DropdownMenuItem className="text-link lg:hidden" onSelect={clearFilters}>
+                Clear filters
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {groupBy === "topic" && project.topics.length === 0 && (
         <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
@@ -729,7 +715,7 @@ export function ProjectPage({ id }: { id: string }) {
       {/* On a phone the filter chips live in the View and filters menu: the
           ones that are on show here, each taken off with its x (#206). */}
       {onFilters.length > 0 && (
-        <div role="group" aria-label="Filters on" className="flex flex-wrap gap-1.5 px-[max(1rem,env(safe-area-inset-left))] pb-2 sm:hidden">
+        <div role="group" aria-label="Filters on" className="flex flex-wrap gap-1.5 px-[max(1rem,env(safe-area-inset-left))] pb-2 lg:hidden">
           {onFilters.map((f) => (
             <Button
               key={f.key}
@@ -1365,46 +1351,6 @@ function SortableTask({
   );
 }
 
-/** A small set of choices side by side, one picked (like iOS's segmented control). */
-function Segmented<T extends string>({
-  className,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  className?: string;
-  label: string;
-  value: T;
-  options: [T, string][];
-  onChange: (v: T) => void;
-}) {
-  const labelId = `seg-${label.toLowerCase().replace(/\W+/g, "-")}`;
-  return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      <span id={labelId} className="text-sm text-muted-foreground">
-        {label}
-      </span>
-      <span role="radiogroup" aria-labelledby={labelId} className="inline-flex rounded-lg bg-muted p-0.5">
-        {options.map(([v, name]) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={value === v}
-            onClick={() => onChange(v)}
-            className={cn(
-              "min-h-8 rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              value === v ? "bg-background font-medium shadow-sm" : "text-foreground/75 hover:text-foreground",
-            )}
-          >
-            {name}
-          </button>
-        ))}
-      </span>
-    </span>
-  );
-}
 
 /** Every task in one scrolling list, in groups (statuses or topics). */
 function TaskList({

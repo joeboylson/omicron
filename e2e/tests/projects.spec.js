@@ -57,6 +57,20 @@ async function admin(request, method, path, data) {
 }
 
 const column = (page, status) => page.getByRole("region", { name: status, exact: true });
+// Board or List, Status, Topic or Person: from the View menu (#229).
+const viewAs = async (page, name) => {
+  await page.getByRole("button", { name: /^View and filters/ }).click();
+  await page.getByRole("menuitemradio", { name, exact: true }).click();
+  await page.getByRole("menu").waitFor({ state: "detached" });
+};
+const viewIs = async (page, name) => {
+  await page.getByRole("button", { name: /^View and filters/ }).click();
+  const item = page.getByRole("menuitemradio", { name, exact: true });
+  await expect(item).toHaveAttribute("aria-checked", "true");
+  // Closed by picking it again (it stays as it is).
+  await item.click();
+  await page.getByRole("menu").waitFor({ state: "detached" });
+};
 
 async function addTaskIn(page, status, title) {
   await column(page, status).getByRole("button", { name: "Add a task" }).click();
@@ -1022,7 +1036,7 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
   await expect(page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Needs review" })).toHaveCount(0);
 
   // By topic with no topics yet: one "No topic" column, and how to add some.
-  await page.getByRole("radio", { name: "Topic", exact: true }).click();
+  await viewAs(page, "Topic");
   await expect(page.getByText(/No topics yet/)).toBeVisible();
   await expect(column(page, "No topic")).toContainText("Water the plants");
   // No columns by status at the same time.
@@ -1075,9 +1089,9 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
 
   // The choice is kept on reload; back to statuses, where nothing moved.
   await page.reload();
-  await expect(page.getByRole("radio", { name: "Topic", exact: true })).toHaveAttribute("aria-checked", "true");
+  await viewIs(page, "Topic");
   await expect(column(page, "Claire's to-do")).toContainText("Water the plants");
-  await page.getByRole("radio", { name: "Status", exact: true }).click();
+  await viewAs(page, "Status");
   await expect(column(page, "To do")).toContainText("Fix the gate");
   await expect(column(page, "To do")).toContainText("Water the plants");
   await page.getByRole("button", { name: /Water the plants/ }).click();
@@ -1091,7 +1105,7 @@ test("the board's columns can be who each task is given to (#166)", async ({ pag
   await addTaskIn(page, "To do", "Water the plants");
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  await page.getByRole("radio", { name: "Person", exact: true }).click();
+  await viewAs(page, "Person");
   // You first, then Nobody (no other members yet).
   const cols = page.locator("main section[aria-label]");
   await expect(cols).toHaveCount(2);
@@ -1137,7 +1151,7 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   await pick(page, "Status", "Done");
   await escape(page);
 
-  await page.getByRole("radio", { name: "List", exact: true }).click();
+  await viewAs(page, "List");
   // Grouped by status, in the board's order; empty groups left out.
   const groups = page.locator("main section[aria-label]");
   await expect(groups).toHaveCount(2);
@@ -1145,7 +1159,10 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   await expect(groups.nth(1)).toHaveAttribute("aria-label", "Done");
   await expect(page.getByRole("list", { name: "To do" }).getByRole("button", { name: /^#\d+ Water the plants$/ })).toBeVisible();
   // The board's control is now "Group by".
-  await expect(page.getByRole("radiogroup", { name: "Group by" })).toBeVisible();
+  await page.getByRole("button", { name: /^View and filters/ }).click();
+  await expect(page.getByRole("menu")).toContainText("Group by");
+  await page.getByRole("menuitemradio", { name: "Status", exact: true }).click();
+  await page.getByRole("menu").waitFor({ state: "detached" });
 
   // A row opens its task, by click or keyboard.
   const row = page.getByRole("button", { name: /^#\d+ Water the plants$/ });
@@ -1163,17 +1180,17 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   await page.getByLabel("Search tasks").fill("");
 
   // Grouped by topic: each row says its status.
-  await page.getByRole("radio", { name: "Topic", exact: true }).click();
+  await viewAs(page, "Topic");
   await expect(groups).toHaveCount(1);
   await expect(groups.nth(0)).toHaveAttribute("aria-label", "No topic");
   await expect(row).toContainText("To do");
 
   // Kept on reload; "c" goes back to the board to add a task.
   await page.reload();
-  await expect(page.getByRole("radio", { name: "List", exact: true })).toHaveAttribute("aria-checked", "true");
+  await viewIs(page, "List");
   await page.keyboard.press("c");
-  await expect(page.getByRole("radio", { name: "Board", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByLabel(/^New task in /)).toBeFocused();
+  await expect(page.getByRole("region").first()).toBeVisible();
 });
 
 test("a team's question shows it's waiting on you, and what happened to the answer (#153)", async ({ page, request }) => {
