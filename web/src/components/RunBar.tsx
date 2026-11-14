@@ -5,8 +5,9 @@ import { devAction, useDev, whenDev } from "@/lib/dev";
 import { setRunState, startRun, type ClaudeSession, type ProjectData, type Run } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import { inOrder } from "@/lib/board-rules";
+import { Confirm } from "@/components/base/confirm";
 import { Button } from "@/components/base/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Group, Row } from "@/components/Grouped";
 import { Markdown } from "@/components/Markdown";
 
@@ -102,24 +103,14 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
           <Button size="sm" variant="ghost" className="gap-1 text-destructive hover:text-destructive" onClick={() => setStopping(true)}>
             <Square className="h-3.5 w-3.5" aria-hidden /> Stop now
           </Button>
-          <Dialog open={stopping} onOpenChange={setStopping}>
-            <DialogContent className="gap-4 sm:max-w-md">
-              <DialogHeader className="text-left">
-                <DialogTitle>Stop the run now?</DialogTitle>
-                <DialogDescription>
-                  {session?.name ?? "The session"} stops where it is, even partway through a task. Pause after this task lets it finish first.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button variant="ghost" onClick={() => setStopping(false)}>
-                  Keep going
-                </Button>
-                <Button variant="destructive" onClick={() => act(async () => (await setRunState(db, run, "stopped"), setStopping(false), onChanged()))}>
-                  Stop now
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Confirm
+            open={stopping}
+            onOpenChange={setStopping}
+            title="Stop the run now?"
+            sentence={`${session?.name ?? "The session"} stops where it is, even partway through a task.`}
+            action="Stop Now"
+            onConfirm={() => act(async () => (await setRunState(db, run, "stopped"), setStopping(false), onChanged()))}
+          />
         </>
       ) : (
         here.length > 0 && (
@@ -130,12 +121,13 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
       )}
 
       <Dialog open={starting} onOpenChange={setStarting}>
-        <DialogContent className="gap-5 bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
+        <DialogContent noClose className="gap-5 bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           <DialogHeader>
             <DialogTitle>Start a run</DialogTitle>
             <DialogDescription className="sr-only">A session works down To do on its own.</DialogDescription>
           </DialogHeader>
           <StartForm
+            onCancel={() => setStarting(false)}
             project={{ ...project, sessions: here }}
             onStart={(sessionId, labelId) =>
               act(async () => {
@@ -165,7 +157,15 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
   );
 }
 
-function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessionId: string, labelId: string | null) => void }) {
+function StartForm({
+  project,
+  onStart,
+  onCancel,
+}: {
+  project: ProjectData;
+  onStart: (sessionId: string, labelId: string | null) => void;
+  onCancel: () => void;
+}) {
   const [sessionId, setSessionId] = useState(project.sessions[0]?.id ?? "");
   const [labelId, setLabelId] = useState("");
   const chosen = project.sessions.find((s) => s.id === sessionId);
@@ -220,9 +220,14 @@ function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessi
           {gateUntil(chosen) ? " The run stops when it closes." : " It won't start until it's opened there."}
         </p>
       )}
-      <Button type="submit" disabled={!sessionId || queue.length === 0}>
-        Start
-      </Button>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!sessionId || queue.length === 0}>
+          Start
+        </Button>
+      </div>
     </form>
   );
 }

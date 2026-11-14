@@ -39,8 +39,11 @@ export const focusSheet = (e: Event) => {
 
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onCloseAutoFocus, onOpenAutoFocus, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** A sheet with its own Cancel: no × as well (one way out, HIG sheets #6). */
+    noClose?: boolean;
+  }
+>(({ className, children, onCloseAutoFocus, onOpenAutoFocus, noClose, ...props }, ref) => {
   const closeRef = React.useRef<HTMLButtonElement>(null);
   // What had focus before it opened gets focus back when it closes: the
   // last control focused outside any dialog (focus inside one doesn't count).
@@ -79,7 +82,7 @@ export const DialogContent = React.forwardRef<
             to close it, or tap the grabber (Apple HIG sheets #9, #10). */}
         <SwipeToClose close={() => closeRef.current?.click()} />
         {children}
-        <DialogPrimitive.Close ref={closeRef} className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground sm:right-2.5 sm:top-2.5 sm:h-8 sm:w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
+        <DialogPrimitive.Close ref={closeRef} hidden={noClose} className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground sm:right-2.5 sm:top-2.5 sm:h-8 sm:w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>

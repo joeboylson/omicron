@@ -38,6 +38,15 @@ export function Confirm({
   destructive?: boolean;
 }) {
   const content = React.useRef<HTMLDivElement>(null);
+  // Opened from a menu item: Radix's menu and alert can each leave the page
+  // unclickable (pointer-events: none on the body) once both have closed.
+  React.useEffect(() => {
+    if (open) return;
+    const t = setTimeout(() => {
+      if (!document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"]')) document.body.style.pointerEvents = "";
+    }, 300);
+    return () => clearTimeout(t);
+  }, [open]);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent

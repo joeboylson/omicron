@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addMember, deletePerson, listPeopleTable, listProjects, removeMember, type PersonRow, type ProjectSummary } from "@/lib/data";
+import { Confirm } from "@/components/base/confirm";
 import { Button } from "@/components/base/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/base/dialog";
 import { TopBar } from "@/components/TopBar";
@@ -177,30 +178,18 @@ export function PeoplePage() {
           />
         )}
       </main>
-      <Dialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
-        <DialogContent className="gap-4 sm:max-w-md">
-          {deleting && (
-            <>
-              <DialogHeader className="text-left">
-                <DialogTitle>Delete {deleting.display_name}?</DialogTitle>
-                <DialogDescription>
-                  {visible(deleting).length > 0
-                    ? `They're taken out of ${listNames(visible(deleting).map((id) => projects.find((pr) => pr.id === id)!.name))}, and can't sign in again. This can't be undone.`
-                    : "They can't sign in again. This can't be undone."}
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button variant="ghost" onClick={() => setDeleting(null)}>
-                  Cancel
-                </Button>
-                <Button variant="destructive" onClick={() => change(() => deletePerson(db, deleting.id)).then(() => setDeleting(null))}>
-                  Delete {deleting.display_name}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <Confirm
+        open={deleting !== null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete ${deleting?.display_name ?? ""}?`}
+        sentence={
+          deleting && visible(deleting).length > 0
+            ? `They're taken out of ${listNames(visible(deleting).map((id) => projects.find((pr) => pr.id === id)!.name))} and can't sign in again. This can't be undone.`
+            : "They can't sign in again. This can't be undone."
+        }
+        action={`Delete ${deleting?.display_name ?? ""}`}
+        onConfirm={() => deleting && change(() => deletePerson(db, deleting.id)).then(() => setDeleting(null))}
+      />
     </>
   );
 }

@@ -27,6 +27,7 @@ import { TopBar } from "@/components/TopBar";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { MultiSelect } from "@/components/MultiSelect";
 import { Machines as ClaudeAccounts } from "@/components/Machines";
+import { Confirm } from "@/components/base/confirm";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -190,26 +191,14 @@ export function MachinesPage() {
         </div>
       </main>
       <NewKey open={making} onOpenChange={setMaking} projects={projects} loading={machines === null} onMade={reload} />
-      <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
-        <DialogContent className="gap-4 sm:max-w-md">
-          {removing && (
-            <>
-              <DialogHeader className="text-left">
-                <DialogTitle>Remove {removing.name}?</DialogTitle>
-                <DialogDescription>Its key stops working for good and its Claude sessions end. This can't be undone.</DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button variant="ghost" onClick={() => setRemoving(null)}>
-                  Cancel
-                </Button>
-                <Button variant="destructive" onClick={() => change(() => removeMachine(db, removing.id)).then(() => setRemoving(null))}>
-                  Remove {removing.name}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <Confirm
+        open={removing !== null}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${removing?.name ?? ""}?`}
+        sentence="Its key stops working for good and its Claude sessions end. This can't be undone."
+        action={`Remove ${removing?.name ?? ""}`}
+        onConfirm={() => removing && change(() => removeMachine(db, removing.id)).then(() => setRemoving(null))}
+      />
     </>
   );
 }
@@ -265,7 +254,7 @@ function NewKey({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-4 sm:max-w-md" onOpenAutoFocus={(e) => key && focusSheet(e)}>
+      <DialogContent noClose className="gap-4 sm:max-w-md" onOpenAutoFocus={(e) => key && focusSheet(e)}>
         {key ? (
           <>
             <DialogHeader className="text-left">

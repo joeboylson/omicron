@@ -617,9 +617,11 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     await expect(sheet).not.toContainText("It stops when To do is empty.");
     await expect(sheet.getByRole("region", { name: "Up next" })).toContainText("#2 Write the tests");
     await escape(page);
-    // Stop now asks first; Keep going keeps it.
+    // Stop now asks first, as an alert: no ×, and Cancel keeps it (#223).
     await page.getByRole("button", { name: "Stop now" }).click();
-    await page.getByRole("dialog", { name: "Stop the run now?" }).getByRole("button", { name: "Keep going" }).click();
+    const stop = page.getByRole("alertdialog", { name: "Stop the run now?" });
+    await expect(stop.getByRole("button", { name: "Close" })).toHaveCount(0);
+    await stop.getByRole("button", { name: "Cancel" }).click();
     await expect(bar).toContainText("Run in parser");
     await expect(page.getByTestId("run-gate")).toHaveCount(0);
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/run-bar.png` });
@@ -1432,7 +1434,7 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   // Deleted, after asking once more and naming what they leave: gone for good.
   await row.getByRole("button", { name: `More for ${sam}` }).click();
   await page.getByRole("menuitem", { name: `Delete ${sam}…` }).click();
-  const asked = page.getByRole("dialog", { name: `Delete ${sam}?` });
+  const asked = page.getByRole("alertdialog", { name: `Delete ${sam}?` });
   await expect(asked).toContainText(`taken out of ${garden}`);
   await asked.getByRole("button", { name: `Delete ${sam}`, exact: true }).click();
   await expect(asked).toHaveCount(0);
@@ -1611,10 +1613,12 @@ test("a new Project can start with people and machines, its machines change in s
   await dialog.getByRole("button", { name: "Create Project" }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
-  // It started with them.
+  // It started with them: the people in Share (#209), the machines in settings.
+  await page.getByRole("button", { name: /^Share, / }).click();
+  await expect(page.getByRole("list", { name: "Members" })).toContainText(sam);
+  await escape(page);
   await page.getByRole("button", { name: "Project settings" }).click();
   const settings = page.getByRole("dialog", { name: "Project settings" });
-  await expect(settings).toContainText(sam);
   const machines = settings.getByRole("combobox", { name: "Machines" });
   await expect(machines).toHaveText(box);
 
@@ -1739,7 +1743,7 @@ test("Machines: make a key for a new machine, see it, change its Projects, switc
   // Removing asks first; Cancel keeps it.
   await row.getByRole("button", { name: `More for ${box}` }).click();
   await page.getByRole("menuitem", { name: new RegExp(`Remove ${box}…`) }).click();
-  const ask = page.getByRole("dialog", { name: `Remove ${box}?` });
+  const ask = page.getByRole("alertdialog", { name: `Remove ${box}?` });
   await expect(ask).toContainText("This can't be undone.");
   await ask.getByRole("button", { name: "Cancel" }).click();
   await expect(ask).toHaveCount(0);

@@ -162,7 +162,7 @@ export function ProjectsPage() {
         />
       )}
       <Dialog open={starting} onOpenChange={setStarting}>
-        <DialogContent className="gap-4 sm:max-w-md" aria-describedby={undefined}>
+        <DialogContent noClose className="gap-4 sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader className="text-left">
             <DialogTitle>New Project</DialogTitle>
           </DialogHeader>
