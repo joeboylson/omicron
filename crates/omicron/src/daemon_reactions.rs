@@ -22,6 +22,10 @@ impl Reaction for Loops {
         self.0.heard(&c.row);
         Ok(())
     }
+    /// Loops changed while this wasn't listening are read afresh.
+    fn after_listening(&self) -> Result<()> {
+        self.0.reload()
+    }
     fn runs(&self) -> Runs {
         Runs::Inline
     }
@@ -44,6 +48,10 @@ impl Reaction for RunSteps {
         runs_cmd::heard(&self.supabase, &self.key, &c.row);
         Ok(())
     }
+    /// Runs going here carry on.
+    fn after_listening(&self) -> Result<()> {
+        runs_cmd::bring_back(&self.supabase, &self.key)
+    }
     fn runs(&self) -> Runs {
         Runs::InOrder
     }
@@ -65,6 +73,10 @@ impl Reaction for Teams {
     fn react(&self, c: &Change) -> Result<()> {
         teams_run::heard(&self.supabase, &self.key, &c.row)
     }
+    /// Running teams here get their lead back.
+    fn after_listening(&self) -> Result<()> {
+        teams_run::bring_back(&self.supabase, &self.key)
+    }
 }
 
 /// Tasks dispatched to this machine.
@@ -83,5 +95,39 @@ impl Reaction for Dispatch {
     }
     fn react(&self, c: &Change) -> Result<()> {
         dispatch_cmd::carry_out(&self.supabase, &self.key, &self.name, &c.record)
+    }
+}
+
+/// Sessions that stopped while nobody was watching (a crash, this machine
+/// restarting, a lost connection): not running here any more, so they end.
+pub struct StoppedSessions {
+    pub supabase: Supabase,
+    pub key: MachineKey,
+}
+
+impl Reaction for StoppedSessions {
+    fn name(&self) -> &'static str {
+        "sessions"
+    }
+    fn wants(&self, _: &Change) -> bool {
+        false
+    }
+    /// Done before the daemon says it's listening.
+    fn runs(&self) -> Runs {
+        Runs::Inline
+    }
+    fn react(&self, _: &Change) -> Result<()> {
+        Ok(())
+    }
+    fn after_listening(&self) -> Result<()> {
+        let mut windows = omicron::windows::Windows::load()?;
+        windows.sweep();
+        windows.save()?;
+        let board = omicron::board::Board::as_machine(&self.supabase, &self.key)?;
+        let hosted = omicron::host::hosted()?;
+        for id in omicron::windows::stopped_sessions(&board.sessions(None)?, &self.key.machine_id.to_string(), &hosted, &windows) {
+            board.end_session(&id)?;
+        }
+        Ok(())
     }
 }

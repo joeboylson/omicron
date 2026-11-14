@@ -56,6 +56,12 @@ pub trait Reaction: Send + Sync {
     fn runs(&self) -> Runs {
         Runs::EachAlone
     }
+    /// Once listening starts: on start-up, and again after every
+    /// reconnect (changes may have been missed meanwhile), so it must be
+    /// safe to run again and again.
+    fn after_listening(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// The reactions, started.
@@ -117,6 +123,28 @@ impl Reactions {
     }
 }
 
+impl Reactions {
+    /// Each reaction's after-listening work: inline ones before this returns,
+    /// the rest on threads of their own. Errors are logged, never fatal: the
+    /// next reconnect tries again.
+    pub fn after_listening(&self) {
+        for (r, _) in &self.each {
+            if r.runs() == Runs::Inline {
+                if let Err(e) = r.after_listening() {
+                    (self.log)(format!("{}: {e:#}", r.name()));
+                }
+            } else {
+                let (r, log) = (r.clone(), self.log.clone());
+                std::thread::spawn(move || {
+                    if let Err(e) = r.after_listening() {
+                        log(format!("{}: {e:#}", r.name()));
+                    }
+                });
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +175,13 @@ mod tests {
         }
         fn runs(&self) -> Runs {
             self.runs
+        }
+        fn after_listening(&self) -> Result<()> {
+            if self.fails {
+                anyhow::bail!("couldn't start");
+            }
+            self.seen.lock().unwrap().push(format!("{} listening", self.name));
+            Ok(())
         }
     }
 
@@ -191,6 +226,25 @@ mod tests {
         assert!(!seen.iter().any(|s| s.contains(" 5")));
         // The failing one is logged by name.
         assert_eq!(*logged.lock().unwrap(), ["teams: broke on 3"]);
+    }
+
+    #[test]
+    fn after_listening_runs_each_and_logs_failures() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let fake = |name, runs, fails| Arc::new(Fake { name, tables: &[], runs, fails, seen: seen.clone() }) as Arc<dyn Reaction>;
+        let l = logged.clone();
+        let reactions = Reactions::start(
+            vec![fake("loops", Runs::Inline, false), fake("teams", Runs::EachAlone, true), fake("runs", Runs::InOrder, false)],
+            Arc::new(move |m| l.lock().unwrap().push(m)),
+        );
+        reactions.after_listening();
+        assert_eq!(seen.lock().unwrap().first().map(String::as_str), Some("loops listening"));
+        wait_for(|| seen.lock().unwrap().len() == 2 && logged.lock().unwrap().len() == 1);
+        assert_eq!(*logged.lock().unwrap(), ["teams: couldn't start"]);
+        // Again, as after a reconnect.
+        reactions.after_listening();
+        wait_for(|| seen.lock().unwrap().len() == 4);
     }
 
     #[test]

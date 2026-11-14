@@ -51,6 +51,9 @@ pub struct Listen<'a> {
 pub enum Next {
     Continue,
     Stop,
+    /// Drop this connection and connect again (with the usual pause), as
+    /// when it drops by itself.
+    Reconnect,
 }
 
 const TOPIC_NAME: &str = "omicron";
@@ -130,6 +133,7 @@ fn connection(
         match r {
             Ok(Next::Continue) => Ok(true),
             Ok(Next::Stop) => Ok(false),
+            Ok(Next::Reconnect) => Err(Dropped(anyhow::anyhow!("reconnecting to catch up"))),
             Err(e) => Err(Fatal(e)),
         }
     };

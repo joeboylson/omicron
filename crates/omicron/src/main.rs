@@ -586,16 +586,6 @@ fn daemon() -> Result<()> {
         }
         bail!(why);
     }
-    // Sessions that stopped while nobody was watching (a crash, this
-    // machine restarting): not running here any more, so they end.
-    let mut windows = omicron::windows::Windows::load()?;
-    windows.sweep();
-    windows.save()?;
-    let board = omicron::board::Board { supabase: supabase.clone(), session: first.clone() };
-    let hosted = omicron::host::hosted()?;
-    for id in omicron::windows::stopped_sessions(&board.sessions(None)?, &key.machine_id.to_string(), &hosted, &windows) {
-        board.end_session(&id)?;
-    }
     // Switching Claude accounts on their own: Anthropic's usage numbers can
     // only be read by asking, so this checks every 2 minutes while it's on.
     // It also tells Supabase which account this machine uses and how much
@@ -675,36 +665,37 @@ fn daemon() -> Result<()> {
             std::sync::Arc::new(daemon_reactions::RunSteps { supabase: supabase.clone(), key: key.clone() }),
             std::sync::Arc::new(daemon_reactions::Teams { supabase: supabase.clone(), key: key.clone() }),
             std::sync::Arc::new(daemon_reactions::Dispatch { supabase: supabase.clone(), key: key.clone(), name: name.clone() }),
+            std::sync::Arc::new(daemon_reactions::StoppedSessions { supabase: supabase.clone(), key: key.clone() }),
         ],
         std::sync::Arc::new(|m| eprintln!("omicron daemon: {m}")),
     );
     let react = |row: &serde_json::Value| reactions.heard(row);
     realtime::listen(&supabase, &listen, login, &stop, |event| {
         match event {
+            // On start-up and after every reconnect (Realtime fires it each
+            // time it connects): catch up on missed lines, then each
+            // reaction's after-listening work (see reactions.rs).
             Event::Listening => {
-                let session = supabase.sign_in_machine(&key)?;
-                let source = omicron::changes::SupabaseChanges { supabase: &supabase, session: &session };
-                omicron::changes::catch_up(&source, &mut state, &mut |s| s.save(), &mut std::io::stdout().lock(), &react)?;
-                // Loops changed while this wasn't listening are read afresh.
-                runner.reload()?;
-                // Runs going here carry on (after a restart).
-                {
-                    let (supabase, key) = (supabase.clone(), key.clone());
-                    std::thread::spawn(move || {
-                        if let Err(e) = runs_cmd::bring_back(&supabase, &key) {
-                            eprintln!("omicron daemon: runs: {e:#}");
-                        }
-                    });
+                // A catch-up that fails can't be skipped (listening on would
+                // pass over the missed lines), so connect again and retry.
+                // Only a failure to save what's handled (this computer's own
+                // disk) ends the daemon.
+                let mut disk = None;
+                let caught_up = supabase.sign_in_machine(&key).and_then(|session| {
+                    let source = omicron::changes::SupabaseChanges { supabase: &supabase, session: &session };
+                    let mut save = |s: &State| {
+                        s.save().inspect_err(|e| disk = Some(anyhow::anyhow!("couldn't save which changes are handled: {e:#}")))
+                    };
+                    omicron::changes::catch_up(&source, &mut state, &mut save, &mut std::io::stdout().lock(), &react)
+                });
+                if let Some(e) = disk {
+                    return Err(e);
                 }
-                // Running teams here get their lead back (after a restart).
-                {
-                    let (supabase, key) = (supabase.clone(), key.clone());
-                    std::thread::spawn(move || {
-                        if let Err(e) = teams_run::bring_back(&supabase, &key) {
-                            eprintln!("omicron daemon: teams: {e:#}");
-                        }
-                    });
+                if let Err(e) = caught_up {
+                    eprintln!("omicron daemon: catching up: {e:#}");
+                    return Ok(Next::Reconnect);
                 }
+                reactions.after_listening();
                 eprintln!("omicron daemon: {name} is listening for changes");
             }
             Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
