@@ -11,8 +11,14 @@ export type Command = {
   keywords?: string;
   /** A key that does the same outside the menu, shown beside it. */
   shortcut?: string;
+  /** For a choice (like the theme): whether it's the one chosen now, asked when the menu shows. */
+  checked?: () => boolean;
   run: () => void;
 };
+
+/** Commands offered everywhere, shown after the page's own, in this order. Projects last: there can be many. */
+const EVERYWHERE = ["global", "shortcuts", "projects"];
+const rank = (source: string) => EVERYWHERE.indexOf(source) + 1;
 
 const sources = new Map<string, Command[]>();
 const listeners = new Set<() => void>();
@@ -42,7 +48,8 @@ export function useAllCommands(): Command[] {
       listeners.delete(l);
     };
   }, []);
-  return [...sources.values()].flat();
+  // The page's own first, then what's offered everywhere.
+  return [...sources.entries()].sort(([a], [b]) => rank(a) - rank(b)).flatMap(([, c]) => c);
 }
 
 /** True while someone is typing in a box (so single-key shortcuts stay out of the way). */

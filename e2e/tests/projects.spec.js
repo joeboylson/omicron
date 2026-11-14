@@ -1864,6 +1864,15 @@ test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) =>
   await expect(page.getByRole("option", { name: /dark/i })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+
+  // On a Project page its own commands come first, in named groups, and
+  // the theme in use is ticked (#183).
+  await page.keyboard.press("Control+k");
+  const groups = menu.getByRole("group");
+  await expect(groups.first()).toHaveAccessibleName(name);
+  await expect(menu.getByRole("group", { name: "Appearance" }).getByRole("option", { name: "Dark (now)" })).toBeVisible();
+  await expect(menu.getByRole("option", { name: "Light", exact: true })).toBeVisible();
+  await escape(page);
 });
 
 test("a change in a task shows at once, before it's saved", async ({ page, request }) => {

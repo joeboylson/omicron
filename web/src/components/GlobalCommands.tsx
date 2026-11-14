@@ -5,7 +5,7 @@ import { go, useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { listProjects, type ProjectSummary } from "@/lib/data";
 import { useCommands } from "@/lib/commands";
-import { applyAppearance, saveAppearance, type Appearance } from "@/lib/theme";
+import { applyAppearance, currentAppearance, saveAppearance, type Appearance } from "@/lib/theme";
 
 export function GlobalCommands() {
   const { db, act, me } = useApp();
@@ -19,15 +19,18 @@ export function GlobalCommands() {
     applyAppearance(a);
     act(() => saveAppearance(db, me.personId, a));
   };
+  useCommands(
+    "projects",
+    projects.map((p) => ({ id: `project-${p.id}`, label: p.name, group: "Projects", keywords: "go open project", run: () => go(`/p/${p.id}`) })),
+  );
   useCommands("global", [
-    ...projects.map((p) => ({ id: `project-${p.id}`, label: p.name, group: "Projects", keywords: "go open project", run: () => go(`/p/${p.id}`) })),
     { id: "go-projects", label: "All Projects", group: "Go to", keywords: "home", run: () => go("/") },
     { id: "go-people", label: "People", group: "Go to", keywords: "members", run: () => go("/people") },
     { id: "go-settings", label: "Settings", group: "Go to", keywords: "preferences", run: () => go("/settings") },
     { id: "go-machines", label: "Machines", group: "Go to", keywords: "api keys", run: () => go("/machines") },
-    { id: "theme-system", label: "Match the system", group: "Appearance", keywords: "theme", run: theme("system") },
-    { id: "theme-light", label: "Light", group: "Appearance", keywords: "theme", run: theme("light") },
-    { id: "theme-dark", label: "Dark", group: "Appearance", keywords: "theme night", run: theme("dark") },
+    { id: "theme-system", label: "Match the system", group: "Appearance", keywords: "theme", checked: () => currentAppearance() === "system", run: theme("system") },
+    { id: "theme-light", label: "Light", group: "Appearance", keywords: "theme", checked: () => currentAppearance() === "light", run: theme("light") },
+    { id: "theme-dark", label: "Dark", group: "Appearance", keywords: "theme night", checked: () => currentAppearance() === "dark", run: theme("dark") },
   ]);
   return null;
 }

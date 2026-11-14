@@ -2,7 +2,7 @@
 // settings, switch the theme…), arrows to choose, Enter to run.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { useAllCommands, type Command } from "@/lib/commands";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/base/dialog";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ export function CommandMenu() {
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
   const commands = useAllCommands();
-  const list = useRef<HTMLUListElement>(null);
+  const list = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -48,7 +48,13 @@ export function CommandMenu() {
     list.current?.querySelector(`[data-index="${at}"]`)?.scrollIntoView({ block: "nearest" });
   }, [at]);
 
-  let lastGroup = "";
+  // Next to each other with the same heading: one group.
+  const groups: { name: string; items: { c: Command; i: number }[] }[] = [];
+  shown.forEach((c, i) => {
+    const last = groups[groups.length - 1];
+    if (last && last.name === c.group) last.items.push({ c, i });
+    else groups.push({ name: c.group, items: [{ c, i }] });
+  });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="top-[20%] max-w-lg translate-y-0 gap-0 overflow-hidden p-0 sm:top-[20%] sm:translate-y-0 [&>button]:hidden">
@@ -78,32 +84,41 @@ export function CommandMenu() {
           />
           <kbd className="hidden rounded border px-1.5 font-mono text-[11px] text-muted-foreground sm:block">esc</kbd>
         </div>
-        <ul id="command-list" ref={list} role="listbox" aria-label="Commands" className="max-h-80 overflow-y-auto p-2">
-          {shown.length === 0 && <li className="px-2 py-6 text-center text-sm text-muted-foreground">No commands match.</li>}
-          {shown.map((c, i) => {
-            const header = c.group !== lastGroup ? c.group : null;
-            lastGroup = c.group;
-            return (
-              <li key={c.id} role="presentation">
-                {header && <div className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{header}</div>}
-                <div
-                  id={`command-${i}`}
-                  data-index={i}
-                  role="option"
-                  aria-selected={i === at}
-                  onMouseMove={() => setAt(i)}
-                  onClick={() => choose(c)}
-                  className={cn("flex min-h-10 cursor-pointer items-center rounded-md px-2 text-[15px] sm:text-sm", i === at && "bg-primary text-primary-foreground")}
-                >
-                  <span className="flex-1">{c.label}</span>
-                  {c.shortcut && (
-                    <kbd className={cn("rounded border px-1.5 font-mono text-[11px]", i === at ? "border-primary-foreground/50" : "text-muted-foreground")}>{c.shortcut}</kbd>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div id="command-list" ref={list} role="listbox" aria-label="Commands" className="max-h-[min(60vh,28rem)] overflow-y-auto p-2">
+          {shown.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">No commands match.</p>}
+          {/* Each heading names its group, as screen readers read it. */}
+          {groups.map(({ name, items }, g) => (
+            <div key={name + g} role="group" aria-labelledby={`command-group-${g}`}>
+              <div id={`command-group-${g}`} className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                {name}
+              </div>
+              {items.map(({ c, i }) => {
+                const on = c.checked?.();
+                return (
+                  <div
+                    key={c.id}
+                    id={`command-${i}`}
+                    data-index={i}
+                    role="option"
+                    aria-selected={i === at}
+                    onMouseMove={() => setAt(i)}
+                    onClick={() => choose(c)}
+                    className={cn("flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2 text-[15px] sm:text-sm", i === at && "bg-primary text-primary-foreground")}
+                  >
+                    <span className="flex-1">
+                      {c.label}
+                      {on && <span className="sr-only"> (now)</span>}
+                    </span>
+                    {on && <Check className="h-4 w-4" aria-hidden />}
+                    {c.shortcut && (
+                      <kbd className={cn("rounded border px-1.5 font-mono text-[11px]", i === at ? "border-primary-foreground/50" : "text-muted-foreground")}>{c.shortcut}</kbd>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </DialogContent>
     </Dialog>
   );

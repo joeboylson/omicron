@@ -7,6 +7,12 @@ import { must } from "./omicron";
 
 export type Appearance = "system" | "light" | "dark";
 
+/** The appearance this page shows now. */
+export function currentAppearance(): Appearance {
+  const t = document.documentElement.dataset.theme;
+  return t === "light" || t === "dark" ? t : "system";
+}
+
 export function applyAppearance(a: Appearance) {
   const root = document.documentElement;
   if (a === "system") delete root.dataset.theme;
