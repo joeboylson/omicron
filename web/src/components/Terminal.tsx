@@ -4,6 +4,27 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useApp } from "@/lib/app";
 
+/** The page's own colors (they follow Light, Dark or the system). */
+function pageTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const hsl = (name: string) => `hsl(${css.getPropertyValue(name).trim().replace(/ /g, ", ")})`;
+  const background = hsl("--background");
+  const foreground = hsl("--foreground");
+  return { background, foreground, cursor: foreground, cursorAccent: background, selectionBackground: hsl("--accent") };
+}
+
+/** Call `then` whenever the page's theme changes. Returns how to stop. */
+function onThemeChange(then: () => void): () => void {
+  const watch = new MutationObserver(then);
+  watch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const system = window.matchMedia("(prefers-color-scheme: dark)");
+  system.addEventListener("change", then);
+  return () => {
+    watch.disconnect();
+    system.removeEventListener("change", then);
+  };
+}
+
 /** Bearer header for the computer serving the page. */
 async function auth(db: ReturnType<typeof useApp>["db"]) {
   const { data } = await db.auth.getSession();
@@ -27,7 +48,11 @@ export function Terminal({ session, active }: { session: string; active: boolean
       fontSize: 13,
       cursorBlink: true,
       scrollback: 5000,
-      theme: { background: "#111113" },
+      theme: pageTheme(),
+    });
+    // Follows the page's theme, as it changes (#98).
+    const stopTheme = onThemeChange(() => {
+      term.options.theme = pageTheme();
     });
     const fitter = new FitAddon();
     fit.current = fitter;
@@ -92,6 +117,7 @@ export function Terminal({ session, active }: { session: string; active: boolean
     resized.observe(box.current!);
     return () => {
       stop.abort();
+      stopTheme();
       typed.dispose();
       sized.dispose();
       resized.disconnect();
@@ -104,9 +130,9 @@ export function Terminal({ session, active }: { session: string; active: boolean
   }, [active]);
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#111113]" hidden={!active} data-testid={`terminal-${session}`}>
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background" hidden={!active} data-testid={`terminal-${session}`}>
       {state !== "open" && (
-        <p role="status" className="px-3 py-2 text-xs text-white/70">
+        <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
           {state === "connecting" ? `Connecting to ${session}…` : state === "ended" ? `${session} ended.` : state}
         </p>
       )}

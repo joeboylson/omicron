@@ -133,25 +133,25 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
         <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
       </aside>
 
-      <section aria-label="Terminals" className="flex min-h-0 min-w-0 flex-col bg-[#111113]">
-        <div role="tablist" aria-label="Open sessions" className="flex shrink-0 overflow-x-auto border-b border-white/10 bg-[#1a1a1d]">
+      <section aria-label="Terminals" className="flex min-h-0 min-w-0 flex-col bg-background">
+        <div role="tablist" aria-label="Open sessions" className="flex shrink-0 overflow-x-auto border-b bg-muted">
           {tabs.map((name) => (
-            <div key={name} className={cn("flex items-center", active === name ? "bg-[#111113] text-white" : "text-white/60")}>
+            <div key={name} className={cn("flex items-center", active === name ? "bg-background text-foreground" : "text-muted-foreground")}>
               <button role="tab" type="button" aria-selected={active === name} className="flex h-9 items-center gap-1.5 pl-3 pr-1 text-sm" onClick={() => setActive(name)}>
                 <TerminalIcon className="h-3.5 w-3.5" aria-hidden />
                 {name}
               </button>
-              <button type="button" className="mr-1 rounded p-1 hover:bg-white/10" aria-label={`Close ${name}'s tab (it keeps running)`} onClick={() => close(name)}>
+              <button type="button" className="mr-1 rounded p-1 hover:bg-accent" aria-label={`Close ${name}'s tab (it keeps running)`} onClick={() => close(name)}>
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
         </div>
         {active && (
-          <div className="flex shrink-0 items-center gap-1 border-b border-white/10 bg-[#161619] px-2 py-1 text-xs text-white/70">
+          <div className="flex shrink-0 items-center gap-1 border-b bg-background px-2 py-1 text-xs text-muted-foreground">
             <button
               type="button"
-              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-white/10 hover:text-white"
+              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent hover:text-foreground"
               onClick={() => handOff(active)}
               title="Ask it for its handoff note, then clear: a fresh conversation picks up from the note"
             >
@@ -164,7 +164,7 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
             ) : (
               <button
                 type="button"
-                className="flex items-center gap-1 rounded px-2 py-1 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent hover:text-foreground"
                 onClick={() => setEnding(active)}
                 title="Quit Claude, which ends the session"
               >
@@ -174,12 +174,12 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
           </div>
         )}
         {said && (
-          <p role="status" className="shrink-0 truncate border-b border-white/10 bg-[#161619] px-3 py-1 text-xs text-white/70">
+          <p role="status" className="shrink-0 truncate border-b bg-background px-3 py-1 text-xs text-muted-foreground">
             {said}
           </p>
         )}
         {tabs.length === 0 && (
-          <p className="m-auto max-w-xs p-6 text-center text-sm text-white/60">Pick a session on the left to open its terminal here. Closing a tab leaves it running.</p>
+          <p className="m-auto max-w-xs p-6 text-center text-sm text-muted-foreground">Pick a session on the left to open its terminal here. Closing a tab leaves it running.</p>
         )}
         {tabs.map((name) => (
           <Terminal key={name} session={name} active={active === name} />

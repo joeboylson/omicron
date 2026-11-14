@@ -329,6 +329,14 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     await page.keyboard.press("Enter");
     await expect(term.locator(".xterm-rows")).toContainText("hello from the page");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-view.png` });
+    // The terminal follows the page's theme, as it changes (#98).
+    const background = () => term.locator(".xterm-viewport").evaluate((el) => getComputedStyle(el).backgroundColor);
+    await page.evaluate(() => (document.documentElement.dataset.theme = "light"));
+    await expect.poll(background).toBe("rgb(255, 255, 255)");
+    await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));
+    await expect.poll(background).not.toBe("rgb(255, 255, 255)");
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-view-dark.png` });
+    await page.evaluate(() => delete document.documentElement.dataset.theme);
 
     // Handed over here, with the gate closed: the session takes it as its own.
     await page.getByLabel("Hand #1 to a session here").selectOption({ label: "parser" });
