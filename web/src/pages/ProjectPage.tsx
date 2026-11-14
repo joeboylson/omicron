@@ -1030,6 +1030,9 @@ function Column({
       className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", landing && "bg-accent/80")}
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[0.9375rem] font-semibold sm:text-sm">
+        {/* On a phone the strip above names the column: here, only for
+            screen readers, with its ⋯ (#231). */}
+        <span className={cn("flex min-w-0 items-center gap-2", !renaming && "max-sm:sr-only")}>
         {status && <ColorDot color={statusColor(status)} />}
         {renaming ? (
           <form
@@ -1058,6 +1061,7 @@ function Column({
           (status ? status.name : label)
         )}
         {!renaming && <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>}
+        </span>
         {status?.is_done && (
           <span className="relative ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
             <CheckCircle2 className="h-4 w-4" aria-hidden />
