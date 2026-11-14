@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowUpDown, X, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -282,6 +282,15 @@ export function ProjectPage({ id }: { id: string }) {
   // Tasks waiting to be deleted (Undo) aren't shown.
   if (hidden.length > 0) project = { ...project, tasks: project.tasks.filter((t) => !hidden.includes(t.id)) };
   const filtering = query.trim() !== "" || filters.mine || filters.review || filters.due || filters.label !== null;
+  // The filters that are on, by name, each with a way to take it off.
+  const onFilters: { key: string; label: string; off: () => void }[] = [
+    ...(filters.mine ? [{ key: "mine", label: "Mine", off: () => setFilters({ ...filters, mine: false }) }] : []),
+    ...(filters.review ? [{ key: "review", label: "Needs review", off: () => setFilters({ ...filters, review: false }) }] : []),
+    ...(filters.due ? [{ key: "due", label: "Due in 7 days", off: () => setFilters({ ...filters, due: false }) }] : []),
+    ...(filters.label
+      ? [{ key: "label", label: project.labels.find((l) => l.id === filters.label)?.name ?? "A label", off: () => setFilters({ ...filters, label: null }) }]
+      : []),
+  ];
   const clearFilters = () => {
     setQuery("");
     setFilters({ mine: false, review: false, due: false, label: null });
@@ -628,12 +637,34 @@ export function ProjectPage({ id }: { id: string }) {
           </Button>
         </p>
       )}
+      {/* On a phone the filter chips live in the View and filters menu: the
+          ones that are on show here, each taken off with its x (#206). */}
+      {onFilters.length > 0 && (
+        <div role="group" aria-label="Filters on" className="flex flex-wrap gap-1.5 px-[max(1rem,env(safe-area-inset-left))] pb-2 sm:hidden">
+          {onFilters.map((f) => (
+            <Button
+              key={f.key}
+              variant="ghost"
+              size="sm"
+              className="h-11 gap-1 rounded-full bg-foreground px-3 text-background hover:bg-foreground/90 hover:text-background"
+              aria-label={`Stop filtering by ${f.label}`}
+              onClick={f.off}
+            >
+              {f.label} <X className="h-3.5 w-3.5" aria-hidden />
+            </Button>
+          ))}
+        </div>
+      )}
       {/* Searched or filtered to nothing: say so, once, with the way back. */}
       {filtering && project.tasks.length > 0 && !project.tasks.some(matches) && (
         <div role="status" className="flex items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm">
-          <span className="text-muted-foreground">{query.trim() ? `No tasks match “${query.trim()}”.` : "No tasks match these filters."}</span>
+          <span className="text-muted-foreground">
+            {query.trim()
+              ? `No tasks match “${query.trim()}”${onFilters.length ? ` (${onFilters.map((f) => f.label).join(", ")})` : ""}.`
+              : `No tasks match these filters (${onFilters.map((f) => f.label).join(", ")}).`}
+          </span>
           <Button variant="link" className="h-auto p-0 text-sm" onClick={clearFilters}>
-            {query.trim() ? "Clear search" : "Clear filters"}
+            {query.trim() && onFilters.length ? "Clear search and filters" : query.trim() ? "Clear search" : "Clear filters"}
           </Button>
         </div>
       )}

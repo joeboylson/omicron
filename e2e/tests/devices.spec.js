@@ -214,6 +214,17 @@ for (const [kind, device] of [
         await page.getByRole("button", { name: /^View and filters/ }).tap();
         await page.getByRole("menuitemradio", { name: "Board" }).tap();
         await expect(todo).toBeVisible();
+        // A filter turned on from the menu shows under the search, and its
+        // x takes it off (#206).
+        await page.getByRole("button", { name: /^View and filters/ }).tap();
+        await page.getByRole("menuitemcheckbox", { name: "Due in 7 days" }).tap();
+        await page.keyboard.press("Escape");
+        const on = page.getByRole("group", { name: "Filters on" });
+        await expect(on.getByRole("button", { name: "Stop filtering by Due in 7 days" })).toBeVisible();
+        await expect(page.getByRole("status").filter({ hasText: "No tasks match" })).toHaveText(/No tasks match these filters \(Due in 7 days\)\./);
+        await on.getByRole("button", { name: "Stop filtering by Due in 7 days" }).tap();
+        await expect(on).toHaveCount(0);
+        await expect(todo.getByRole("button", { name: /Fix the gate/ })).toBeVisible();
       }
 
       // A task's sheet.
