@@ -593,6 +593,44 @@ test("a dispatch left waiting by an asker who went away shows as failed, and Dis
   }
 });
 
+test("a card dropped between tied cards lands there, and Organize while filtered numbers the whole column (#118)", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Home");
+  await startProjectIn(page, name);
+  for (const t of ["Milk", "Bread", "Eggs", "Butter"]) omicron.cli("tasks", "add", name, t, "--as-machine");
+  // Ties, as an old Organize or a team's question used to leave them.
+  const tasks = await rest(request, robin.session, "GET", `/rest/v1/tasks?select=id,title,projects!inner(name)&projects.name=eq.${encodeURIComponent(name)}`);
+  const id = (t) => tasks.find((x) => x.title === t).id;
+  for (const [t, position] of [["Milk", 1], ["Bread", 1], ["Butter", 2], ["Eggs", 3]]) {
+    await rest(request, robin.session, "PATCH", `/rest/v1/tasks?id=eq.${id(t)}`, { position });
+  }
+  await page.reload();
+  const todo = column(page, "To do");
+  const titles = async () => (await todo.getByRole("button", { name: /^#\d+ / }).allTextContents()).map((t) => t.replace(/#\d+$/, "").trim());
+  await expect.poll(titles).toEqual(["Milk", "Bread", "Butter", "Eggs"]);
+
+  // Eggs dropped between Milk and Bread lands there.
+  const from = await todo.getByRole("button", { name: /Eggs/ }).boundingBox();
+  const to = await todo.getByRole("button", { name: /Bread/ }).boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 10, { steps: 5 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 6, { steps: 15 });
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await expect.poll(titles).toEqual(["Milk", "Eggs", "Bread", "Butter"]);
+  await page.reload();
+  await expect.poll(titles).toEqual(["Milk", "Eggs", "Bread", "Butter"]);
+
+  // Organize while a search hides some: the whole column is put in order.
+  await page.getByLabel("Search tasks").fill("b");
+  await todo.getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Organize" }).hover();
+  await page.getByRole("menuitem", { name: "By name" }).click();
+  await page.getByLabel("Search tasks").fill("");
+  await expect.poll(titles).toEqual(["Bread", "Butter", "Eggs", "Milk"]);
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

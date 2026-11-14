@@ -520,6 +520,15 @@ pub fn ask(question: &str) -> Result<String> {
         None => None,
     };
     let about = job.as_ref().map(|j| format!(" about job #{}", j.number)).unwrap_or_default();
+    // At the bottom of its status, like any task added (not position 0,
+    // which ties it with the top card: #118).
+    let last = board.supabase.request_as(
+        &board.session,
+        "GET",
+        &format!("/rest/v1/tasks?status_id=eq.{status_id}&select=position&order=position.desc&limit=1"),
+        None,
+    )?;
+    let position = last.get(0).and_then(|r| r["position"].as_f64()).map_or(0.0, |p| p + 1.0);
     let task = board.supabase.request_as(
         &board.session,
         "POST",
@@ -530,6 +539,7 @@ pub fn ask(question: &str) -> Result<String> {
             "title": format!("{}: {me} asks{about}", team.name),
             "notes": format!("{question}\n\nAnswer with a comment; it goes straight back to {me}."),
             "assignee_person_id": to,
+            "position": position,
         })),
     )?;
     let task_id = task[0]["id"].as_str().context("the request wasn't saved")?.to_string();

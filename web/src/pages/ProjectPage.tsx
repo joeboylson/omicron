@@ -3,7 +3,8 @@ import { ArrowUpDown, ChevronDown, ChevronLeft, MoreHorizontal, Plus, Search, Se
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addTask, deleteTask, loadProject, moveTask, organize, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
+import { addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task } from "@/lib/data";
+import { inOrder, placeAt } from "@/lib/board-rules";
 import {
   DndContext,
   DragOverlay,
@@ -248,24 +249,32 @@ export function ProjectPage({ id }: { id: string }) {
     const moved = project.tasks.find((t) => t.id === e.active.id);
     if (!moved || !e.over) return;
     const overTask = project.tasks.find((t) => t.id === e.over!.id);
+    // Let go over itself: it stays where it was.
+    if (overTask?.id === moved.id) return;
     const col = parseColumn(overTask ? String(e.over.data.current?.column) : String(e.over.id));
     if (!col) return;
     const inColumn = (t: Task) => t.status_id === col.statusId && (col.topicId === undefined || t.topic_id === col.topicId);
-    const others = project.tasks.filter((t) => inColumn(t) && t.id !== moved.id).sort((a, b) => a.position - b.position);
+    const others = inOrder(project.tasks.filter((t) => inColumn(t) && t.id !== moved.id));
+    const column = inOrder(project.tasks.filter(inColumn));
     let at = overTask ? others.findIndex((t) => t.id === overTask.id) : others.length;
     // Dragging down within the same column lands after the card it's over.
-    if (overTask && inColumn(moved) && moved.position < overTask.position) at += 1;
+    if (overTask && inColumn(moved) && column.indexOf(moved) < column.indexOf(overTask)) at += 1;
     if (at < 0) at = others.length;
-    const position = positionBetween(others[at - 1]?.position, others[at]?.position);
-    if (inColumn(moved) && (others[at - 1]?.position ?? -Infinity) < moved.position && moved.position < (others[at]?.position ?? Infinity)) {
-      return; // Already there.
-    }
+    // Dropped where it already is (by its place in the column, so ties count).
+    if (inColumn(moved) && column.indexOf(moved) === at) return;
+    const { position, renumber } = placeAt(others, at);
     const topicId = col.topicId === undefined ? moved.topic_id : col.topicId;
+    const moves = new Map(renumber.map((r) => [r.id, r.position]));
     setProject({
       ...project,
-      tasks: project.tasks.map((t) => (t.id === moved.id ? { ...t, status_id: col.statusId, topic_id: topicId, position } : t)),
+      tasks: project.tasks.map((t) =>
+        t.id === moved.id ? { ...t, status_id: col.statusId, topic_id: topicId, position } : moves.has(t.id) ? { ...t, position: moves.get(t.id)! } : t,
+      ),
     });
-    act(() => moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position })).then(reload);
+    act(async () => {
+      if (renumber.length) await renumberTasks(db, renumber);
+      await moveTask(db, moved, { statusId: col.statusId, topicId: col.topicId, position });
+    }).then(reload);
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
   const added = (number?: number, open?: boolean) => {
@@ -695,7 +704,11 @@ function Column({
                     ["assignee", "By who it's given to"],
                   ] as const
                 ).map(([by, text]) => (
-                  <DropdownMenuItem key={by} disabled={tasks.length < 2} onSelect={() => act(async () => (await organize(db, project, tasks, by), onAdded()))}>
+                  <DropdownMenuItem key={by} disabled={tasks.length < 2} onSelect={() =>
+                    // The whole status, hidden cards too: numbering only the
+                    // ones showing would tie them with the rest (#118).
+                    act(async () => (await organize(db, project, project.tasks.filter((t) => t.status_id === status.id), by), onAdded()))
+                  }>
                     {text}
                   </DropdownMenuItem>
                 ))}

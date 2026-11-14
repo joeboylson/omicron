@@ -594,6 +594,11 @@ export async function organize(db: SupabaseClient, project: ProjectData, tasks: 
   await Promise.all(changed.map(({ t, position }) => db.from("tasks").update({ position }).eq("id", t.id).then(must)));
 }
 
+/** Give tasks new positions (a tied column numbered before a drop). */
+export async function renumberTasks(db: SupabaseClient, rows: { id: string; position: number }[]) {
+  await Promise.all(rows.map((r) => db.from("tasks").update({ position: r.position }).eq("id", r.id).then(must)));
+}
+
 export async function moveTask(
   db: SupabaseClient,
   task: Task,
