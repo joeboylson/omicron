@@ -60,7 +60,7 @@ export function SettingsPage() {
                 disabled={appearance === null}
                 onClick={() => choose(c.value)}
                 className={cn(
-                  "flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:text-sm",
+                  "flex min-h-11 w-full items-center px-4 text-left text-[15px] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-sm",
                 )}
               >
                 <span className="flex-1">{c.label}</span>

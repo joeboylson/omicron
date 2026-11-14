@@ -93,10 +93,12 @@ export function CommandMenu() {
                   aria-selected={i === at}
                   onMouseMove={() => setAt(i)}
                   onClick={() => choose(c)}
-                  className={cn("flex min-h-10 cursor-pointer items-center rounded-md px-2 text-[15px] sm:text-sm", i === at && "bg-accent")}
+                  className={cn("flex min-h-10 cursor-pointer items-center rounded-md px-2 text-[15px] sm:text-sm", i === at && "bg-primary text-primary-foreground")}
                 >
                   <span className="flex-1">{c.label}</span>
-                  {c.shortcut && <kbd className="rounded border px-1.5 font-mono text-[11px] text-muted-foreground">{c.shortcut}</kbd>}
+                  {c.shortcut && (
+                    <kbd className={cn("rounded border px-1.5 font-mono text-[11px]", i === at ? "border-primary-foreground/50" : "text-muted-foreground")}>{c.shortcut}</kbd>
+                  )}
                 </div>
               </li>
             );

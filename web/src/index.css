@@ -140,6 +140,23 @@
   .font-mono {
     font-variant-numeric: tabular-nums;
   }
+  /* The chosen row in a menu, list or the command menu (by keyboard or
+     pointer): plainly marked, like macOS menus. The faint grey alone was
+     hard to see (#175). */
+  [role="menuitem"][data-highlighted],
+  [role="menuitemradio"][data-highlighted],
+  [role="menuitemcheckbox"][data-highlighted],
+  [role="option"][data-highlighted],
+  [cmdk-item][data-selected="true"] {
+    background-color: hsl(var(--primary)) !important;
+    color: #fff !important;
+  }
+  [role="menuitem"][data-highlighted] *,
+  [role="menuitemradio"][data-highlighted] *,
+  [role="option"][data-highlighted] *,
+  [cmdk-item][data-selected="true"] * {
+    color: inherit !important;
+  }
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
