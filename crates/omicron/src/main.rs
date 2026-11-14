@@ -680,7 +680,8 @@ fn daemon() -> Result<()> {
         match event {
             Event::Listening => {
                 let session = supabase.sign_in_machine(&key)?;
-                catch_up(&supabase, &session, &mut state, &react)?;
+                let source = omicron::changes::SupabaseChanges { supabase: &supabase, session: &session };
+                omicron::changes::catch_up(&source, &mut state, &mut |s| s.save(), &mut std::io::stdout().lock(), &react)?;
                 // Loops changed while this wasn't listening are read afresh.
                 runner.reload()?;
                 // Runs going here carry on (after a restart).
@@ -704,78 +705,13 @@ fn daemon() -> Result<()> {
                 eprintln!("omicron daemon: {name} is listening for changes");
             }
             Event::Reconnecting(why) => eprintln!("omicron daemon: reconnecting ({why})"),
-            Event::Change(c) if c.table == "changes" => handle_change(&c.record, &mut state, &react)?,
+            Event::Change(c) if c.table == "changes" => {
+                omicron::changes::handle(&c.record, &mut state, &mut |s| s.save(), &mut std::io::stdout().lock(), &react)?
+            }
             Event::Change(_) | Event::Connected(_) => {}
         }
         Ok(Next::Continue)
     })
-}
-
-/// Read the change list from where this machine left off, plus every line
-/// from the last second (in case one finished saving late). The first time,
-/// start from now instead of replaying all of history.
-fn catch_up(
-    supabase: &omicron::supa::Supabase,
-    session: &omicron::supa::Session,
-    state: &mut omicron::config::State,
-    react: &dyn Fn(&serde_json::Value),
-) -> Result<()> {
-    let window = supabase.request_as(session, "POST", "/rest/v1/rpc/recent_changes", Some(json!({})))?;
-    let window = window.as_array().cloned().unwrap_or_default();
-    let Some(mut last) = state.last_change else {
-        let newest = supabase.request_as(session, "GET", "/rest/v1/changes?select=seq&order=seq.desc&limit=1", None)?;
-        // Mark what's there as handled, without printing it.
-        for row in &window {
-            if let Some(seq) = row["seq"].as_i64() {
-                state.mark(seq);
-            }
-        }
-        state.last_change = Some(newest.get(0).and_then(|r| r["seq"].as_i64()).unwrap_or(0).max(state.last_change.unwrap_or(0)));
-        return state.save();
-    };
-    const PAGE: usize = 500;
-    loop {
-        let rows = supabase.request_as(session, "GET", &format!("/rest/v1/changes?seq=gt.{last}&order=seq.asc&limit={PAGE}"), None)?;
-        let rows = rows.as_array().cloned().unwrap_or_default();
-        for row in &rows {
-            handle_change(row, state, react)?;
-        }
-        match state.last_change {
-            Some(now) if rows.len() == PAGE && now > last => last = now,
-            _ => break,
-        }
-    }
-    for row in &window {
-        handle_change(row, state, react)?;
-    }
-    Ok(())
-}
-
-/// Print one line of the change list and act on it, unless it was already
-/// handled.
-fn handle_change(row: &serde_json::Value, state: &mut omicron::config::State, react: &dyn Fn(&serde_json::Value)) -> Result<()> {
-    use std::io::Write;
-    let Some(seq) = row["seq"].as_i64() else { return Ok(()) };
-    if !state.is_new(seq) {
-        return Ok(());
-    }
-    let line = json!({
-        "seq": seq,
-        "at": row["at"],
-        "table": row["table_name"],
-        "type": row["kind"],
-        "project_id": row["project_id"],
-        "actor_id": row["actor_id"],
-        "record": row["record"],
-        "old_record": row["old_record"],
-    });
-    let mut out = std::io::stdout().lock();
-    writeln!(out, "{line}")?;
-    out.flush()?;
-    state.mark(seq);
-    state.save()?;
-    react(row);
-    Ok(())
 }
 
 /// Ask which machine, by number.

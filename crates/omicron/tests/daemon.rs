@@ -222,7 +222,12 @@ fn a_running_daemon_shows_as_awake_and_drops_off_when_it_stops() {
 
     let daemon = start_daemon(&home, &[]);
     daemon.wait_until_listening();
-    assert!(run(&other, &["machines", "awake"]).lines().any(|l| l == name), "{name} should be awake");
+    // The hosted Supabase takes a moment to list a machine that just joined.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !run(&other, &["machines", "awake"]).lines().any(|l| l == name) {
+        assert!(Instant::now() < deadline, "{name} should be awake");
+        std::thread::sleep(Duration::from_millis(500));
+    }
 
     drop(daemon);
     // Supabase notices the closed connection right away; allow a moment.

@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod board;
+pub mod changes;
 pub mod config;
 pub mod gate;
 pub mod handover;
