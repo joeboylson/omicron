@@ -41,8 +41,12 @@ test("offline and back: failures say so, nothing is lost or doubled, and the boa
 
   // Back online: the task is added (sent again by hand if it had failed),
   // once; what happened elsewhere shows up too.
+  // While offline the page says it may be out of date (#226), and stops
+  // saying so once it's back.
+  await expect(page.getByTestId("live-down")).toHaveText("Not up to date. Reconnecting…", { timeout: 10_000 });
   await context.setOffline(false);
   await expect(column.getByRole("button", { name: /Added elsewhere/ })).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.getByTestId("live-down")).toHaveCount(0, { timeout: 15_000 });
   const box = page.getByLabel(`New task in ${todo.name}`);
   if ((await box.inputValue()) === "Water the beans") {
     await page.getByRole("button", { name: "Add task", exact: true }).click();

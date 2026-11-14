@@ -1,3 +1,4 @@
+import { useLiveDown } from "@/lib/live";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { errorWords, OFFLINE_WORDS, signIn, SignInError, type Me } from "@/lib/omicron";
@@ -166,6 +167,7 @@ export default function App() {
         ) : (
           <NotFound />
         )}
+        <LiveDown />
         {error && (
           // Above any open sheet (they're z-50 and block the page), so an
           // error made in one is seen and can be tried again from there.
@@ -188,5 +190,24 @@ export default function App() {
       </div>
       </ToastProvider>
     </AppContext.Provider>
+  );
+}
+
+/** A quiet line while live updates aren't arriving: what's shown may be
+ *  out of date (HIG feedback #1, #3). It goes once they're back. */
+function LiveDown() {
+  const down = useLiveDown();
+  if (!down) return null;
+  return (
+    <div
+      role="status"
+      data-testid="live-down"
+      className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4"
+    >
+      <span className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm text-muted-foreground shadow-sm">
+        <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: "var(--sys-orange)" }} />
+        Not up to date. Reconnecting…
+      </span>
+    </div>
   );
 }
