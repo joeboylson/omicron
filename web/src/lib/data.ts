@@ -61,6 +61,7 @@ export type Dispatch = {
   result: string | null;
   error: string | null;
   created_at: string;
+  claimed_at: string | null;
 };
 export type HandoffNote = {
   id: string;
@@ -173,7 +174,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       db
         .from("tasks")
         .select(
-          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
+          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at,claimed_at),task_jobs(jobs(id,number,title,state,step,teams(name)))",
         )
         .eq("project_id", id)
         .order("position")

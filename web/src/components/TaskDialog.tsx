@@ -473,7 +473,19 @@ function DispatchRow({ project, task, onChanged }: { project: ProjectData; task:
   const [asking, setAsking] = useState(false);
   const session = project.sessions.find((s) => s.id === task.assignee_session_id);
   const latest = task.dispatches[0];
-  const working = asking || latest?.state === "pending" || latest?.state === "claimed";
+  // A request its asker never gave up on (the tab closed) or a machine took
+  // but never finished: over, whatever its state says; give up on it now.
+  const stale =
+    !!latest &&
+    ((latest.state === "pending" && Date.now() - new Date(latest.created_at).getTime() > (DISPATCH_CLAIM_SECONDS + 5) * 1000) ||
+      (latest.state === "claimed" && !!latest.claimed_at && Date.now() - new Date(latest.claimed_at).getTime() > 125_000));
+  useEffect(() => {
+    if (!stale || !latest) return;
+    const why = latest.state === "pending" ? `${session?.machine ?? "Its machine"} didn't pick it up in time.` : "Its machine took it but never said how it went.";
+    giveUpDispatch(db, latest.id, why).catch(() => {}).finally(onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stale, latest?.id]);
+  const working = asking || (!stale && (latest?.state === "pending" || latest?.state === "claimed"));
   const asleep = !!session && awake !== null && !awake.has(session.machine_id);
 
   async function dispatch() {

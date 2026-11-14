@@ -851,6 +851,25 @@ fn an_old_dispatch_is_never_taken_and_can_be_given_up() {
     let again = s.request_as(&login, "POST", "/rest/v1/rpc/give_up_dispatch", Some(json!({ "dispatch": id, "why": "x" }))).unwrap();
     assert_eq!(again, json!([]));
 
+    // Nobody gave up on these (#114): a pending one past its window and one
+    // a machine took but never finished. A new request for the task fails
+    // them, so the task never shows an old one as still going.
+    let make = || s.request_as(&login, "POST", "/rest/v1/dispatches", Some(json!({ "task_id": task_id }))).unwrap()[0]["id"].as_str().unwrap().to_string();
+    let (waiting, taken) = (make(), make());
+    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{waiting}"), Some(json!({ "created_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{taken}"), Some(json!({ "state": "claimed", "claimed_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    let fresh = make();
+    let states = s.admin_request("GET", &format!("/rest/v1/dispatches?id=in.({waiting},{taken},{fresh})&select=id,state,error"), None).unwrap();
+    let of = |i: &str| states.as_array().unwrap().iter().find(|r| r["id"] == i).unwrap().clone();
+    assert_eq!(of(&waiting)["state"], "failed");
+    assert!(of(&waiting)["error"].as_str().unwrap().contains("didn't pick it up in time"), "{states}");
+    assert_eq!((of(&taken)["state"].as_str(), of(&taken)["error"].as_str()), (Some("failed"), Some("Its machine took it but never said how it went.")));
+    assert_eq!(of(&fresh)["state"], "pending");
+    // A claimed request can be given up once its machine has had two minutes.
+    s.admin_request("PATCH", &format!("/rest/v1/dispatches?id=eq.{fresh}"), Some(json!({ "state": "claimed", "claimed_at": "2020-01-01T00:00:00Z" }))).unwrap();
+    let gave = s.request_as(&login, "POST", "/rest/v1/rpc/give_up_dispatch", Some(json!({ "dispatch": fresh, "why": "it crashed" }))).unwrap();
+    assert_eq!(gave[0]["state"], "failed");
+
     // Its window doesn't follow its inbox (no add-on): the task waits for
     // the next time it's opened, and Dispatch says so.
     let mut d = daemon(&mac, &path);

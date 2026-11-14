@@ -564,6 +564,35 @@ test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the 
   expect(scrolled).toBe(0);
 });
 
+test("a dispatch left waiting by an asker who went away shows as failed, and Dispatch works again", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  const claude = crypto.randomUUID();
+  const win = await omicron.open("parser", name, claude);
+  try {
+    omicron.hook(win.pid, "session-start", { session_id: claude, cwd: omicron.folder(), source: "resume" });
+    omicron.cli("tasks", "send", name, "1", "parser", "--as-machine");
+    // Asked for, then the tab closed: nobody gave up on it.
+    const [task] = await rest(request, robin.session, "GET", `/rest/v1/tasks?number=eq.1&select=id,projects!inner(name)&projects.name=eq.${encodeURIComponent(name)}`);
+    const [d] = await rest(request, robin.session, "POST", "/rest/v1/dispatches", { task_id: task.id });
+    const res = await request.fetch(`${need("OMICRON_SUPABASE_URL")}/rest/v1/dispatches?id=eq.${d.id}`, {
+      method: "PATCH",
+      headers: { apikey: need("OMICRON_SUPABASE_SECRET_KEY"), Authorization: `Bearer ${need("OMICRON_SUPABASE_SECRET_KEY")}` },
+      data: { created_at: "2020-01-01T00:00:00Z" },
+    });
+    expect(res.ok()).toBe(true);
+    await page.reload();
+    await page.getByRole("button", { name: "#1 Write the parser" }).click();
+    await expect(page.getByTestId("dispatch")).toContainText("didn't pick it up in time");
+    await expect(page.getByRole("button", { name: "Dispatching" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Dispatch" })).toBeVisible();
+  } finally {
+    win.kill();
+  }
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);
