@@ -76,6 +76,10 @@ async function escape(page) {
     await page.goto(`${url}/people`);
     await page.getByRole("heading", { level: 1, name: "People" }).waitFor();
     await shot("1b-people", true);
+    await page.getByRole("button", { name: "Add person" }).click();
+    await page.getByRole("dialog", { name: "Add someone" }).waitFor();
+    await shot("1l-add-person");
+    await escape(page);
     // One Project's people, and deleting someone (asks once more; cancelled).
     await page.getByLabel("Only people in").selectOption({ label: "In Lisbon trip" });
     await page.getByRole("button", { name: "More for Sam Rivera" }).click();

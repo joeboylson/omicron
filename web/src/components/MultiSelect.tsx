@@ -24,7 +24,10 @@ export function MultiSelect({
   picked,
   toggle,
   none = "None",
+  nothing = "Nothing matches.",
 }: {
+  /** Said when nothing matches what's typed. */
+  nothing?: string;
   /** What it picks, for screen readers (and tests). */
   label: string;
   choices: Choice[];
@@ -45,7 +48,7 @@ export function MultiSelect({
         <Command>
           {choices.length > 6 && <CommandInput placeholder="Search" aria-label={`Search ${label.toLowerCase()}`} />}
           <CommandList>
-            <CommandEmpty>Nothing matches.</CommandEmpty>
+            <CommandEmpty>{nothing}</CommandEmpty>
             <CommandGroup>
               {choices.map((c) => {
                 const on = picked.has(c.id);

@@ -3,7 +3,7 @@
 // take them out. Mirrors `omicron people`.
 
 import { useCallback, useEffect, useState } from "react";
-import { MoreHorizontal, Trash2, UserMinus } from "lucide-react";
+import { MoreHorizontal, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -35,6 +35,7 @@ export function PeoplePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   // Only people in one Project ("" for everyone).
   const [inProject, setInProject] = useState("");
+  const [adding, setAdding] = useState(false);
   // Deleting asks once more, in a dialog.
   const [deleting, setDeleting] = useState<PersonRow | null>(null);
 
@@ -135,7 +136,16 @@ export function PeoplePage() {
 
   return (
     <>
-      <TopBar here="/people" title="People" />
+      <TopBar
+        here="/people"
+        title="People"
+        actions={
+          <Button onClick={() => setAdding(true)}>
+            <UserPlus /> Add person
+          </Button>
+        }
+      />
+      <AddPerson open={adding} onOpenChange={setAdding} />
       <main className="mx-auto grid w-full max-w-5xl gap-3 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         {people === null ? (
           <ListSkeleton rows={4} />
@@ -192,5 +202,49 @@ export function PeoplePage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** How someone new gets in: they open this page's address and sign in with
+ *  Tailscale; then they're listed here, to add to Projects. */
+function AddPerson({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [copied, setCopied] = useState(false);
+  const address = window.location.origin;
+  // Opened on this computer itself, the address is one only it can use.
+  const here = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(address);
+  return (
+    <Dialog open={open} onOpenChange={(o) => (onOpenChange(o), setCopied(false))}>
+      <DialogContent className="gap-4 sm:max-w-md">
+        <DialogHeader className="text-left">
+          <DialogTitle>Add someone</DialogTitle>
+          <DialogDescription>
+            {here
+              ? "Send them the address you open Omicron with on your other devices. Once they’ve opened it, they’re listed here and you can add them to Projects."
+              : "Send them this address. Once they’ve opened it, they’re listed here and you can add them to Projects."}
+          </DialogDescription>
+        </DialogHeader>
+        {!here && (
+          <div className="flex items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
+            <code className="min-w-0 flex-1 break-all font-mono text-sm">{address}</code>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                navigator.clipboard?.writeText(address).then(
+                  () => setCopied(true),
+                  () => {},
+                )
+              }
+            >
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+        )}
+        <p className="text-sm text-muted-foreground">They need to be on your Tailscale network to open it.</p>
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

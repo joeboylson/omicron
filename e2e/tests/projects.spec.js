@@ -1170,6 +1170,12 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await page.goto(omicron.url);
   await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "People" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
+  // How to add someone new: they open Omicron's address once (#158).
+  await page.getByRole("button", { name: "Add person" }).click();
+  const adding = page.getByRole("dialog", { name: "Add someone" });
+  await expect(adding).toContainText("Once they’ve opened it, they’re listed here");
+  await adding.getByRole("button", { name: "Done" }).click();
+  await expect(adding).toHaveCount(0);
   await page.getByLabel("Search people").fill(sam);
   const row = page.getByRole("table", { name: "People" }).getByRole("row", { name: sam });
   const projects = row.getByRole("combobox", { name: `${sam}'s Projects` });

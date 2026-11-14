@@ -211,6 +211,7 @@ export function ProjectSettings({
             <MultiSelect
               label="Members"
               none="Just you"
+              nothing="Not here yet? Send them this page’s address: they show up once they’ve opened it."
               choices={people.filter((p) => p.id !== me.personId).map((p) => ({ id: p.id, name: p.display_name }))}
               picked={new Set(project.members.map((m) => m.id))}
               toggle={(id, on) => change(() => (on ? addMember(db, project.id, id) : removeMember(db, project.id, id)))}

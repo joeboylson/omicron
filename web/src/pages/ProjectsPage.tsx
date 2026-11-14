@@ -175,7 +175,7 @@ export function ProjectsPage() {
             {people.length > 0 && (
               <div className="grid gap-1.5">
                 <span className="text-sm font-medium">People</span>
-                <MultiSelect label="People" none="Just you" choices={people.map((p) => ({ id: p.id, name: p.display_name }))} picked={picked} toggle={toggle} />
+                <MultiSelect label="People" none="Just you" nothing="Not here yet? Send them this page’s address: they show up once they’ve opened it." choices={people.map((p) => ({ id: p.id, name: p.display_name }))} picked={picked} toggle={toggle} />
               </div>
             )}
             {allMachines.length > 0 && (
