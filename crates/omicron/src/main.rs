@@ -5,13 +5,16 @@ use omicron::identity;
 
 mod accounts_cmd;
 mod board_cmd;
+mod claude_setup;
 mod daemon;
 mod daemon_reactions;
 mod dispatch_cmd;
 mod doctor_cmd;
 mod folders_cmd;
 mod guide;
+mod handed;
 mod handoff_cmd;
+mod hooks;
 mod loops_cmd;
 mod machines_cmd;
 mod people_cmd;
@@ -21,6 +24,7 @@ mod teams_cmd;
 mod teams_run;
 mod teams_view;
 mod sessions_cmd;
+mod sessions_open;
 
 /// Tasks, Projects, and Claude sessions in one tool.
 #[derive(Parser)]
@@ -168,7 +172,7 @@ enum Command {
     Accounts(accounts_cmd::Accounts),
     /// Claude Code hooks (set up by `omicron sessions setup-claude`)
     #[command(subcommand, hide = true)]
-    Hook(sessions_cmd::Hook),
+    Hook(hooks::Hook),
 }
 
 #[derive(Subcommand)]
@@ -234,7 +238,7 @@ fn run(cli: Cli) -> Result<()> {
             }
             omicron::web::WebMachine { supabase, public_supabase_url, extra_hosts: hosts }.serve(port)
         }
-        Command::Open { name, project, resume, folder } => sessions_cmd::open(name, project, resume, folder),
+        Command::Open { name, project, resume, folder } => sessions_open::open(name, project, resume, folder),
         Command::Detach => {
             let name = std::env::var("OMICRON_SESSION").ok().filter(|n| !n.is_empty()).context("run this inside a session opened with `omicron open`")?;
             omicron::host::detach(&name)
@@ -272,11 +276,11 @@ fn run(cli: Cli) -> Result<()> {
         Command::Topics(cmd) => board_cmd::topics(cmd, cli.as_machine),
         Command::Loops(cmd) => loops_cmd::loops(cmd, cli.as_machine),
         Command::Teams(cmd) => teams_cmd::teams(cmd, cli.as_machine),
-        Command::Hook(event) => sessions_cmd::hook(event),
+        Command::Hook(event) => hooks::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),
         Command::Folders(cmd) => folders_cmd::folders(cmd, cli.as_machine),
         Command::Runs(cmd) => runs_cmd::runs(cmd, cli.as_machine),
-        Command::Link { name, project } => sessions_cmd::link(name, project),
+        Command::Link { name, project } => sessions_open::link(name, project),
         Command::Accounts(cmd) => accounts_cmd::accounts(cmd),
         Command::Daemon { action: None } => daemon::daemon(),
         Command::Daemon { action: Some(DaemonAction::StartAtLogin { print: true }) } => {

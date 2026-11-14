@@ -62,7 +62,7 @@ pub fn folders(cmd: FoldersCmd, as_machine: bool) -> Result<()> {
             let path = full_path(path)?;
             let Some(f) = here(&board, &path)? else { bail!("{} isn't one of this machine's folders", path.display()) };
             board.remove_folder(&f)?;
-            crate::sessions_cmd::remove_hooks(&local_settings(&path))?;
+            crate::claude_setup::remove_hooks(&local_settings(&path))?;
             sync(&board)?;
             println!("Took {} off {}'s folders. Only Omicron's hooks there were taken out.", f.path, f.project);
             Ok(())
@@ -78,7 +78,7 @@ pub fn folders(cmd: FoldersCmd, as_machine: bool) -> Result<()> {
 pub fn remember(board: &Board, project: &Project, path: &Path) -> Result<Folder> {
     let f = board.add_folder(project, &path.to_string_lossy())?;
     let exe = std::env::current_exe()?.canonicalize()?;
-    crate::sessions_cmd::add_hooks(&local_settings(path), &exe.to_string_lossy())?;
+    crate::claude_setup::add_hooks(&local_settings(path), &exe.to_string_lossy())?;
     keep_out_of_git(path);
     sync(board)?;
     Ok(f)

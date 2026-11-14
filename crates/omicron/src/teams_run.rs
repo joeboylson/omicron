@@ -204,7 +204,7 @@ fn role_texts(team: &TeamRow) -> Result<Vec<(String, String)>> {
 }
 
 fn claude_command(host: &str, instructions: &str, first: &str) -> Result<Vec<String>> {
-    let settings = crate::sessions_cmd::omicron_claude_settings()?;
+    let settings = crate::claude_setup::omicron_claude_settings()?;
     let mut cmd = vec![
         "claude".to_string(),
         "--session-id".into(),

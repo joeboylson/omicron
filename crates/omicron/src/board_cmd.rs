@@ -543,10 +543,10 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
                 bail!("a comment can have at most 10 images");
             }
             let words = text.split_whitespace().count();
-            if review && words > crate::sessions_cmd::REPORT_WORDS {
+            if review && words > crate::handed::REPORT_WORDS {
                 bail!(
                     "a report is at most {} words; this one is {words}. Cut it down to what changed and what's left.",
-                    crate::sessions_cmd::REPORT_WORDS
+                    crate::handed::REPORT_WORDS
                 );
             }
             let p = board.project(&project)?;
@@ -564,7 +564,7 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = if review { board.set_needs_review(&p, number, true)? } else { t };
             changed(&p, t)
         }
-        Tasks::Mine => crate::sessions_cmd::tasks_mine(),
+        Tasks::Mine => crate::handed::tasks_mine(),
         Tasks::Link { project, number, team, job } => {
             let p = board.project(&project)?;
             let t = board.task(&p, number)?;

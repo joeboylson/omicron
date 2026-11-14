@@ -88,7 +88,7 @@ pub fn pick() -> Result<()> {
     let rows: Vec<Row> = list.iter().map(Entry::row).collect();
     let Some(at) = choose("Sessions on this machine", &rows)? else { return Ok(()) };
     let s = &list[at].session;
-    crate::sessions_cmd::open(Some(s.name.clone()), Some(s.project.clone()), None, None)
+    crate::sessions_open::open(Some(s.name.clone()), Some(s.project.clone()), None, None)
 }
 
 /// A team member, as `omicron teams pick` lists it.
