@@ -115,6 +115,10 @@ async function escape(page) {
     await page.getByRole("link", { name: /^House and garden/ }).click();
     await page.getByRole("button", { name: /Fix the back gate/ }).waitFor();
     await shot("2-house");
+    // The same with Increase Contrast on (#214).
+    await page.emulateMedia({ contrast: "more" });
+    await shot("2b-house-more-contrast");
+    await page.emulateMedia({ contrast: "no-preference" });
     // Filters, a search that finds nothing, adding a task, a column's menu.
     // Filters: chips on wide screens, the View and filters menu on a phone.
     const filters = page.getByRole("group", { name: "Filters" });

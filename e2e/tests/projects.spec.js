@@ -2109,3 +2109,20 @@ test("closing a task keeps a half-written comment and what was typed in its note
   await open();
   await expect(sheet.getByLabel("Notes")).toHaveValue("Bring the drill");
 });
+
+test("Increase Contrast gives stronger borders, grey text and colors, light and dark", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("House"));
+  const token = (name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
+  const normal = await token("--border");
+  await page.emulateMedia({ contrast: "more", colorScheme: "light" });
+  // (#214)
+  await expect.poll(() => token("--border")).toBe("0 0% 55%");
+  expect(await token("--muted-foreground")).toBe("0 0% 24%");
+  expect(await token("--sys-green")).toBe("#248a3d");
+  await page.emulateMedia({ contrast: "more", colorScheme: "dark" });
+  await expect.poll(() => token("--border")).toBe("0 0% 50%");
+  expect(await token("--sys-green")).toBe("#30db5b");
+  await page.emulateMedia({ contrast: "no-preference", colorScheme: "light" });
+  await expect.poll(() => token("--border")).toBe(normal);
+});

@@ -133,6 +133,70 @@
     }
   }
 
+  /* Increase Contrast (prefers-contrast: more): darker borders, stronger
+     grey text and Apple's accessible system colors, in both themes. */
+  @media (prefers-contrast: more) {
+    :root {
+      --sys-red: #d70015;
+      --sys-orange: #c93400;
+      --orange-text: #c93400;
+      --indigo-text: #3634a3;
+      --sys-yellow: #b25000;
+      --sys-green: #248a3d;
+      --sys-teal: #0071a4;
+      --sys-blue: #0040dd;
+      --sys-indigo: #3634a3;
+      --sys-purple: #8944ab;
+      --sys-pink: #d30f45;
+      --sys-brown: #7f6545;
+      --sys-gray: #6c6c70;
+      --link: 220 100% 40%;
+      --muted-foreground: 0 0% 24%;
+      --border: 0 0% 55%;
+      --input: 0 0% 55%;
+    }
+    :root[data-theme="dark"] {
+      --sys-red: #ff6961;
+      --sys-orange: #ffb340;
+      --orange-text: #ffb340;
+      --indigo-text: #a5a3ff;
+      --sys-yellow: #ffd426;
+      --sys-green: #30db5b;
+      --sys-teal: #5de6ff;
+      --sys-blue: #409cff;
+      --sys-indigo: #7d7aff;
+      --sys-purple: #da8fff;
+      --sys-pink: #ff6482;
+      --sys-brown: #b59469;
+      --sys-gray: #aeaeb2;
+      --link: 212 100% 76%;
+      --muted-foreground: 0 0% 82%;
+      --border: 0 0% 50%;
+      --input: 0 0% 50%;
+    }
+  }
+  @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --sys-red: #ff6961;
+      --sys-orange: #ffb340;
+      --orange-text: #ffb340;
+      --indigo-text: #a5a3ff;
+      --sys-yellow: #ffd426;
+      --sys-green: #30db5b;
+      --sys-teal: #5de6ff;
+      --sys-blue: #409cff;
+      --sys-indigo: #7d7aff;
+      --sys-purple: #da8fff;
+      --sys-pink: #ff6482;
+      --sys-brown: #b59469;
+      --sys-gray: #aeaeb2;
+      --link: 212 100% 76%;
+      --muted-foreground: 0 0% 82%;
+      --border: 0 0% 50%;
+      --input: 0 0% 50%;
+    }
+  }
+
   * {
     @apply border-border;
   }
