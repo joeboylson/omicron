@@ -128,8 +128,8 @@ async function escape(page) {
     await shot("2e-add-task");
     await todo.getByRole("button", { name: "Cancel" }).click();
     await todo.getByRole("button", { name: "More for this column" }).click();
-    await page.getByRole("menuitem", { name: "Organize" }).hover();
-    await page.getByRole("menuitem", { name: "By name" }).waitFor();
+    await page.getByRole("menuitem", { name: "Sort by" }).hover();
+    await page.getByRole("menuitem", { name: "Name", exact: true }).waitFor();
     await shot("2f-column-menu");
     await page.keyboard.press("Escape");
     await escape(page);

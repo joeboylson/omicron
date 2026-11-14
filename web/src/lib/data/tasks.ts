@@ -126,11 +126,15 @@ export function positionBetween(before: number | undefined, after: number | unde
  * they're given to (people and sessions by name, then nobody). Tasks moved
  * in later stay where they're put.
  */
-export async function organize(db: SupabaseClient, project: ProjectData, tasks: Task[], by: "number" | "name" | "assignee") {
+/** Sort a status for good. Returns the places it had, for Undo (see `renumberTasks`). */
+export async function organize(db: SupabaseClient, project: ProjectData, tasks: Task[], by: "number" | "name" | "assignee" | "due"): Promise<{ id: string; position: number }[]> {
+  const before = tasks.map((t) => ({ id: t.id, position: t.position }));
   const who = (t: Task) =>
     project.members.find((m) => m.id === t.assignee_person_id)?.display_name ?? project.sessions.find((s) => s.id === t.assignee_session_id)?.name ?? null;
   const sorted = [...tasks].sort((a, b) => {
     if (by === "name") return a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }) || a.number - b.number;
+    // Soonest first; no date last.
+    if (by === "due" && a.due_on !== b.due_on) return a.due_on === null ? 1 : b.due_on === null ? -1 : a.due_on.localeCompare(b.due_on);
     if (by === "assignee") {
       const [x, y] = [who(a), who(b)];
       if (x !== y) return x === null ? 1 : y === null ? -1 : x.localeCompare(y);
@@ -140,6 +144,7 @@ export async function organize(db: SupabaseClient, project: ProjectData, tasks: 
   // Only the ones whose place changes.
   const changed = sorted.map((t, i) => ({ t, position: i + 1 })).filter(({ t, position }) => t.position !== position);
   await Promise.all(changed.map(({ t, position }) => db.from("tasks").update({ position }).eq("id", t.id).then(must)));
+  return before;
 }
 
 /** Give tasks new positions (a tied column numbered before a drop). */

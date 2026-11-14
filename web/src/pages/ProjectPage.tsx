@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowUpDown, CheckCircle2, ChevronLeft, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -27,7 +27,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
-import { Badge } from "@/components/ui/badge";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
 import { DateField, TaskDialog } from "@/components/TaskDialog";
@@ -727,6 +726,8 @@ function Column({
   onAdded: (number?: number, open?: boolean) => void;
 }) {
   const { db, act } = useApp();
+  const toast = useToast();
+  const addFromMenu = useRef(false);
   const [adding, setAdding] = useState(false);
   // Closed (Escape, Cancel): focus goes back to its Add a task, not the page.
   const addButton = useRef<HTMLButtonElement>(null);
@@ -799,9 +800,10 @@ function Column({
         {status ? status.name : label}
         <span className="font-mono font-normal text-muted-foreground">{tasks.length}</span>
         {status?.is_done && (
-          <Badge variant="outline" className="ml-auto font-normal">
-            Done
-          </Badge>
+          <span className="ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
+            <CheckCircle2 className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Tasks here count as done</span>
+          </span>
         )}
         {status && (
         <DropdownMenu>
@@ -810,24 +812,55 @@ function Column({
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent
+            align="end"
+            // Adding from here: focus goes to the new task's box, not back to ⋯.
+            onCloseAutoFocus={(e) => {
+              if (addFromMenu.current) {
+                e.preventDefault();
+                titleBox.current?.focus();
+              }
+              addFromMenu.current = false;
+            }}
+          >
+            <DropdownMenuItem
+              onSelect={() => {
+                addFromMenu.current = true;
+                setAdding(true);
+              }}
+            >
+              <Plus /> Add a task here
+            </DropdownMenuItem>
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <ArrowUpDown /> Organize
+              <DropdownMenuSubTrigger disabled={tasks.length < 2}>
+                <ArrowUpDown /> Sort by
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {(
                   [
-                    ["number", "By number"],
-                    ["name", "By name"],
-                    ["assignee", "By who it's given to"],
+                    ["number", "Number"],
+                    ["name", "Name"],
+                    ["due", "Date"],
+                    ["assignee", "Who it's given to"],
                   ] as const
                 ).map(([by, text]) => (
-                  <DropdownMenuItem key={by} disabled={tasks.length < 2} onSelect={() =>
-                    // The whole status, hidden cards too: numbering only the
-                    // ones showing would tie them with the rest (#118).
-                    act(async () => (await organize(db, project, project.tasks.filter((t) => t.status_id === status.id), by), onAdded()))
-                  }>
+                  <DropdownMenuItem
+                    key={by}
+                    onSelect={() =>
+                      // The whole status, hidden cards too: numbering only the
+                      // ones showing would tie them with the rest (#118).
+                      // It reorders the column for good, so it can be undone.
+                      act(async () => {
+                        const before = await organize(db, project, project.tasks.filter((t) => t.status_id === status.id), by);
+                        onAdded();
+                        toast({
+                          message: `${status.name} sorted by ${text.toLowerCase()}`,
+                          seconds: 8,
+                          action: { label: "Undo", run: () => void act(() => renumberTasks(db, before)).then(() => onAdded()) },
+                        });
+                      })
+                    }
+                  >
                     {text}
                   </DropdownMenuItem>
                 ))}

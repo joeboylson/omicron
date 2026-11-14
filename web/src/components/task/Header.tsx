@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Check, MoreHorizontal, Trash2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/lib/toast";
+import { ArrowRight, Check, Link2, MoreHorizontal, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { type Task } from "@/lib/data";
 import { DialogDescription, DialogHeader, DialogTitle } from "@/components/base/dialog";
 import { Button } from "@/components/base/button";
@@ -12,6 +13,7 @@ import { type SectionProps } from "@/components/task/save";
 
 /** The sheet's top: where the task is, its ⋯ menu, its title, and Needs review. */
 export function TaskHeader({ project, task, save, onDelete }: SectionProps & { onDelete: (task: Task) => void }) {
+  const toast = useToast();
   const [title, setTitle] = useState(task.title);
   // Someone else changed it while it's open: show theirs, unless it's being typed in.
   useEffect(() => {
@@ -51,6 +53,20 @@ export function TaskHeader({ project, task, save, onDelete }: SectionProps & { o
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            <DropdownMenuItem
+              onSelect={() => {
+                // This page's address, with the task open (?task=n).
+                const url = new URL(window.location.href);
+                url.searchParams.set("task", String(task.number));
+                navigator.clipboard?.writeText(url.toString()).then(
+                  () => toast({ message: `Link to #${task.number} copied`, seconds: 3 }),
+                  () => toast({ message: "Couldn't copy the link", seconds: 4 }),
+                );
+              }}
+            >
+              <Link2 /> Copy link
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(task)}>
               <Trash2 /> Delete task
             </DropdownMenuItem>

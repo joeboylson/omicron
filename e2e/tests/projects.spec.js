@@ -673,18 +673,34 @@ test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the 
   const titles = () => column(page, "To do").getByRole("button", { name: /^#\d+ / }).allTextContents();
 
   await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
-  await page.getByRole("menuitem", { name: "Organize" }).click();
-  await page.getByRole("menuitem", { name: "By name" }).click();
+  await page.getByRole("menuitem", { name: "Sort by" }).click();
+  await page.getByRole("menuitem", { name: "Name", exact: true }).click();
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Apple crumble", "Banana bread", "Cherry pie"]);
   await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
-  await page.getByRole("menuitem", { name: "Organize" }).click();
-  await page.getByRole("menuitem", { name: "By number" }).click();
+  await page.getByRole("menuitem", { name: "Sort by" }).click();
+  await page.getByRole("menuitem", { name: "Number", exact: true }).click();
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Cherry pie", "Apple crumble", "Banana bread"]);
+  // Sorting reorders for good, so it says so, with Undo (#182).
+  await expect(page.getByText("To do sorted by number")).toBeVisible();
+  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Sort by" }).click();
+  await page.getByRole("menuitem", { name: "Name", exact: true }).click();
+  await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Apple crumble", "Banana bread", "Cherry pie"]);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Cherry pie", "Apple crumble", "Banana bread"]);
+  // Add a task here, from the same menu.
+  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Add a task here" }).click();
+  await expect(page.getByLabel("New task in To do")).toBeFocused();
+  await page.keyboard.press("Escape");
+  // The Done column says so with a check, not a second "Done".
+  await expect(column(page, "Done").getByTitle("Tasks here count as done")).toBeVisible();
 
   // Marked done from its sheet: it goes to Done, and closing the sheet
   // leaves the board where it was.
   await column(page, "To do").getByRole("button", { name: /Apple crumble/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: "More for this task" }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
   await page.getByRole("menuitem", { name: "Mark done" }).click();
   await escape(page);
   await expect(column(page, "Done")).toContainText("Apple crumble");
@@ -756,8 +772,8 @@ test("a card dropped between tied cards lands there, and Organize while filtered
   // Organize while a search hides some: the whole column is put in order.
   await page.getByLabel("Search tasks").fill("b");
   await todo.getByRole("button", { name: "More for this column" }).click();
-  await page.getByRole("menuitem", { name: "Organize" }).hover();
-  await page.getByRole("menuitem", { name: "By name" }).click();
+  await page.getByRole("menuitem", { name: "Sort by" }).hover();
+  await page.getByRole("menuitem", { name: "Name", exact: true }).click();
   await page.getByLabel("Search tasks").fill("");
   await expect.poll(titles).toEqual(["Bread", "Butter", "Eggs", "Milk"]);
 });
