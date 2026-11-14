@@ -41,4 +41,9 @@ tmux new-session -d -s omicron-serve "$HOME/.local/bin/omicron serve --port $por
 tmux new-session -d -s omicron-daemon "$HOME/.local/bin/omicron daemon 2>>$log/daemon.log >/dev/null"
 sleep 2
 curl -s -o /dev/null -w "web page on 127.0.0.1:$port: %{http_code}\n" "http://127.0.0.1:$port/"
-"$HOME/.local/bin/omicron" machines awake | grep -qx atlas && echo "daemon: atlas is awake"
+# The daemon takes a few seconds to sign in and show as awake.
+for _ in $(seq 15); do
+  "$HOME/.local/bin/omicron" machines awake | grep -qx atlas && { echo "daemon: atlas is awake"; exit 0; }
+  sleep 1
+done
+echo "daemon: atlas isn't awake yet (see ~/.omicron/daemon.log)"; exit 1

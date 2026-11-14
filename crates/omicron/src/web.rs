@@ -351,7 +351,7 @@ impl WebMachine {
             return Ok(Err((409, "this computer has no machine key".into())));
         };
         let board = crate::board::Board { supabase: self.supabase.clone(), session: self.supabase.sign_in_machine(&key)? };
-        if board.machine_owner()?.as_deref() != Some(login.user.id.to_string().as_str()) {
+        if !crate::gate::Orders::new(&board).owner_visiting(&login.user.id.to_string())? {
             return Ok(Err((409, "you don't own the computer serving this page".into())));
         }
         let v = OwnerVisit { login, board, local };
@@ -601,12 +601,7 @@ impl WebMachine {
         if s.get(0).and_then(|r| r["machine_id"].as_str()) != Some(me.as_str()) {
             return Ok(Some(json_reply(409, json!({ "error": "that session isn't on this computer" }))));
         }
-        self.supabase.request_as(
-            &visit.board.session,
-            "PATCH",
-            &format!("/rest/v1/tasks?id=eq.{task}"),
-            Some(json!({ "assignee_session_id": session, "assignee_person_id": null, "given_by": null })),
-        )?;
+        visit.board.give_anew(task, Some(session))?;
         Ok(None)
     }
 
@@ -659,7 +654,7 @@ impl WebMachine {
             return elsewhere("its session isn't on the computer serving this page");
         }
         // Given again, by this computer: the session takes it as its own.
-        self.supabase.request_as(&board.session, "PATCH", &format!("/rest/v1/tasks?id=eq.{task_id}"), Some(json!({ "given_by": null })))?;
+        board.give_anew(&task_id.to_string(), None)?;
         let made = self.supabase.request_as(&board.session, "POST", "/rest/v1/dispatches?select=id", Some(json!({ "task_id": task_id })))?;
         let id = made.get(0).and_then(|r| r["id"].as_str()).context("the dispatch wasn't saved")?.to_string();
         eprintln!("omicron serve: {} dispatched a task from this computer's own page", login.user.id);

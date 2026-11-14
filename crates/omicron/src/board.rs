@@ -1008,8 +1008,21 @@ impl Board {
     pub fn send_task(&self, project: &Project, number: i64, session: &str) -> Result<Task> {
         let task = self.task(project, number)?;
         let s = self.session(project, session)?;
-        self.update_task(&task, json!({ "assignee_session_id": s.id, "assignee_person_id": null, "given_by": null }))?;
+        self.give_anew(&task.id, Some(&s.id))?;
         self.task(project, number)
+    }
+
+    /// Give a task anew, to `session` or to the session it's with: new again
+    /// to that session, given by whoever this board is signed in as (the
+    /// database sets who). Signed in as a machine, the session takes it as
+    /// its own machine's order, gate or not.
+    pub fn give_anew(&self, task_id: &str, session: Option<&str>) -> Result<()> {
+        let change = match session {
+            Some(s) => json!({ "assignee_session_id": s, "assignee_person_id": null, "given_by": null }),
+            None => json!({ "given_by": null }),
+        };
+        self.send("PATCH", &format!("/rest/v1/tasks?id=eq.{task_id}"), change)?;
+        Ok(())
     }
 
     /// The tasks given to a session that aren't done, oldest first, with

@@ -1668,6 +1668,14 @@ fn a_run_gives_big_tasks_to_a_team_and_checks_them_after() {
     assert!(jobs.contains("#1\twaiting") && jobs.contains("Big feature"), "{jobs}");
     assert!(ok(&pat, None, &["tasks", "show", &project, "1"]).contains(&format!("Job: {team} #1 Big feature")));
     wait_for("the lead told", || read(&mac, "lead.typed").contains("New job #1: Big feature"));
+    // A job Pat adds from elsewhere waits (Pat doesn't own the machine),
+    // saying why on the job, and the lead isn't told (#122).
+    ok(&pat, None, &["teams", "add-job", &team, "From Pat"]);
+    let note = || s.admin_request("GET", &format!("/rest/v1/jobs?title=eq.From%20Pat&select=state,note,teams!inner(name)&teams.name=eq.{team}"), None).unwrap()[0].clone();
+    wait_for("the waiting note", || note()["note"].as_str().is_some_and(|n| n.starts_with("Waiting: it was added from elsewhere.")));
+    assert_eq!(note()["state"], "waiting");
+    assert!(!read(&mac, "lead.typed").contains("From Pat"));
+    s.admin_request("PATCH", &format!("/rest/v1/jobs?title=eq.From%20Pat&team_id=eq.{}", s.admin_request("GET", &format!("/rest/v1/teams?name=eq.{team}&select=id"), None).unwrap()[0]["id"].as_str().unwrap()), Some(json!({ "state": "cancelled" }))).unwrap();
 
     // Small one done: hand off, then it waits for the team.
     ok(&pat, None, &["tasks", "done", &project, "2"]);

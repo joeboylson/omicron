@@ -274,6 +274,7 @@ fn launch_lead_told(board: &Board, team: &TeamRow, note: Option<&str>, told: Opt
     for j in jobs.iter().filter(|j| j.state == "waiting") {
         // Added from elsewhere: only by the machine's owner, gate open.
         if orders.takes(j.created_by.as_deref())? {
+            clear_waiting(board, j)?;
             waiting.push(format!("#{} {}", j.number, j.title));
         }
     }
@@ -695,9 +696,11 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
             if team.machine_id != key.machine_id.to_string() || team.state != "running" {
                 return Ok(());
             }
-            // Added from elsewhere: waits for the owner and the gate.
-            if !omicron::gate::Orders::new(&b).takes(record["created_by"].as_str())? {
-                return Ok(());
+            // Added from elsewhere: waits for the owner and the gate, saying
+            // so on the job.
+            let orders = omicron::gate::Orders::new(&b);
+            if !orders.takes(record["created_by"].as_str())? {
+                return note_waiting(&b, &orders, record["id"].as_str().unwrap_or(""), record["note"].as_str(), record["created_by"].as_str());
             }
             // A new lead is told about waiting jobs when it starts.
             if !start_lead(&b, &team)? {
@@ -711,6 +714,29 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// What a job added from elsewhere says while this machine won't start it.
+const WAITING: &str = "Waiting: it was added from elsewhere.";
+
+/// Say on a job why this machine won't start it yet (once; a job's own
+/// change isn't reacted to, so this can't go round).
+fn note_waiting(b: &Board, orders: &omicron::gate::Orders, job: &str, now: Option<&str>, who: Option<&str>) -> Result<()> {
+    let machine = b.machine(&b.session.user.id.to_string()).map(|m| m.name).unwrap_or_else(|_| "This computer".into());
+    let Some(why) = orders.refusal(who, &machine)? else { return Ok(()) };
+    let note = format!("{WAITING} {why}");
+    if now != Some(note.as_str()) && !job.is_empty() {
+        b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/jobs?id=eq.{job}&state=eq.waiting"), Some(serde_json::json!({ "note": note })))?;
+    }
+    Ok(())
+}
+
+/// Clear that note once the job is taken.
+fn clear_waiting(b: &Board, job: &omicron::board::Job) -> Result<()> {
+    if job.note.as_deref().is_some_and(|n| n.starts_with(WAITING)) {
+        b.supabase.request_as(&b.session, "PATCH", &format!("/rest/v1/jobs?id=eq.{}&state=eq.waiting", job.id), Some(serde_json::json!({ "note": null })))?;
     }
     Ok(())
 }
@@ -778,7 +804,10 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
         }
         for j in b.jobs(&team)?.into_iter().filter(|j| j.state == "waiting" && j.created_by.as_deref() != Some(me.as_str())) {
             if orders.takes(j.created_by.as_deref())? {
+                clear_waiting(&b, &j)?;
                 tell_lead(&b, &team, &format!("Job #{} is waiting: {}. Start it if nobody has.", j.number, j.title))?;
+            } else {
+                note_waiting(&b, &orders, &j.id, j.note.as_deref(), j.created_by.as_deref())?;
             }
         }
     }

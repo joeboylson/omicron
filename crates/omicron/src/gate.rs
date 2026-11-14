@@ -105,6 +105,14 @@ impl<'a> Orders<'a> {
         o
     }
 
+    /// The serving computer's one exception: its owner, on the page this
+    /// computer serves (seen by this computer itself), acts as the computer,
+    /// so what they do there needs no gate (ref/BRAINSTORM.md, "The gate").
+    /// Whether `person` is that owner.
+    pub fn owner_visiting(&self, person: &str) -> Result<bool> {
+        Ok(self.owner()? == Some(person))
+    }
+
     /// Whether the gate was open when these were read.
     pub fn gate_open(&self) -> bool {
         self.gate_open
