@@ -325,7 +325,7 @@ function GiveTo({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectLabel>People</SelectLabel>
+          <SelectLabel className="text-xs font-normal text-muted-foreground">People</SelectLabel>
           {project.members.map((m) => (
             <SelectItem key={m.id} value={`person:${m.id}`}>
               {m.display_name}
@@ -334,7 +334,7 @@ function GiveTo({
         </SelectGroup>
         {others.length > 0 && (
           <SelectGroup>
-            <SelectLabel>Claude sessions</SelectLabel>
+            <SelectLabel className="text-xs font-normal text-muted-foreground">Claude sessions</SelectLabel>
             {others.map((o) => (
               <SelectItem key={o.id} value={`session:${o.id}`}>
                 {o.name}

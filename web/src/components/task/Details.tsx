@@ -107,7 +107,7 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
             )}
             <SelectItem value={NOBODY}>Nobody</SelectItem>
             <SelectGroup>
-              <SelectLabel>People</SelectLabel>
+              <SelectLabel className="text-xs font-normal text-muted-foreground">People</SelectLabel>
               {project.members.map((m) => (
                 <SelectItem key={m.id} value={`person:${m.id}`}>
                   {m.display_name}
@@ -116,7 +116,7 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
             </SelectGroup>
             {project.sessions.length > 0 && (
               <SelectGroup>
-                <SelectLabel>Claude sessions</SelectLabel>
+                <SelectLabel className="text-xs font-normal text-muted-foreground">Claude sessions</SelectLabel>
                 {project.sessions.map((c) => (
                   <SelectItem key={c.id} value={`session:${c.id}`}>
                     {c.name}

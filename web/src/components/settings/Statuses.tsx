@@ -4,7 +4,6 @@ import { useApp } from "@/lib/app";
 import { addStatus, deleteStatus, markDoneStatus, renameStatus, setStatusColor, type Status } from "@/lib/data";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
-import { Badge } from "@/components/ui/badge";
 import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 import { statusColor } from "@/lib/colors";
@@ -79,12 +78,10 @@ function StatusRow({
           className={cn(bare, "px-0")}
         />
         {status.is_done ? (
-          <Badge variant="secondary" className="shrink-0 font-normal">
-            Done status
-          </Badge>
+          <span className="shrink-0 text-xs text-muted-foreground">Counts as done</span>
         ) : (
-          <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => change(() => markDoneStatus(db, status))}>
-            Make Done
+          <Button variant="ghost" size="sm" className="h-8 shrink-0 px-2 text-xs font-normal text-muted-foreground" onClick={() => change(() => markDoneStatus(db, status))}>
+            Count as done
           </Button>
         )}
         <Button

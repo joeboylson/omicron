@@ -798,7 +798,7 @@ function Column({
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
         {status && <ColorDot color={statusColor(status)} />}
         {status ? status.name : label}
-        <span className="font-mono font-normal text-muted-foreground">{tasks.length}</span>
+        <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>
         {status?.is_done && (
           <span className="ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
             <CheckCircle2 className="h-4 w-4" aria-hidden />
@@ -1032,7 +1032,7 @@ function TaskList({
             <h2 className="sticky top-0 z-10 flex min-h-9 items-center gap-2 bg-background px-3 text-[15px] font-semibold sm:text-sm">
               {g.status && <ColorDot color={statusColor(g.status)} />}
               {g.name}
-              <span className="font-mono font-normal text-muted-foreground">{g.tasks.length}</span>
+              <span className="font-normal tabular-nums text-muted-foreground">{g.tasks.length}</span>
             </h2>
             <ul aria-label={g.name} className="divide-y overflow-hidden rounded-xl border">
               {g.tasks.map((t) => (
@@ -1111,7 +1111,7 @@ function ColumnJump({ groups, board }: { groups: Group[]; board: React.RefObject
         >
           {g.status && <ColorDot color={statusColor(g.status)} />}
           {g.name}
-          <span className="font-mono text-muted-foreground">{g.tasks.length}</span>
+          <span className="tabular-nums text-muted-foreground">{g.tasks.length}</span>
         </button>
       ))}
     </nav>

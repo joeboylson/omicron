@@ -102,7 +102,7 @@ export function DevView({
           )}
         >
           {label}
-          {p === "terminal" && tabs.length > 0 && <span className="ml-1 font-mono text-muted-foreground">{tabs.length}</span>}
+          {p === "terminal" && tabs.length > 0 && <span className="ml-1 tabular-nums text-muted-foreground">{tabs.length}</span>}
         </button>
       ))}
     </div>
@@ -258,7 +258,7 @@ export function DevView({
           return (
             <section key={st.id} aria-label={st.name} className="pb-3">
               <h2 className="flex items-center gap-2 px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {st.name} <span className="font-mono">{tasks.length}</span>
+                {st.name} <span className="tabular-nums">{tasks.length}</span>
               </h2>
               <ul>
                 {tasks.map((t) => {

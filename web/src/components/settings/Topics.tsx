@@ -74,7 +74,7 @@ function TopicRow({
           }}
           className={cn(bare, "px-0")}
         />
-        <span className="shrink-0 font-mono text-sm text-muted-foreground" aria-label={`${count} tasks`}>
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground" aria-label={`${count} tasks`}>
           {count}
         </span>
         <Button

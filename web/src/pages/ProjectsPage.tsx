@@ -81,7 +81,7 @@ export function ProjectsPage() {
     header: ({ column }) => <SortHeader column={column} label={label} />,
     cell: ({ getValue }) => (
       <span className="text-muted-foreground sm:text-foreground">
-        <span className="font-mono">{getValue()}</span>
+        <span className="tabular-nums">{getValue()}</span>
         {/* On a phone there's no heading above it. */}
         <span className="sm:hidden"> {getValue() === 1 ? label.toLowerCase().replace(/s$/, "") : label.toLowerCase()}</span>
       </span>
@@ -165,13 +165,19 @@ export function ProjectsPage() {
             <DialogTitle>New Project</DialogTitle>
           </DialogHeader>
           <form onSubmit={start} className="grid gap-4">
-            <Input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name, like Kitchen remodel"
-              aria-label="New Project name"
-            />
+            <div className="grid gap-1.5">
+              <label htmlFor="new-project-name" className="text-sm font-medium">
+                Name
+              </label>
+              <Input
+                id="new-project-name"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Like Kitchen remodel"
+                aria-label="New Project name"
+              />
+            </div>
             {people.length > 0 && (
               <div className="grid gap-1.5">
                 <span className="text-sm font-medium">People</span>
@@ -197,7 +203,7 @@ export function ProjectsPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={!name.trim()}>
-                Start Project
+                Create Project
               </Button>
             </DialogFooter>
           </form>

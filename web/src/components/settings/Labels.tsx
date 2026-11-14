@@ -59,7 +59,7 @@ function LabelRow({
           }}
           className={cn(bare, "px-0")}
         />
-        <span className="shrink-0 font-mono text-sm text-muted-foreground" title={`On ${count} ${count === 1 ? "task" : "tasks"}`}>
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground" title={`On ${count} ${count === 1 ? "task" : "tasks"}`}>
           {count}
         </span>
         <Button

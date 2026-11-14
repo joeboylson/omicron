@@ -66,7 +66,7 @@ export function PeoplePage() {
             {p.display_name}
             {p.id === me.personId && <span className="font-normal text-muted-foreground"> (you)</span>}
             {/* On a phone, the login sits under the name. */}
-            <span className="block break-all font-mono text-xs font-normal text-muted-foreground sm:hidden">{p.logins.join(", ")}</span>
+            <span className="block truncate font-mono text-xs font-normal text-muted-foreground sm:hidden" title={p.logins.join(", ")}>{p.logins.join(", ")}</span>
           </span>
         </div>
       ),
@@ -86,7 +86,7 @@ export function PeoplePage() {
       cell: ({ row: { original: p } }) => (
         <MultiSelect
           label={`${p.display_name}'s Projects`}
-          none="No Projects you're in"
+          none="—"
           choices={choices}
           picked={new Set(visible(p))}
           toggle={(id, on) => change(() => (on ? addMember(db, id, p.id) : removeMember(db, id, p.id)))}

@@ -81,7 +81,7 @@ export function TaskCard({
           {task.comments.length > 0 && (
             <span className="flex items-center gap-1" title={`${task.comments.length} comments`}>
               <MessageSquare className="h-3.5 w-3.5" />
-              <span className="font-mono">{task.comments.length}</span>
+              <span className="tabular-nums">{task.comments.length}</span>
             </span>
           )}
           {session && (

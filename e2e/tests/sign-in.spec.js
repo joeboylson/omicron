@@ -123,7 +123,7 @@ test("each machine's Claude accounts show on the Machines page, live", async ({ 
   // Only people in a Project see machines.
   await page.getByRole("button", { name: "New Project" }).first().click();
   await page.getByLabel("New Project name").fill(unique("Desk"));
-  await page.getByRole("button", { name: "Start Project" }).click();
+  await page.getByRole("button", { name: "Create Project" }).click();
   await page.getByRole("button", { name: "Back to Projects" }).click();
   const name = unique("laptop");
   const key = omicron.cli("machines", "register", name, "--print").trim();

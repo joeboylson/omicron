@@ -39,7 +39,7 @@ async function startProjectIn(page, name) {
   await page.goto(omicron.url);
   await page.getByRole("button", { name: "New Project" }).first().click();
   await page.getByLabel("New Project name").fill(name);
-  await page.getByRole("button", { name: "Start Project" }).click();
+  await page.getByRole("button", { name: "Create Project" }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   return page.url().split("/p/")[1];
 }
@@ -236,12 +236,12 @@ test("statuses and members are set in Project settings", async ({ page, request 
   await settings(async (dialog) => {
     await addStatus(dialog, "Finished");
     const finished = dialog.getByRole("listitem").filter({ has: page.getByLabel("Status name: Finished") });
-    await finished.getByRole("button", { name: "Make Done" }).click();
-    await expect(finished).toContainText("Done status");
+    await finished.getByRole("button", { name: "Count as done" }).click();
+    await expect(finished).toContainText("Counts as done");
     await dialog.getByRole("button", { name: "Remove status Done" }).click();
     await expect(dialog.getByLabel("Status name: Done")).toHaveCount(0);
   });
-  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Doing/, /^Finished0Done/]);
+  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Doing/, /^Finished0Tasks here count as done/]);
 
   await page.getByRole("button", { name: "Project settings" }).click();
   const dialog = page.getByRole("dialog");
@@ -1356,7 +1356,7 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await page.getByLabel("Search people").fill(sam);
   const row = page.getByRole("table", { name: "People" }).getByRole("row", { name: sam });
   const projects = row.getByRole("combobox", { name: `${sam}'s Projects` });
-  await expect(projects).toHaveText("No Projects you're in");
+  await expect(projects).toHaveText("—");
 
   // Added to a Project: it shows at once.
   await projects.click();
@@ -1368,7 +1368,7 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await projects.click();
   await page.getByRole("option", { name: garden }).click();
   await page.keyboard.press("Escape");
-  await expect(projects).toHaveText("No Projects you're in");
+  await expect(projects).toHaveText("—");
 
   // Only the people in one Project (#73).
   await projects.click();
@@ -1388,7 +1388,7 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await page.getByRole("menuitem", { name: `Remove from ${garden}` }).click();
   await expect(row).toHaveCount(0);
   await page.getByLabel("Only people in").selectOption({ label: "Everyone" });
-  await expect(projects).toHaveText("No Projects you're in");
+  await expect(projects).toHaveText("—");
   await projects.click();
   await page.getByRole("option", { name: garden }).click();
   await page.keyboard.press("Escape");
@@ -1529,7 +1529,7 @@ test("a new Project starts in a modal, and Cancel or Escape leaves nothing behin
   await expect(dialog).toBeVisible();
   // The name box has focus, and Start waits for a name.
   await expect(dialog.getByLabel("New Project name")).toBeFocused();
-  await expect(dialog.getByRole("button", { name: "Start Project" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Create Project" })).toBeDisabled();
   await escape(page);
   await expect(dialog).toHaveCount(0);
 
@@ -1566,7 +1566,7 @@ test("a new Project can start with people and machines, its machines change in s
   await expect(dialog.getByRole("combobox", { name: "Machines" })).toHaveText(box);
   const name = unique("Garden");
   await dialog.getByLabel("New Project name").fill(name);
-  await dialog.getByRole("button", { name: "Start Project" }).click();
+  await dialog.getByRole("button", { name: "Create Project" }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
   // It started with them.
