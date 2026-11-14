@@ -1030,11 +1030,52 @@ function SortableTask({
   onOpen: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { column } });
+  // A finger held on the card: it starts to lift (cleared when the finger
+  // lifts or moves, as a scroll does) (#204). Its own listeners, so the
+  // drag's aren't disturbed.
+  const [pressing, setPressing] = useState(false);
+  const item = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    const el = item.current;
+    if (!el) return;
+    let from: { x: number; y: number } | null = null;
+    const start = (e: TouchEvent) => {
+      from = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      setPressing(true);
+    };
+    const move = (e: TouchEvent) => {
+      if (from && Math.hypot(e.touches[0].clientX - from.x, e.touches[0].clientY - from.y) > 8) stop();
+    };
+    const stop = () => {
+      from = null;
+      setPressing(false);
+    };
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: true });
+    el.addEventListener("touchend", stop);
+    el.addEventListener("touchcancel", stop);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", stop);
+      el.removeEventListener("touchcancel", stop);
+    };
+  }, []);
   return (
     <li
-      ref={setNodeRef}
+      ref={(el) => {
+        setNodeRef(el);
+        item.current = el;
+      }}
+      data-pressing={pressing && !isDragging ? "" : undefined}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn("touch-manipulation", isDragging && "opacity-40")}
+      // No text selection or iPhone callout on a long press (it picks the
+      // card up instead), and while held the card starts to lift, so it's
+      // clear holding on does something (#204).
+      className={cn(
+        "touch-manipulation select-none [-webkit-touch-callout:none] [&>*]:transition-[transform,box-shadow] [&>*]:duration-500 [&>*]:ease-out [&[data-pressing]>*]:scale-[1.03] [&[data-pressing]>*]:shadow-lg motion-reduce:[&>*]:transition-none",
+        isDragging && "opacity-40",
+      )}
       {...listeners}
       // The card inside is the button; this is just its place in the list.
       role="listitem"

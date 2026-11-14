@@ -153,6 +153,19 @@ for (const [kind, device] of [
       await swipe(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
       await page.waitForTimeout(1500);
       expect(await order()).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
+      // While held, the card starts to lift, and a long press never selects
+      // its text (#204).
+      {
+        const card = todo.getByRole("button", { name: /Fix the gate/ });
+        const b = await card.boundingBox();
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+        await page.waitForTimeout(300);
+        expect(await card.evaluate((el) => getComputedStyle(el).transform)).not.toBe("none");
+        expect(await card.evaluate((el) => getComputedStyle(el.parentElement).userSelect)).toBe("none");
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+        expect(await page.evaluate(() => String(window.getSelection()))).toBe("");
+      }
       // Held only a moment (under half a second): not picked up either (#191).
       await holdAndDrag(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }), 300);
       await page.waitForTimeout(1500);
