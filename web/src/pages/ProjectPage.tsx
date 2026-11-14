@@ -175,38 +175,61 @@ export function ProjectPage({ id }: { id: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const toast = useToast();
-  // Deleted tasks hide at once and are deleted for good a few seconds
-  // later, unless Undo is pressed (or straight away if the page closes).
+  // Deleted tasks hide at once and are deleted for good when their Undo
+  // goes away (or straight away if the page closes).
   const [hidden, setHidden] = useState<string[]>([]);
-  const pending = useRef(new Map<string, { task: Task; timer: ReturnType<typeof setTimeout> }>());
+  const pending = useRef(new Map<string, Task>());
   const finishDelete = useCallback(
     (id: string) => {
-      const p = pending.current.get(id);
-      if (!p) return;
-      clearTimeout(p.timer);
+      const t = pending.current.get(id);
+      if (!t) return;
       pending.current.delete(id);
-      act(() => deleteTask(db, p.task)).then(reload);
+      act(() => deleteTask(db, t)).then(reload);
     },
     [db, act, reload],
   );
   useEffect(() => () => [...pending.current.keys()].forEach(finishDelete), [finishDelete]);
+  const undoDelete = (id: string) => {
+    if (!pending.current.delete(id)) return false;
+    setHidden((h) => h.filter((x) => x !== id));
+    return true;
+  };
+  // The last deleted task, for Cmd/Ctrl+Z.
+  const lastDeleted = useRef<string | null>(null);
   const removeTask = (t: Task) => {
+    // Focus goes to the card after it in its column (or before it), not
+    // to the page, once the sheet has closed.
+    const group = groups.find((g) => g.tasks.some((x) => x.id === t.id));
+    const i = group ? group.tasks.findIndex((x) => x.id === t.id) : -1;
+    closedTask.current = (group?.tasks[i + 1] ?? group?.tasks[i - 1])?.number ?? null;
     setOpenTask(null);
     setHidden((h) => [...h, t.id]);
-    pending.current.set(t.id, { task: t, timer: setTimeout(() => finishDelete(t.id), 6000) });
+    pending.current.set(t.id, t);
+    lastDeleted.current = t.id;
     toast({
       message: `Deleted #${t.number} ${t.title}`,
-      action: {
-        label: "Undo",
-        run: () => {
-          const p = pending.current.get(t.id);
-          if (p) clearTimeout(p.timer);
-          pending.current.delete(t.id);
-          setHidden((h) => h.filter((x) => x !== t.id));
-        },
-      },
+      seconds: 10,
+      action: { label: "Undo", keys: "Meta+Z Control+Z", run: () => undoDelete(t.id) },
+      onGone: () => finishDelete(t.id),
     });
   };
+  // Cmd/Ctrl+Z, when not typing: brings back the task just deleted.
+  const undoKey = useRef<() => boolean>(() => false);
+  undoKey.current = () => {
+    const id = lastDeleted.current;
+    lastDeleted.current = null;
+    if (!id || !undoDelete(id)) return false;
+    toast({ message: "Task brought back", seconds: 3 });
+    return true;
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey || typing(e)) return;
+      if (undoKey.current()) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // On a phone, a finger that moves after press-and-hold would otherwise be
   // taken by the browser as scrolling, which cancels the drag. While a drag

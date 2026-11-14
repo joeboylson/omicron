@@ -1397,25 +1397,40 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
   const name = unique("House");
   const id = await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Fix the gate");
+  await page.getByLabel("New task in To do").fill("Paint the fence");
+  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
   const card = page.getByRole("button", { name: /#1 Fix the gate/ });
+  const next = page.getByRole("button", { name: /#2 Paint the fence/ });
+  const del = async () => {
+    await card.click();
+    await page.getByRole("button", { name: "More for this task" }).click();
+    await page.getByRole("menuitem", { name: "Delete task" }).click();
+    await expect(card).toHaveCount(0);
+  };
 
-  await card.click();
-  await page.getByRole("button", { name: "More for this task" }).click();
-  await page.getByRole("menuitem", { name: "Delete task" }).click();
-  await expect(card).toHaveCount(0);
+  // Deleted: focus goes to the next card, not the page (#148).
+  await del();
+  await expect(next).toBeFocused();
   const toast = page.getByRole("status").filter({ hasText: "Deleted #1 Fix the gate" });
   await expect(toast).toBeVisible();
+  await expect(toast.getByRole("button", { name: "Undo" })).toHaveAttribute("aria-keyshortcuts", /Meta\+Z/);
   await toast.getByRole("button", { name: "Undo" }).click();
   await expect(card).toBeVisible();
 
-  await card.click();
-  await page.getByRole("button", { name: "More for this task" }).click();
-  await page.getByRole("menuitem", { name: "Delete task" }).click();
-  await expect(card).toHaveCount(0);
-  // Not undone: deleted in the database a few seconds later.
+  // Cmd/Ctrl+Z brings it back too.
+  await del();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(card).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Task brought back" })).toBeVisible();
+
+  // Not undone: deleted in the database once the message goes.
+  await del();
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveCount(0, { timeout: 15000 });
   await expect
-    .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&select=id`)).length, { timeout: 10000 })
-    .toBe(0);
+    .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&select=title`)).map((t) => t.title), { timeout: 10000 })
+    .toEqual(["Paint the fence"]);
 });
 
 test("search and filters narrow the board", async ({ page, request }) => {
