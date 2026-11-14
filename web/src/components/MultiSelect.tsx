@@ -1,7 +1,7 @@
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/base/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 import { cn } from "@/lib/utils";
 
 export type Choice = { id: string; name: string; mono?: boolean };
@@ -44,7 +44,7 @@ export function MultiSelect({
           <ChevronsUpDown className="opacity-50" aria-hidden />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
+      <PopoverContent title={label} align="start" className="w-[--radix-popover-trigger-width] p-0">
         <Command>
           {choices.length > 6 && <CommandInput placeholder="Search" aria-label={`Search ${label.toLowerCase()}`} />}
           <CommandList>

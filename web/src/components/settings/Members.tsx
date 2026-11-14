@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { UserPlus, X } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 import { initials } from "@/components/TaskCard";
 import { useApp } from "@/lib/app";
 import { addMember, removeMember, type Person } from "@/lib/data";
@@ -61,7 +61,7 @@ function AddMember({ people, onAdd }: { people: Person[]; onAdd: (id: string) =>
           <UserPlus /> Add member
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-0">
+      <PopoverContent title="Add member" align="start" className="w-72 p-0">
         <Command>
           <CommandInput placeholder="Search people" />
           <CommandList>

@@ -4,7 +4,7 @@ import { useApp } from "@/lib/app";
 import { devApi, gateOpen, useDev } from "@/lib/dev";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", weekday: "short" });
 
@@ -48,10 +48,15 @@ export function GateButton() {
           aria-label={open ? `${dev.machine}'s remote control: on until ${time(dev.gate_until!)}` : `${dev.machine}'s remote control: off`}
         >
           <Icon className="h-4 w-4" style={{ color: open ? "var(--sys-green)" : undefined }} aria-hidden />
-          <span className="hidden sm:inline">{open ? `Remote control on until ${time(dev.gate_until!)}` : "Remote control off"}</span>
+          {/* Its name, and On or Off like a switch's state (HIG toggles #6). */}
+          <span className="sm:hidden">Remote</span>
+          <span className="hidden sm:inline">Remote control</span>
+          <span className="rounded-full bg-secondary px-1.5 text-xs font-medium text-secondary-foreground">
+            {open ? "On" : "Off"}
+          </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="grid w-80 max-w-[calc(100vw-2rem)] gap-3 text-sm">
+      <PopoverContent title="Remote control" align="end" className="grid w-80 max-w-[calc(100vw-2rem)] gap-3 text-sm">
         {/* This page is served by the computer: here it always takes your orders. */}
         <p>
           You can always use <span className="tabular-nums">{dev.machine}</span> from this page.{" "}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Plus, X } from "lucide-react";
 import { useApp } from "@/lib/app";
@@ -35,7 +35,7 @@ export function AddLabel({
           <Plus /> Add label
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
+      <PopoverContent title="Labels" align="start" className="w-64 p-0">
         <Command>
           <CommandInput placeholder="Label" value={typed} onValueChange={setTyped} />
           <CommandList>

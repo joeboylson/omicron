@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 import { formatDate } from "@/components/TaskCard";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/base/button";
@@ -47,7 +47,7 @@ export function DateField({
           <ChevronDown className="h-4 w-4 opacity-50" aria-hidden />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="grid w-60 gap-1 p-2">
+      <PopoverContent title="Date" align="end" className="grid w-60 gap-1 p-2">
         {(
           [
             ["Today", 0],

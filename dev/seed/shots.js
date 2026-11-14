@@ -89,7 +89,7 @@ async function escape(page) {
     await page.getByRole("menuitem", { name: "Remove from Lisbon trip" }).waitFor();
     await shot("1k-people-menu");
     await page.getByRole("menuitem", { name: "Delete Sam Rivera…" }).click();
-    const asked = page.getByRole("dialog", { name: "Delete Sam Rivera?" });
+    const asked = page.getByRole("alertdialog", { name: "Delete Sam Rivera?" });
     await asked.waitFor();
     await shot("1h-people-delete");
     await asked.getByRole("button", { name: "Cancel" }).click();
@@ -327,7 +327,7 @@ async function escape(page) {
       await page.getByRole("dialog").waitFor({ state: "detached" });
       await page.getByRole("button", { name: "Stop now" }).click();
       await shot("4l-run-stop");
-      await page.getByRole("dialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop now" }).click();
+      await page.getByRole("alertdialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop Now" }).click();
       await page.getByTestId("run").getByText("Last run").waitFor();
       // On a phone, one pane at a time.
       const panes = page.getByRole("radiogroup", { name: "Show" });

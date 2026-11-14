@@ -264,3 +264,14 @@ kbd {
 kbd {
   font-family: inherit;
 }
+
+/* A popover is a sheet from the bottom on a phone (components/base/popover). */
+@media (max-width: 639px) {
+  [data-radix-popper-content-wrapper]:has(> .sheet-on-phone) {
+    position: fixed !important;
+    transform: none !important;
+    inset: auto 0 0 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+}

@@ -9,7 +9,7 @@ import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn } from "@/lib/utils";
 import { GripVertical } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 import { formatDate, initials, LabelBadge, NeedsReview } from "@/components/TaskCard";
 import type { Color } from "@/lib/colors";
 
@@ -395,7 +395,7 @@ function AddFolder() {
           <Plus className="h-3.5 w-3.5" aria-hidden /> Add a folder
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="grid w-72 gap-2 text-sm">
+      <PopoverContent title="Add a folder" align="start" className="grid w-72 gap-2 text-sm">
         <p>In the folder, on this computer, run:</p>
         <div className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1">
           <code className="flex-1 font-mono text-xs">{command}</code>
