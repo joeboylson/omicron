@@ -1057,9 +1057,14 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
   const b = await column(page, "Claire's to-do").boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 });
   await page.waitForTimeout(150);
+  // Where it will land is drawn in the column it's over (#213).
+  await expect(column(page, "Claire's to-do").locator('li[aria-hidden="true"].bg-primary')).toHaveCount(1);
   const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
   await page.mouse.up();
   await expect(said).toContainText("Dropped");
+  await expect(column(page, "Claire's to-do").locator('li[aria-hidden="true"].bg-primary')).toHaveCount(0);
+  // The card it went to is focused, in view.
+  await expect(column(page, "Claire's to-do").getByRole("button", { name: /Water the plants/ })).toBeFocused();
   await saved;
   await expect(column(page, "Claire's to-do")).toContainText("Water the plants");
   // Nothing left without a topic: that column goes.

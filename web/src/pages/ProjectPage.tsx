@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
 import { ArrowUpDown, X, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
@@ -18,6 +18,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type Announcements,
   type DragStartEvent,
   type UniqueIdentifier,
@@ -93,6 +94,7 @@ export function ProjectPage({ id }: { id: string }) {
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
   const [layout, setLayout] = useStored<"board" | "list">(`omicron.layout.${id}`, "board");
   const [dragging, setDragging] = useState<Task | null>(null);
+  const [dropHint, setDropHint] = useState<{ column: string; before: string | null } | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   // Bumped to open "Add a task" in the first column (c, or the menu).
   const [addSignal, setAddSignal] = useState(0);
@@ -430,6 +432,17 @@ export function ProjectPage({ id }: { id: string }) {
     dragOn.current = true;
     setDragging(project.tasks.find((t) => t.id === e.active.id) ?? null);
   };
+  // Over another column: where it would land, unless a drop there does
+  // nothing. (In its own column the cards make room themselves.)
+  const onDragOver = (e: DragOverEvent) => {
+    const moved = project.tasks.find((t) => t.id === e.active.id);
+    const overTask = e.over ? project.tasks.find((t) => t.id === e.over!.id) : undefined;
+    const columnId = e.over ? (overTask ? String(e.over.data.current?.column) : String(e.over.id)) : "";
+    const col = parseColumn(columnId);
+    const own = moved && e.active.data.current?.column === columnId;
+    if (!moved || !col || own || !dropPlace(project.tasks, moved, overTask, col)) return setDropHint(null);
+    setDropHint({ column: columnId, before: overTask?.id ?? null });
+  };
   // Dropped: work out the column (a status or a topic) and
   // the place in it, show it at once, then save.
   const onDragEnd = (e: DragEndEvent) => {
@@ -455,6 +468,12 @@ export function ProjectPage({ id }: { id: string }) {
     })
       .finally(() => done.forEach((d) => d()))
       .then(reload);
+    // Where it went, in view and focused.
+    setTimeout(() => {
+      const card = document.querySelector<HTMLElement>(`[aria-label^="#${moved.number} "]`);
+      card?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      card?.focus({ preventScroll: true });
+    }, 50);
     movedTask(moved, { status_id: statusId, topic_id: topicId, position, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) });
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
@@ -752,10 +771,15 @@ export function ProjectPage({ id }: { id: string }) {
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDragEnd={(e) => {
+          setDropHint(null);
+          onDragEnd(e);
+        }}
         onDragCancel={() => {
           dragOn.current = false;
           setDragging(null);
+          setDropHint(null);
         }}
         accessibility={{
           screenReaderInstructions: {
@@ -766,7 +790,8 @@ export function ProjectPage({ id }: { id: string }) {
       >
       <ColumnJump groups={groups} board={board} />
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={board} className={cn(boardRow, "min-h-0")} onKeyDown={moveFocus}>
+        <DropHint.Provider value={dropHint}>
+        <div ref={board} className={cn(boardRow, "min-h-0", dragging && "snap-none")} onKeyDown={moveFocus}>
           {groups.map((g, i) => (
             <Column
               key={g.key}
@@ -785,11 +810,12 @@ export function ProjectPage({ id }: { id: string }) {
             />
           ))}
         </div>
+        </DropHint.Provider>
         <MoreToTheRight board={board} />
       </div>
         <DragOverlay>
           {dragging && (
-            <div className="rotate-1 cursor-grabbing shadow-xl">
+            <div className="rotate-1 cursor-grabbing opacity-90 shadow-xl">
               <TaskCard project={project} task={dragging} onOpen={() => {}} />
             </div>
           )}
@@ -839,6 +865,10 @@ export function ProjectPage({ id }: { id: string }) {
     </main>
   );
 }
+
+/** While a card is dragged over another column: that column, and the card
+ *  it would go before (null: at the end), to draw where it lands. */
+const DropHint = createContext<{ column: string; before: string | null } | null>(null);
 
 const boardRow =
   "flex flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:snap-none";
@@ -941,7 +971,9 @@ function Column({
       onAddShown();
     }
   }, [addSignal]);
-  const { setNodeRef, isOver } = useDroppable({ id: column });
+  const { setNodeRef } = useDroppable({ id: column });
+  const hint = useContext(DropHint);
+  const landing = hint?.column === column ? hint : null;
   // Whether the list has more below what's shown.
   const list = useRef<HTMLUListElement>(null);
   const [more, setMore] = useState(false);
@@ -995,7 +1027,7 @@ function Column({
       ref={setNodeRef}
       aria-label={label}
       data-group={groupKey}
-      className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", isOver && "bg-accent/80")}
+      className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", landing && "bg-accent/80")}
     >
       <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[15px] font-semibold sm:text-sm">
         {status && <ColorDot color={statusColor(status)} />}
@@ -1086,8 +1118,12 @@ function Column({
           )}
         >
           {tasks.map((t) => (
-            <SortableTask key={t.id} project={project} task={t} column={column} showStatus={!status} onOpen={() => onOpen(t)} />
+            <Fragment key={t.id}>
+              {landing?.before === t.id && <DropLine />}
+              <SortableTask project={project} task={t} column={column} showStatus={!status} onOpen={() => onOpen(t)} />
+            </Fragment>
           ))}
+          {landing && landing.before === null && <DropLine />}
         </ul>
       </SortableContext>
       {adding ? (
@@ -1144,6 +1180,11 @@ function Column({
 }
 
 /** A card that can be dragged to another place or column. */
+/** Where a dragged card will land in another column. */
+function DropLine() {
+  return <li aria-hidden className="mx-1 h-1 rounded-full bg-primary" />;
+}
+
 function SortableTask({
   project,
   task,

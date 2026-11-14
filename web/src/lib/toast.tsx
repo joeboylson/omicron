@@ -69,7 +69,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 aria-keyshortcuts={toast.action.keys}
-                className="-my-1 min-h-11 rounded-md px-3 py-1 font-semibold text-link-inverse sm:min-h-0 hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-my-1 min-h-11 rounded-md px-3 py-1 font-semibold text-link-inverse sm:min-h-0 [@media(pointer:coarse)]:min-h-11 hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   toast.action!.run();
                   end(true);
@@ -82,7 +82,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 aria-label="Close message"
-                className="relative -my-1 -mr-2 rounded-md p-1 text-background/70 after:absolute after:-inset-2 hover:bg-background/10 hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-my-2 -mr-2 flex h-11 w-11 items-center justify-center rounded-md text-background/70 sm:-my-1 sm:h-7 sm:w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 hover:bg-background/10 hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => end(false)}
               >
                 <X className="h-4 w-4" aria-hidden />
