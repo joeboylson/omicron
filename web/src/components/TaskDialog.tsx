@@ -639,7 +639,21 @@ function dayISO(d: Date): string {
 
 /** The task's date: shown as on its card (Nov 15), with quick picks, any
  *  day, and Clear (like Reminders and Things). */
-function DateField({ id, value, onChange }: { id: string; value: string | null; onChange: (v: string | null) => void }) {
+export function DateField({
+  id,
+  value,
+  onChange,
+  none = "None",
+  className,
+}: {
+  id?: string;
+  value: string | null;
+  onChange: (v: string | null) => void;
+  /** Shown when there's no date. */
+  none?: string;
+  /** For the button that opens it, in place of a sheet row's plain style. */
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const pick = (v: string | null) => {
     onChange(v);
@@ -653,8 +667,8 @@ function DateField({ id, value, onChange }: { id: string; value: string | null; 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button id={id} variant="ghost" className={cn(bare, "w-auto gap-1 pl-0 pr-3 font-normal text-muted-foreground hover:bg-transparent")}>
-          {value ? formatDate(value) : "None"}
+        <Button id={id} variant="ghost" className={className ?? cn(bare, "w-auto gap-1 pl-0 pr-3 font-normal text-muted-foreground hover:bg-transparent")}>
+          {value ? formatDate(value) : none}
           <ChevronDown className="h-4 w-4 opacity-50" aria-hidden />
         </Button>
       </PopoverTrigger>

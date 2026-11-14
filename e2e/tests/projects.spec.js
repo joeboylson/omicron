@@ -597,6 +597,21 @@ test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter op
   await expect(column(page, "To do").getByRole("button", { name: /Buy milk/ })).toBeVisible();
   await expect(box).toHaveValue("");
   await expect(box).toBeFocused();
+  // Said for screen readers, and who and when can be set as it's added (#167).
+  await expect(column(page, "To do").getByRole("status")).toHaveText("Added #1.");
+  await page.getByRole("button", { name: "For: Anyone" }).click();
+  await page.getByRole("menuitemradio", { name: /\(you\)/ }).click();
+  await page.getByRole("button", { name: "No date" }).click();
+  await page.getByRole("button", { name: /^Tomorrow/ }).click();
+  await box.fill("Book a sitter");
+  await page.keyboard.press("Enter");
+  const sitter = column(page, "To do").getByRole("button", { name: /^#2 Book a sitter/ });
+  await expect(sitter).toBeVisible();
+  const [y, m, d] = (() => { const t = new Date(); t.setDate(t.getDate() + 1); return [t.getFullYear(), t.getMonth(), t.getDate()]; })();
+  await expect(sitter).toContainText(new Date(y, m, d).toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+  // Picked for that one only: the next starts again from Anyone and no date.
+  await expect(page.getByRole("button", { name: "For: Anyone" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "No date" })).toBeVisible();
 
   // A long title wraps onto more lines instead of scrolling sideways.
   const before = (await box.boundingBox()).height;
@@ -604,8 +619,8 @@ test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter op
   expect((await box.boundingBox()).height).toBeGreaterThan(before);
   expect(await box.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
-  // Shift+Enter adds it and opens it, ready for its notes.
-  await page.keyboard.press("Shift+Enter");
+  // Shift+Enter (or Add and open) adds it and opens it, ready for its notes.
+  await page.getByRole("button", { name: "Add and open" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Plant the tulips along the fence");
   await expect(dialog.getByLabel("Notes")).toBeFocused();

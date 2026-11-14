@@ -317,9 +317,10 @@ export async function addTask(
   title: string,
   topicId: string | null = null,
   who?: Who,
+  dueOn?: string | null,
 ) {
   const position = after(project.tasks.filter((t) => t.status_id === statusId));
-  const given = who ? { assignee_person_id: who.person, assignee_session_id: who.session } : {};
+  const given = { ...(who ? { assignee_person_id: who.person, assignee_session_id: who.session } : {}), ...(dueOn ? { due_on: dueOn } : {}) };
   const row = must(
     await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId, ...given }).select("number").single(),
   ) as { number: number };

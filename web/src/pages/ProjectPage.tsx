@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, User } from "lucide-react";
 import { ArrowUpDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task } from "@/lib/data";
+import { addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
 import { inOrder, placeAt } from "@/lib/board-rules";
 import {
   DndContext,
@@ -28,7 +29,7 @@ import { Input } from "@/components/base/input";
 import { Badge } from "@/components/ui/badge";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
-import { TaskDialog } from "@/components/TaskDialog";
+import { DateField, TaskDialog } from "@/components/TaskDialog";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
@@ -729,6 +730,10 @@ function Column({
 }) {
   const { db, act } = useApp();
   const [adding, setAdding] = useState(false);
+  // Who it's for and when, picked in the add form; and what was just added.
+  const [forWho, setForWho] = useState<Who | undefined>(undefined);
+  const [due, setDue] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   // The box grows with what's typed, and shrinks back once it's added.
   const titleBox = useRef<HTMLTextAreaElement>(null);
@@ -759,15 +764,22 @@ function Column({
     setSaving(true);
     let number: number | undefined;
     const ok = await act(async () => {
-      // In a person's or session's column, it's given to them.
-      const who = kind === "p" ? { person: refId, session: null } : kind === "c" ? { person: null, session: refId } : undefined;
-      number = await addTask(db, project, addTo.id, t, topicId, who);
+      // Given to whoever was picked; in a person's or session's column, them.
+      const who = forWho ?? (kind === "p" ? { person: refId, session: null } : kind === "c" ? { person: null, session: refId } : undefined);
+      number = await addTask(db, project, addTo.id, t, topicId, who, due);
     });
     setSaving(false);
     if (ok) {
       // Only if it's still what was sent (more may have been typed since).
       setTitle((now) => (now.trim() === t ? "" : now));
+      setForWho(undefined);
+      setDue(null);
+      // Said, and shown: the new card scrolls into view once it's there.
+      setJustAdded(number ?? null);
       onAdded(number, open);
+      if (!open && number !== undefined) {
+        setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 400);
+      }
     }
   };
 
@@ -832,6 +844,9 @@ function Column({
       </SortableContext>
       {adding ? (
         <form onSubmit={add} className="mt-2 flex flex-col gap-2">
+          <span role="status" className="sr-only">
+            {justAdded !== null && `Added #${justAdded}.`}
+          </span>
           <Textarea
             autoFocus
             rows={1}
@@ -849,9 +864,22 @@ function Column({
             aria-label={`New task in ${label}`}
             className="min-h-9 w-full resize-none overflow-hidden bg-background py-2 [field-sizing:content] [overflow-wrap:anywhere]"
           />
-          <div className="flex gap-2">
+          {/* Who and when, set as it's added (or later, in the task). */}
+          <div className="flex flex-wrap gap-1.5">
+            <WhoChip project={project} value={forWho} onChange={setForWho} />
+            <DateField
+              value={due}
+              onChange={setDue}
+              none="No date"
+              className="h-8 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button type="submit" size="sm" disabled={!title.trim() || saving} aria-label="Add task">
               {saving ? "Adding…" : "Add task"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={!title.trim() || saving} onClick={(e) => add(e, true)}>
+              Add and open
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
               Cancel
@@ -1097,4 +1125,32 @@ function sayMoves(project: ProjectData, groups: Group[]): Announcements {
     },
     onDragCancel: ({ active }) => `Moving ${name(active.id)} was cancelled. It's back where it was.`,
   };
+}
+
+/** Who a new task is for: a member, or anyone (not given to anyone yet). */
+function WhoChip({ project, value, onChange }: { project: ProjectData; value: Who | undefined; onChange: (w: Who | undefined) => void }) {
+  const { me } = useApp();
+  const people = [...project.members].sort((a, b) => Number(b.id === me.personId) - Number(a.id === me.personId) || a.display_name.localeCompare(b.display_name));
+  const name = value?.person ? (project.members.find((m) => m.id === value.person)?.display_name ?? "Someone") : "Anyone";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="ghost" className="h-8 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground" aria-label={`For: ${name}`}>
+          <User className="h-3.5 w-3.5" aria-hidden /> {name}
+          <ChevronDown className="h-4 w-4 opacity-50" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuRadioGroup value={value?.person ?? ""} onValueChange={(v) => onChange(v ? { person: v, session: null } : undefined)}>
+          <DropdownMenuRadioItem value="">Anyone</DropdownMenuRadioItem>
+          {people.map((m) => (
+            <DropdownMenuRadioItem key={m.id} value={m.id}>
+              {m.display_name}
+              {m.id === me.personId && <span className="text-muted-foreground"> (you)</span>}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
