@@ -239,8 +239,11 @@ test("statuses and members are set in Project settings", async ({ page, request 
   await settings(async (dialog) => {
     await addStatus(dialog, "Finished");
     const finished = dialog.getByRole("listitem").filter({ has: page.getByLabel("Status name: Finished") });
-    await finished.getByRole("button", { name: "Count as done" }).click();
-    await expect(finished).toContainText("Counts as done");
+    // Pick-one, like radio buttons (#208): one on, the rest off.
+    await finished.getByRole("radio", { name: "Finished is the Done status" }).click();
+    await expect(finished.getByRole("radio")).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Done is the Done status" })).not.toBeChecked();
+    await expect(dialog.getByRole("radiogroup", { name: "Done status" }).getByRole("radio", { checked: true })).toHaveCount(1);
     await dialog.getByRole("button", { name: "Remove status Done" }).click();
     await expect(dialog.getByLabel("Status name: Done")).toHaveCount(0);
   });

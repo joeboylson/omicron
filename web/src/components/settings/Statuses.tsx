@@ -8,6 +8,7 @@ import { Group, Row, bare } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
 import { statusColor } from "@/lib/colors";
 import { ColorSelect } from "@/components/ColorDot";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { SectionProps } from "@/components/settings/types";
 
 export function StatusesSection({ project, change }: SectionProps) {
@@ -15,11 +16,22 @@ export function StatusesSection({ project, change }: SectionProps) {
   const [newStatus, setNewStatus] = useState("");
   return (
     <Group title="Statuses">
-      <ul className="divide-y">
-        {project.statuses.map((s) => (
-          <StatusRow key={s.id} status={s} inUse={project.tasks.some((t) => t.status_id === s.id)} change={change} />
-        ))}
-      </ul>
+      {/* Which one is the Done status: pick one, like a radio button. */}
+      <RadioGroup
+        aria-label="Done status"
+        value={project.statuses.find((s) => s.is_done)?.id ?? ""}
+        onValueChange={(id) => {
+          const s = project.statuses.find((x) => x.id === id);
+          if (s && !s.is_done) change(() => markDoneStatus(db, s));
+        }}
+        className="block"
+      >
+        <ul className="divide-y">
+          {project.statuses.map((s) => (
+            <StatusRow key={s.id} status={s} inUse={project.tasks.some((t) => t.status_id === s.id)} change={change} />
+          ))}
+        </ul>
+      </RadioGroup>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -77,13 +89,10 @@ function StatusRow({
           }}
           className={cn(bare, "px-0")}
         />
-        {status.is_done ? (
-          <span className="shrink-0 text-xs text-muted-foreground">Counts as done</span>
-        ) : (
-          <Button variant="ghost" size="sm" className="h-8 shrink-0 px-2 text-xs font-normal text-muted-foreground" onClick={() => change(() => markDoneStatus(db, status))}>
-            Count as done
-          </Button>
-        )}
+        <label className="relative flex shrink-0 cursor-pointer items-center gap-2 text-sm text-muted-foreground after:absolute after:-inset-3">
+          <RadioGroupItem className="relative z-10" value={status.id} aria-label={`${status.name} is the Done status`} />
+          Done
+        </label>
         <Button
           variant="ghost"
           size="icon"
