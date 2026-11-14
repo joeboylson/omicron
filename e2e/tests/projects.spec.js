@@ -386,6 +386,12 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     await page.getByLabel("Hand #1 to a session here").selectOption({ label: "parser" });
     await expect.poll(() => omicron.cliIn(win.pid, "tasks", "show", name, "1", "--as-machine")).toContain("sent to session parser");
     expect(omicron.cliIn(win.pid, "tasks", "mine", "--as-machine")).toContain(`#1 in ${name}: Write the parser (new)`);
+    // Once it has it: a chip saying so instead of Hand to…, and the session
+    // says it has one waiting (#177).
+    const tasksPane = page.getByRole("complementary", { name: "Tasks by column" });
+    await expect(tasksPane.getByLabel("Hand #1 to a session here")).toHaveCount(0);
+    await expect(tasksPane).toContainText("parser");
+    await expect(page.getByTestId("doing-parser")).toContainText(/1 waiting|on #1/);
 
     // Closing the tab leaves the session running.
     await page.getByRole("button", { name: "Close parser's tab (it keeps running)" }).click();

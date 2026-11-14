@@ -479,7 +479,16 @@ export function ProjectPage({ id }: { id: string }) {
       <main className="flex h-dvh min-h-0 flex-col">
         {nav}
         <RunBar project={project} onChanged={reload} />
-        <DevView project={project} dev={dev} onChanged={reload} />
+        <DevView
+          project={project}
+          dev={dev}
+          onChanged={reload}
+          onOpenTask={(n) => {
+            // Opened on the Tasks view, where its sheet is.
+            setViewInAddress(null);
+            setOpenTask(n);
+          }}
+        />
       </main>
     );
   }

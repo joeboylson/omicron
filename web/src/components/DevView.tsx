@@ -6,6 +6,9 @@ import type { ProjectData, Task } from "@/lib/data";
 import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn } from "@/lib/utils";
+import { GripVertical } from "lucide-react";
+import { formatDate, initials, LabelBadge, NeedsReview } from "@/components/TaskCard";
+import type { Color } from "@/lib/colors";
 
 const TASK = "application/x-omicron-task";
 
@@ -16,8 +19,20 @@ const TASK = "application/x-omicron-task";
  * board as a list, by column; drag a task onto a session to hand it over
  * here (or pick the session in the task's row).
  */
-export function DevView({ project, dev, onChanged }: { project: ProjectData; dev: Dev; onChanged: () => void }) {
+export function DevView({
+  project,
+  dev,
+  onChanged,
+  onOpenTask,
+}: {
+  project: ProjectData;
+  dev: Dev;
+  onChanged: () => void;
+  onOpenTask?: (number: number) => void;
+}) {
   const { db, act } = useApp();
+  // A task being dragged: sessions here show they'll take it.
+  const [carrying, setCarrying] = useState(false);
   const here = project.sessions.filter((s) => s.machine_id === dev.machine_id).sort((a, b) => a.name.localeCompare(b.name));
   const folders = project.folders.filter((f) => f.machine_id === dev.machine_id);
   const [tabs, setTabs] = useState<string[]>([]);
@@ -62,7 +77,6 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
       const r = await devAction(db, "/handoff", { session: name });
       setSaid(r?.said ?? null);
     });
-  const sessionName = (id: string | null) => project.sessions.find((s) => s.id === id)?.name;
 
   return (
     <>
@@ -143,12 +157,19 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
                     "flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted lg:min-h-9",
                     active === s.name && "bg-secondary",
                     over === s.id && "ring-2 ring-[var(--sys-blue)]",
+                    carrying && over !== s.id && "ring-1 ring-dashed ring-[var(--sys-blue)]",
                   )}
                   onClick={() => open(s.name)}
                   title={`${s.folder}: open its terminal`}
                 >
                   <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--sys-green)" }} />
-                  <span className="truncate font-medium">{s.name}</span>
+                  {/* Its name, then where and what it's doing. */}
+                  <span className="grid min-w-0">
+                    <span className="truncate font-medium">{s.name}</span>
+                    <span className="truncate text-[11px] text-muted-foreground" data-testid={`doing-${s.name}`}>
+                      {sessionDoing(project, s, done)}
+                    </span>
+                  </span>
                   <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
                     {project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id)).length || ""}
                   </span>
@@ -223,38 +244,76 @@ export function DevView({ project, dev, onChanged }: { project: ProjectData; dev
                 {st.name} <span className="font-mono">{tasks.length}</span>
               </h2>
               <ul>
-                {tasks.map((t) => (
-                  <li
-                    key={t.id}
-                    draggable={here.length > 0}
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(TASK, t.id);
-                      e.dataTransfer.effectAllowed = "link";
-                    }}
-                    className="group flex items-center gap-2 rounded px-1 py-1 hover:bg-muted"
-                  >
-                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{t.number}</span>
-                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                    {here.length > 0 && (
-                      <select
-                        aria-label={`Hand #${t.number} to a session here`}
-                        className="max-w-24 shrink-0 truncate rounded border-0 bg-transparent text-[11px] text-muted-foreground"
-                        value={here.some((s) => s.id === t.assignee_session_id) ? t.assignee_session_id! : ""}
-                        onChange={(e) => {
-                          const task = t;
-                          if (e.target.value) give(task, e.target.value);
-                        }}
+                {tasks.map((t) => {
+                  const isDone = done.has(t.status_id);
+                  const person = project.members.find((m) => m.id === t.assignee_person_id);
+                  const session = project.sessions.find((x) => x.id === t.assignee_session_id);
+                  const labels = project.labels.filter((l) => t.labelIds.includes(l.id));
+                  return (
+                    <li
+                      key={t.id}
+                      draggable={here.length > 0 && !isDone}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(TASK, t.id);
+                        e.dataTransfer.effectAllowed = "link";
+                        setCarrying(true);
+                      }}
+                      onDragEnd={() => setCarrying(false)}
+                      className="group flex items-start gap-1.5 rounded px-1 py-1 hover:bg-muted"
+                    >
+                      {/* A grip: it can be dragged onto a session. */}
+                      {here.length > 0 && !isDone ? (
+                        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />
+                      ) : (
+                        <span className="w-4 shrink-0" />
+                      )}
+                      <button
+                        type="button"
+                        className="grid min-w-0 flex-1 gap-1 text-left"
+                        onClick={() => onOpenTask?.(t.number)}
+                        aria-label={`#${t.number} ${t.title}`}
                       >
-                        <option value="">{sessionName(t.assignee_session_id) ?? "Hand to…"}</option>
-                        {here.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </li>
-                ))}
+                        <span className={cn("break-words", isDone && "text-muted-foreground line-through")}>
+                          <span className="mr-1 font-mono text-[11px] text-muted-foreground">#{t.number}</span>
+                          {t.title}
+                        </span>
+                        {(t.needs_review || labels.length > 0 || t.due_on) && (
+                          <span className="flex flex-wrap items-center gap-1 text-[11px]">
+                            {t.needs_review && <NeedsReview />}
+                            {labels.map((l) => (
+                              <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />
+                            ))}
+                            {t.due_on && <span className="text-muted-foreground">{formatDate(t.due_on)}</span>}
+                          </span>
+                        )}
+                      </button>
+                      {/* Who has it, as a chip; or, if nobody here, Hand to… (not on Done). */}
+                      {session && here.some((h) => h.id === session.id) ? (
+                        <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-mono text-[11px]">
+                          <TerminalIcon className="h-3 w-3" aria-hidden /> {session.name}
+                        </span>
+                      ) : !isDone && here.length > 0 ? (
+                        <select
+                          aria-label={`Hand #${t.number} to a session here`}
+                          className="mt-0.5 max-w-24 shrink-0 truncate rounded border-0 bg-transparent text-[11px] text-link"
+                          value=""
+                          onChange={(e) => e.target.value && give(t, e.target.value)}
+                        >
+                          <option value="">{session ? session.name : person ? person.display_name : "Hand to…"}</option>
+                          {here.map((x) => (
+                            <option key={x.id} value={x.id}>
+                              {x.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : person ? (
+                        <span className="mt-0.5 shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px]" title={person.display_name}>
+                          {initials(person.display_name)}
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           );
@@ -287,4 +346,13 @@ function Notes({ notes }: { notes: ProjectData["handoffs"] }) {
       </ul>
     </details>
   );
+}
+
+/** A session's folder (short name) and what it's on: "omicron · on #8". */
+function sessionDoing(project: ProjectData, s: ProjectData["sessions"][number], done: Set<string>): string {
+  const folder = s.folder ? s.folder.replace(/\/+$/, "").split("/").pop() : null;
+  const mine = project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id));
+  const on = mine.find((t) => t.picked_up_at);
+  const what = on ? `on #${on.number}` : mine.length ? `${mine.length} waiting` : "free";
+  return folder ? `${folder} · ${what}` : what;
 }
