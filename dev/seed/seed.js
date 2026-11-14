@@ -417,8 +417,8 @@ async function seed(omicron) {
     const [askTask] = await asStudio("POST", "/rest/v1/tasks", {
       project_id: code.id,
       status_id: todoRow.id,
-      title: "lumen: builder-2 asks about deletes",
-      notes: "Should deleting a task also delete its comments, or keep them in the activity log?\n\nAnswer with a comment; it goes straight back to builder-2.",
+      title: "Should deleting a task also delete its comments, or keep them in the activity log?",
+      notes: "builder-2 in the lumen team asks:\n\nShould deleting a task also delete its comments, or keep them in the activity log?",
       position: -1,
     });
     await asStudio("POST", "/rest/v1/team_requests", { team_id: team.id, job_id: job.id, worker: "builder-2", task_id: askTask.id });

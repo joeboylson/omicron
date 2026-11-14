@@ -247,7 +247,7 @@ export function Comments({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
             }}
-            placeholder={dragging ? "Drop images to add them" : "Add a comment"}
+            placeholder={dragging ? "Drop images to add them" : task.question?.open ? `Answer ${task.question.worker}` : "Add a comment"}
             aria-label="New comment"
             rows={1}
             className="min-h-10 resize-none border-0 bg-transparent px-0 focus-visible:ring-0 focus-visible:ring-offset-0"

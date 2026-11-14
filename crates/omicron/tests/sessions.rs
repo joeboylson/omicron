@@ -594,7 +594,7 @@ fn open_inside_a_claude_window_says_what_to_run_once_its_closed() {
     let o = command(&c, None, &["open"]).env("CLAUDE_CODE_SESSION_ID", &conversation).current_dir(&folder).output().unwrap();
     assert!(!o.status.success());
     let said = String::from_utf8_lossy(&o.stderr);
-    assert!(said.contains("Quit this window (/exit)"), "{said}");
+    assert!(said.contains("quit Claude (/exit)") && said.contains("! omicron link 'my app'"), "{said}");
     assert!(said.contains(&format!("omicron open 'my app' --resume {conversation}")), "{said}");
     let o = command(&c, None, &["open", "parser", "--project", "Code"]).env("CLAUDE_CODE_SESSION_ID", &conversation).output().unwrap();
     assert!(String::from_utf8_lossy(&o.stderr).contains(&format!("omicron open parser --project Code --resume {conversation}")));
@@ -1192,7 +1192,9 @@ fn a_team_runs_a_job_from_start_to_finish() {
     assert!(jobs.starts_with("#1\tblocked"), "{jobs}");
     let n = out.trim_start_matches("Asked (task #").split(')').next().unwrap().to_string();
     let shown = ok(&pat, None, &["tasks", "show", &project, &n]);
-    assert!(shown.contains(&format!("{team}: planner asks about job #1")) && shown.contains("Email login, or Google too?"), "{shown}");
+    // The question is its title; who asks is in its notes (#222).
+    assert!(shown.starts_with(&format!("#{n}  Email login, or Google too?")), "{shown}");
+    assert!(shown.contains(&format!("planner in the {team} team asks about job #1")), "{shown}");
     ok(&pat, None, &["tasks", "comment", &project, &n, "Email only for now."]);
     // From elsewhere, with the gate closed: it waits, and isn't dropped.
     std::thread::sleep(std::time::Duration::from_secs(3));

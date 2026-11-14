@@ -1178,7 +1178,7 @@ test("a team's question shows it's waiting on you, and what happened to the answ
   const me = await newPerson(page, request);
   const name = unique("Code");
   const projectId = await startProjectIn(page, name);
-  await addTaskIn(page, "To do", "Lumen: builder-2 asks about the API");
+  await addTaskIn(page, "To do", "Which API version should it use?");
   // The team and its question, as the team's computer would make them.
   const [task] = await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${projectId}&select=id`);
   const [machine] = await admin(request, "GET", `/rest/v1/machines?name=eq.${machineName}&select=id`);
@@ -1188,11 +1188,15 @@ test("a team's question shows it's waiting on you, and what happened to the answ
   await page.reload();
 
   // The card says so; the sheet says who asks.
-  const card = page.getByRole("button", { name: /#1 Lumen: builder-2 asks/ });
+  const card = page.getByRole("button", { name: /#1 Which API version/ });
   await expect(card).toContainText("Team is waiting on you");
   await card.click();
   const sheet = page.getByRole("dialog");
-  await expect(sheet.getByText("builder-2 in Lumen asks")).toBeVisible();
+  // The question is the title; who asks is plain text; the box says whom
+  // the answer goes to (#222).
+  await expect(sheet.getByTestId("asked-by")).toHaveText("Lumen team, builder-2");
+  await expect(sheet.getByLabel("New comment")).toHaveAttribute("placeholder", "Answer builder-2");
+  await expect(sheet.locator("#task-notes")).toHaveCount(0);
 
   // Answered while the team's computer's gate is closed: held, and says so.
   await sheet.getByLabel("New comment").fill("Use version 2.");

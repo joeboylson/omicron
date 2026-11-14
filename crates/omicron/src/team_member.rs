@@ -79,8 +79,10 @@ pub fn ask(question: &str) -> Result<String> {
     let (task_id, number) = board.add_task_at_bottom(
         &team.project_id,
         &status_id,
-        &format!("{}: {me} asks{about}", team.name),
-        &format!("{question}\n\nAnswer with a comment; it goes straight back to {me}."),
+        // The question is the title; who asks is the note (the page shows
+        // it as plain text, and the answer is a comment).
+        &title_from(question),
+        &format!("{me} in the {} team asks{about}:\n\n{question}", team.name),
         to.as_deref(),
     )?;
     board.add_team_request(&team, asker.as_deref(), &me, &task_id)?;
@@ -91,6 +93,19 @@ pub fn ask(question: &str) -> Result<String> {
         tell_lead(&board, &team, &format!("{me} asked a person{about}: {question} (task #{number}). It'll come back to {me}."))?;
     }
     Ok(format!("Asked (task #{number}). The answer will come back to you here; carry on with anything that doesn't need it."))
+}
+
+/// A question as a task's title: one line, sentence case, not too long.
+fn title_from(question: &str) -> String {
+    let line = omicron::text::line(&question.replace('\r', " "));
+    let mut c = line.chars();
+    let first = c.next().map(|f| f.to_uppercase().collect::<String>()).unwrap_or_default();
+    let line = first + c.as_str();
+    if line.chars().count() <= 120 {
+        return line;
+    }
+    let cut: String = line.chars().take(119).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// A one-line heads-up for the whole team: kept in the folder's
