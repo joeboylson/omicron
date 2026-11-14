@@ -299,6 +299,7 @@ fn run(cli: Cli) -> Result<()> {
             omicron::host::detach(&name)
         }
         Command::Gate(cmd) => {
+            let changes = !matches!(cmd, GateCmd::Status);
             match cmd {
                 GateCmd::Open { until } => {
                     omicron::gate::open(&until)?;
@@ -312,6 +313,15 @@ fn run(cli: Cli) -> Result<()> {
                 }
                 GateCmd::Close => omicron::gate::close()?,
                 GateCmd::Status => {}
+            }
+            // Pages show it (the computer still decides).
+            if changes {
+                let config = Config::load()?;
+                if let (Ok(supabase), Ok(key)) = (config.supabase(), config.machine_key()) {
+                    if let Err(e) = supabase.sign_in_machine(&key).and_then(|s| omicron::gate::report(&supabase, &s)) {
+                        eprintln!("couldn't tell Omicron about the gate: {e:#}");
+                    }
+                }
             }
             println!("{}", omicron::gate::status());
             Ok(())
@@ -633,6 +643,10 @@ fn daemon() -> Result<()> {
     let login = || {
         let session = supabase.sign_in_machine(&key)?;
         supabase.request_as(&session, "POST", "/rest/v1/rpc/machine_check_in", Some(json!({})))?;
+        // And its gate, in case it closed by itself or changed by hand.
+        if let Err(e) = omicron::gate::report(&supabase, &session) {
+            eprintln!("couldn't tell Omicron about the gate: {e:#}");
+        }
         Ok(session)
     };
     // Things this machine does when it hears about them, each in its own

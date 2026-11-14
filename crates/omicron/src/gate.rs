@@ -53,6 +53,14 @@ pub fn open(until: &str) -> Result<DateTime<Local>> {
     Ok(when)
 }
 
+/// Tell Omicron when this machine's gate closes (null when it's closed), for
+/// pages to show. Display only: this machine still decides from its file.
+pub fn report(supabase: &crate::supa::Supabase, session: &crate::supa::Session) -> Result<()> {
+    let until = open_until().map(|t| t.to_rfc3339());
+    supabase.request_as(session, "POST", "/rest/v1/rpc/machine_report_gate", Some(serde_json::json!({ "until": until })))?;
+    Ok(())
+}
+
 pub fn close() -> Result<()> {
     match std::fs::remove_file(path()?) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
