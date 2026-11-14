@@ -398,6 +398,14 @@ fn run_hook(event: Hook, input: &str) -> Result<Option<String>> {
         }
         return Ok(None);
     };
+    if every_turn {
+        if let (Some(id), Some(transcript)) = (windows.windows.get(&pid).and_then(|w| w.session_id.clone()), input["transcript_path"].as_str()) {
+            // A /rename since last time renames the session here too.
+            if let Err(e) = omicron::names::follow(|| sign_in(true), &id, &claude_id, std::path::Path::new(transcript)) {
+                eprintln!("omicron: following /rename: {e:#}");
+            }
+        }
+    }
     if let Hook::Prompt = event {
         // A turn started: busy until it ends (for loops).
         if let Some(id) = windows.windows.get(&pid).and_then(|w| w.session_id.clone()) {

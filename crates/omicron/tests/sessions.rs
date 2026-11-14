@@ -1058,7 +1058,15 @@ fn rename_in_claude_renames_the_session_and_it_still_gets_messages() {
     let mut t = std::fs::OpenOptions::new().append(true).open(&transcript).unwrap();
     writeln!(t, "{}", json!({ "type": "custom-title", "customTitle": "Parser Work", "sessionId": claude_id })).unwrap();
     drop(t);
-    wait_for("renamed", || ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("parser-work\t"));
+    // Seen by Omicron's hook when the turn ends, in the session's window
+    // (no timer: #126).
+    let windows: Value = serde_json::from_str(&std::fs::read_to_string(mac.home.join("windows.json")).unwrap()).unwrap();
+    let pid: u32 = windows["windows"].as_object().unwrap().iter().find(|(_, w)| w["claude_session_id"] == json!(claude_id)).unwrap().0.parse().unwrap();
+    let turn = json!({ "session_id": claude_id, "transcript_path": transcript });
+    hook(&mac, pid, "stop", turn.clone());
+    assert!(ok(&pat, None, &["sessions", "list", "--project", &project]).starts_with("parser-work\t"));
+    // Again, with nothing new: nothing to do.
+    assert_eq!(hook(&mac, pid, "stop", turn), "");
     // Still running in the background under its new name, and messages
     // under that name reach it.
     wait_for("its runner renamed", || ok(&mac, None, &["sessions", "hosted"]).trim() == "parser-work");
