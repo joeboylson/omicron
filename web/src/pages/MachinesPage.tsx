@@ -5,7 +5,8 @@
 // removed here. The web version of `omicron machines`.
 
 import { useCallback, useRef, useEffect, useState } from "react";
-import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
+import { Check, Copy, KeyRound, MoreHorizontal, Power, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { useAwakeMachines } from "@/lib/awake";
@@ -35,18 +36,29 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ListSkeleton } from "@/components/Skeleton";
 import { cn } from "@/lib/utils";
 
-function seen(iso: string | null): string {
-  if (!iso) return "never seen";
+function seen(iso: string): string {
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (minutes < 2) return "seen just now";
-  if (minutes < 60) return `seen ${minutes} min ago`;
-  if (minutes < 60 * 24) return `seen ${Math.round(minutes / 60)} h ago`;
-  return `seen ${new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  if (minutes < 2) return "Last seen just now";
+  if (minutes < 60) return `Last seen ${minutes} min ago`;
+  if (minutes < 60 * 24) return `Last seen ${Math.round(minutes / 60)} h ago`;
+  const days = Math.round(minutes / (60 * 24));
+  if (days < 7) return `Last seen ${days} day${days === 1 ? "" : "s"} ago`;
+  return `Last seen ${new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
 
-/** A machine's state, in a word or two. */
+/** A machine's state, in plain words: a new key that hasn't connected yet
+ *  isn't the same as one that went quiet. */
 export function machineStatus(m: MachineRow, up: boolean): string {
-  return !m.active ? "switched off" : up ? "awake" : `asleep · ${seen(m.last_seen)}`;
+  if (!m.active) return "Switched off";
+  if (up) return "Online";
+  return m.last_seen ? seen(m.last_seen) : "Waiting to connect";
+}
+
+/** Online first, then the most recently seen, then new ones, then switched off. */
+function statusOrder(m: MachineRow, up: boolean): number {
+  if (!m.active) return 4e13;
+  if (up) return 0;
+  return m.last_seen ? 1e13 + (Date.now() - new Date(m.last_seen).getTime()) : 3e13;
 }
 
 export function MachinesPage() {
@@ -96,9 +108,9 @@ export function MachinesPage() {
     },
     {
       id: "status",
-      accessorFn: (m) => machineStatus(m, up(m)),
+      accessorFn: (m) => statusOrder(m, up(m)),
       header: ({ column }) => <SortHeader column={column} label="Status" />,
-      cell: ({ getValue }) => <span className="text-muted-foreground">{getValue()}</span>,
+      cell: ({ row: { original: m } }) => <span className="text-muted-foreground">{machineStatus(m, up(m))}</span>,
       meta: { className: "hidden sm:table-cell" },
     },
     {
@@ -125,13 +137,29 @@ export function MachinesPage() {
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       cell: ({ row: { original: m } }) => (
-        <div className="flex justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={() => change(() => switchMachine(db, m.id, !m.active))}>
-            {m.active ? "Switch off" : "Switch on"}
-          </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" aria-label={`Remove ${m.name}…`} onClick={() => setRemoving(m)}>
-            <Trash2 />
-          </Button>
+        <div className="flex justify-end">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label={`More for ${m.name}`}>
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem className="flex-col items-start gap-0.5" onSelect={() => change(() => switchMachine(db, m.id, !m.active))}>
+                <span className="flex items-center gap-2">
+                  <Power className="h-4 w-4" aria-hidden /> {m.active ? "Switch off" : "Switch on"}
+                </span>
+                <span className="pl-6 text-xs text-muted-foreground">{m.active ? "Its key stops working until it's switched back on." : "Its key works again."}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="flex-col items-start gap-0.5 text-destructive focus:text-destructive" onSelect={() => setRemoving(m)}>
+                <span className="flex items-center gap-2">
+                  <Trash2 className="h-4 w-4" aria-hidden /> Remove {m.name}…
+                </span>
+                <span className="pl-6 text-xs text-muted-foreground">Its key stops working for good.</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ),
       meta: { className: "py-0 text-right", phone: "end" },

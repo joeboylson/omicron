@@ -1490,7 +1490,8 @@ test("Machines: make a key for a new machine, see it, change its Projects, switc
   expect(projects.map((p) => p.name)).toEqual([name]);
 
   const row = page.getByRole("table", { name: "Machines" }).getByRole("row", { name: box });
-  await expect(row).toContainText("asleep · never seen");
+  // A new key that hasn't connected says so, not "asleep" (#161).
+  await expect(row).toContainText("Waiting to connect");
   const its = row.getByRole("combobox", { name: `${box}'s Projects` });
   await expect(its).toHaveText(name);
   // Its Projects change in place.
@@ -1502,19 +1503,25 @@ test("Machines: make a key for a new machine, see it, change its Projects, switc
   await page.getByRole("option", { name }).click();
   await page.keyboard.press("Escape");
   await expect(its).toHaveText(name);
-  await row.getByRole("button", { name: "Switch off" }).click();
-  await expect(row).toContainText("switched off");
+  // Switch off and Remove are in its ⋯ menu, each saying what it does.
+  await row.getByRole("button", { name: `More for ${box}` }).click();
+  await expect(page.getByRole("menuitem", { name: /Switch off/ })).toContainText("Its key stops working until it's switched back on.");
+  await page.getByRole("menuitem", { name: /Switch off/ }).click();
+  await expect(row).toContainText("Switched off");
   // Switched off, the key gets nothing.
   expect(await rest(request, login, "GET", "/rest/v1/projects?select=name")).toEqual([]);
-  await row.getByRole("button", { name: "Switch on" }).click();
-  await expect(row).toContainText("asleep");
+  await row.getByRole("button", { name: `More for ${box}` }).click();
+  await page.getByRole("menuitem", { name: /Switch on/ }).click();
+  await expect(row).toContainText(/Waiting to connect|Last seen just now/);
   // Removing asks first; Cancel keeps it.
-  await row.getByRole("button", { name: `Remove ${box}…` }).click();
+  await row.getByRole("button", { name: `More for ${box}` }).click();
+  await page.getByRole("menuitem", { name: new RegExp(`Remove ${box}…`) }).click();
   const ask = page.getByRole("dialog", { name: `Remove ${box}?` });
   await expect(ask).toContainText("This can't be undone.");
   await ask.getByRole("button", { name: "Cancel" }).click();
   await expect(ask).toHaveCount(0);
-  await row.getByRole("button", { name: `Remove ${box}…` }).click();
+  await row.getByRole("button", { name: `More for ${box}` }).click();
+  await page.getByRole("menuitem", { name: new RegExp(`Remove ${box}…`) }).click();
   await ask.getByRole("button", { name: `Remove ${box}`, exact: true }).click();
   await expect(row).toHaveCount(0);
 
