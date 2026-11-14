@@ -235,10 +235,19 @@ test("statuses and members are set in Project settings", async ({ page, request 
   await page.getByRole("button", { name: "Project settings" }).click();
   const dialog = page.getByRole("dialog");
   // Add a member, who can then be given tasks.
-  await dialog.getByRole("combobox", { name: "Members" }).click();
+  // Everyone in it is listed, you first (#159).
+  const members = dialog.getByRole("list", { name: "Members" });
+  await expect(members.getByRole("listitem")).toHaveText([/\(you\)$/]);
+  await dialog.getByRole("button", { name: "Add member" }).click();
   await page.getByRole("option", { name: friend }).click();
-  await page.keyboard.press("Escape");
-  await expect(dialog.getByRole("region", { name: "Members" })).toContainText(friend);
+  await expect(members.getByRole("listitem")).toHaveCount(2);
+  await expect(members).toContainText(friend);
+  // Taken out, then back in.
+  await members.getByRole("button", { name: `Take ${friend} out of this Project` }).click();
+  await expect(members.getByRole("listitem")).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Add member" }).click();
+  await page.getByRole("option", { name: friend }).click();
+  await expect(members).toContainText(friend);
   await escape(page);
   await addTaskIn(page, "To do", "Plant bulbs");
   await page.getByRole("button", { name: "#1 Plant bulbs" }).click();
