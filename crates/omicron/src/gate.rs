@@ -83,18 +83,62 @@ fn parse_time(text: &str) -> Result<NaiveTime> {
     bail!("couldn't read {text:?} as a time: use one like 17:00 or 5pm")
 }
 
-/// Why this machine (signed in as `board`) won't take an order from `who`
-/// (the login that gave it), if it won't. Its own orders always go
-/// through; otherwise only its owner's, and only while the gate is open.
-/// Reads the machine's owner from the database; see `decide` to use one
-/// already known.
-pub fn refusal(board: &crate::board::Board, machine: &str, who: Option<&str>) -> Result<Option<String>> {
-    let me = board.session.user.id.to_string();
-    if who == Some(me.as_str()) {
-        return Ok(None);
+/// Whose orders this machine takes, for one pass over its work: who it is,
+/// whether its gate is open, and its owner, read from the database at most
+/// once (and only when an order from elsewhere needs it).
+pub struct Orders<'a> {
+    board: &'a crate::board::Board,
+    me: String,
+    gate_open: bool,
+    owner: std::cell::OnceCell<Option<String>>,
+}
+
+impl<'a> Orders<'a> {
+    pub fn new(board: &'a crate::board::Board) -> Self {
+        Orders { board, me: board.session.user.id.to_string(), gate_open: open_until().is_some(), owner: Default::default() }
     }
-    let owner = board.machine_owner()?;
-    Ok(decide(&me, owner.as_deref(), who, open_until().is_some(), machine))
+
+    /// With the owner already known (read earlier and kept).
+    pub fn with_owner(board: &'a crate::board::Board, owner: Option<String>) -> Self {
+        let o = Self::new(board);
+        let _ = o.owner.set(owner);
+        o
+    }
+
+    fn owner(&self) -> Result<Option<&str>> {
+        if let Some(o) = self.owner.get() {
+            return Ok(o.as_deref());
+        }
+        let o = self.board.machine_owner()?;
+        Ok(self.owner.get_or_init(|| o).as_deref())
+    }
+
+    /// Why this machine won't take an order from `who` (the login that gave
+    /// it), if it won't, naming the machine as `machine`.
+    pub fn refusal(&self, who: Option<&str>, machine: &str) -> Result<Option<String>> {
+        if who == Some(self.me.as_str()) {
+            return Ok(None);
+        }
+        Ok(decide(&self.me, self.owner()?, who, self.gate_open, machine))
+    }
+
+    /// Whether it takes an order from `who`. With the gate closed only its
+    /// own orders go, so the owner isn't read.
+    pub fn takes(&self, who: Option<&str>) -> Result<bool> {
+        if who == Some(self.me.as_str()) {
+            return Ok(true);
+        }
+        if !self.gate_open {
+            return Ok(false);
+        }
+        Ok(self.refusal(who, "")?.is_none())
+    }
+}
+
+/// Why this machine (signed in as `board`) won't take an order from `who`,
+/// if it won't: `Orders` for a single order.
+pub fn refusal(board: &crate::board::Board, machine: &str, who: Option<&str>) -> Result<Option<String>> {
+    Orders::new(board).refusal(who, machine)
 }
 
 /// The order rule itself, with nothing read: `me` is this machine, `owner`

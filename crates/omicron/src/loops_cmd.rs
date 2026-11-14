@@ -348,16 +348,15 @@ impl Runner {
         // Started from elsewhere: only by this machine's owner, while its
         // gate is open.
         let cached_owner = self.owner.lock().unwrap().clone();
-        let owner = match cached_owner {
-            Some(o) => o,
+        let orders = match cached_owner {
+            Some(o) => omicron::gate::Orders::with_owner(&board, o),
             None => {
                 let o = board.machine_owner()?;
                 *self.owner.lock().unwrap() = Some(o.clone());
-                o
+                omicron::gate::Orders::with_owner(&board, o)
             }
         };
-        let me = self.key.machine_id.to_string();
-        let refused = omicron::gate::decide(&me, owner.as_deref(), l.started_by.as_deref(), omicron::gate::open_until().is_some(), &session.machine);
+        let refused = orders.refusal(l.started_by.as_deref(), &session.machine)?;
         if let Some(why) = refused {
             let note = format!("waiting: it was started from elsewhere. {why}");
             if l.note.as_deref() != Some(note.as_str()) {

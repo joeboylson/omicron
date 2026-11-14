@@ -270,9 +270,10 @@ fn launch_lead_told(board: &Board, team: &TeamRow, note: Option<&str>, told: Opt
     let (_, workflow, _) = read_setup(Path::new(&team.folder))?;
     let jobs = board.jobs(team)?;
     let mut waiting = Vec::new();
+    let orders = omicron::gate::Orders::new(board);
     for j in jobs.iter().filter(|j| j.state == "waiting") {
         // Added from elsewhere: only by the machine's owner, gate open.
-        if takes_orders_from(board, j.created_by.as_deref())? {
+        if orders.takes(j.created_by.as_deref())? {
             waiting.push(format!("#{} {}", j.number, j.title));
         }
     }
@@ -683,7 +684,7 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
             }
             // From elsewhere: only the owner's, while the gate is open. Until
             // then it stays open, and is passed on when the gate opens.
-            if !takes_orders_from(&b, record["author_id"].as_str())? {
+            if !omicron::gate::Orders::new(&b).takes(record["author_id"].as_str())? {
                 return Ok(());
             }
             pass_answer(&b, &team, req, record)?;
@@ -695,7 +696,7 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
                 return Ok(());
             }
             // Added from elsewhere: waits for the owner and the gate.
-            if !takes_orders_from(&b, record["created_by"].as_str())? {
+            if !omicron::gate::Orders::new(&b).takes(record["created_by"].as_str())? {
                 return Ok(());
             }
             // A new lead is told about waiting jobs when it starts.
@@ -712,12 +713,6 @@ pub fn heard(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey
         _ => {}
     }
     Ok(())
-}
-
-/// Whether this machine takes an order from `who` now (ref/BRAINSTORM.md,
-/// "The gate").
-fn takes_orders_from(board: &Board, who: Option<&str>) -> Result<bool> {
-    Ok(omicron::gate::refusal(board, "", who)?.is_none())
 }
 
 /// Pass an answer (a comment on the question's task) to the member who
@@ -757,6 +752,7 @@ fn pass_answer(b: &Board, team: &TeamRow, req: &serde_json::Value, comment: &ser
 pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::MachineKey, jobs: bool) -> Result<()> {
     let b = Board { supabase: supabase.clone(), session: supabase.sign_in_machine(key)? };
     let me = key.machine_id.to_string();
+    let orders = omicron::gate::Orders::new(&b);
     for team in b.teams()?.into_iter().filter(|t| t.machine_id == me && t.state == "running") {
         let reqs = b.supabase.request_as(&b.session, "GET", &format!("/rest/v1/team_requests?team_id=eq.{}&state=eq.open&select=id,job_id,worker,task_id,created_at", team.id), None)?;
         for req in reqs.as_array().into_iter().flatten() {
@@ -771,7 +767,7 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
                 None,
             )?;
             for c in comments.as_array().into_iter().flatten() {
-                if takes_orders_from(&b, c["author_id"].as_str())? {
+                if orders.takes(c["author_id"].as_str())? {
                     pass_answer(&b, &team, req, c)?;
                     break;
                 }
@@ -781,7 +777,7 @@ pub fn pass_waiting(supabase: &omicron::supa::Supabase, key: &omicron::supa::Mac
             continue;
         }
         for j in b.jobs(&team)?.into_iter().filter(|j| j.state == "waiting" && j.created_by.as_deref() != Some(me.as_str())) {
-            if takes_orders_from(&b, j.created_by.as_deref())? {
+            if orders.takes(j.created_by.as_deref())? {
                 tell_lead(&b, &team, &format!("Job #{} is waiting: {}. Start it if nobody has.", j.number, j.title))?;
             }
         }
