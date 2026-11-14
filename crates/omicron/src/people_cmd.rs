@@ -1,7 +1,9 @@
-//! `omicron people`: deleting a person and linking another login to one
-//! (both need the secret key). Listing, adding and removing are board_cmd's.
+//! `omicron people`: the people table, adding and taking people out of a
+//! Project, deleting a person and linking another login to one (those two
+//! need the secret key).
 
 use crate::board_cmd;
+use crate::board_cmd::sign_in;
 use anyhow::{bail, Result};
 use clap::Subcommand;
 use omicron::config::Config;
@@ -54,3 +56,27 @@ pub fn people(p: People) -> Result<()> {
     }
 }
 
+pub fn list_people(as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    for p in board.people()? {
+        let projects = if p.projects.is_empty() { "no Projects".to_string() } else { p.projects.join(", ") };
+        println!("{}  ({})  {projects}", p.name, p.logins.join(", "));
+    }
+    Ok(())
+}
+
+pub fn add_person(who: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, person) = (board.project(project)?, board.person(who)?);
+    board.add_member(&p, &person)?;
+    println!("Added {} to {}.", person.name, p.name);
+    Ok(())
+}
+
+pub fn remove_person(who: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, person) = (board.project(project)?, board.person(who)?);
+    board.remove_member(&p, &person)?;
+    println!("Took {} out of {}.", person.name, p.name);
+    Ok(())
+}

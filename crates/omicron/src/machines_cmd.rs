@@ -1,6 +1,7 @@
-//! `omicron machines`: registering machines and their keys, who owns
-//! one, which are awake, and opening a terminal on another.
+//! `omicron machines`: registering machines and their keys, which Projects
+//! they use, who owns one, which are awake, and opening a terminal on another.
 
+use crate::board_cmd::sign_in;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use omicron::config::Config;
@@ -195,4 +196,35 @@ fn exec_ssh(host: &str) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let err = std::process::Command::new("ssh").arg(host).exec();
     Err(err).context("couldn't run ssh")
+}
+
+pub fn list_machines(as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    for m in board.machines()? {
+        let access = if m.all_projects {
+            "every Project".to_string()
+        } else if m.projects.is_empty() {
+            "no Projects".to_string()
+        } else {
+            m.projects.join(", ")
+        };
+        println!("{}  {access}{}", m.name, if m.active { "" } else { "  (switched off)" });
+    }
+    Ok(())
+}
+
+pub fn add_machine(name: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, m) = (board.project(project)?, board.machine(name)?);
+    board.add_machine(&p, &m)?;
+    println!("Added {} to {}.", m.name, p.name);
+    Ok(())
+}
+
+pub fn remove_machine(name: &str, project: &str, as_machine: bool) -> Result<()> {
+    let board = sign_in(as_machine)?;
+    let (p, m) = (board.project(project)?, board.machine(name)?);
+    board.remove_machine(&p, &m)?;
+    println!("Took {} out of {}.", m.name, p.name);
+    Ok(())
 }

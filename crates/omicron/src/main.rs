@@ -18,8 +18,10 @@ mod hooks;
 mod loops_cmd;
 mod machines_cmd;
 mod people_cmd;
+mod projects_cmd;
 mod picker;
 mod runs_cmd;
+mod tasks_cmd;
 mod team_daemon;
 mod team_launch;
 mod team_member;
@@ -101,16 +103,16 @@ enum Command {
     Machines(machines_cmd::Machines),
     /// Projects: list them, start one
     #[command(subcommand)]
-    Projects(board_cmd::Projects),
+    Projects(projects_cmd::Projects),
     /// A Project's statuses (its columns)
     #[command(subcommand)]
-    Statuses(board_cmd::Statuses),
+    Statuses(projects_cmd::Statuses),
     /// A Project's labels and their colors
     #[command(subcommand)]
-    Labels(board_cmd::Labels),
+    Labels(projects_cmd::Labels),
     /// A Project's topics: a second way to group tasks, as rows on the board
     #[command(subcommand)]
-    Topics(board_cmd::Topics),
+    Topics(projects_cmd::Topics),
     /// Loops: Omicron types a prompt into a session every so often
     #[command(subcommand)]
     Loops(loops_cmd::Loops),
@@ -119,7 +121,7 @@ enum Command {
     Teams(teams_cmd::Teams),
     /// Tasks: add, move, finish, label, checklists
     #[command(subcommand)]
-    Tasks(board_cmd::Tasks),
+    Tasks(tasks_cmd::Tasks),
     /// People: link Tailscale identities
     #[command(subcommand)]
     People(people_cmd::People),
@@ -276,8 +278,8 @@ fn run(cli: Cli) -> Result<()> {
             Ok(())
         }
         Command::Sessions(cmd) => sessions_cmd::sessions(cmd, cli.as_machine),
-        Command::Labels(cmd) => board_cmd::labels(cmd, cli.as_machine),
-        Command::Topics(cmd) => board_cmd::topics(cmd, cli.as_machine),
+        Command::Labels(cmd) => projects_cmd::labels(cmd, cli.as_machine),
+        Command::Topics(cmd) => projects_cmd::topics(cmd, cli.as_machine),
         Command::Loops(cmd) => loops_cmd::loops(cmd, cli.as_machine),
         Command::Teams(cmd) => teams_cmd::teams(cmd, cli.as_machine),
         Command::Hook(event) => hooks::hook(event),
@@ -311,17 +313,17 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::Machines(machines_cmd::Machines::List) => board_cmd::list_machines(cli.as_machine),
-        Command::Machines(machines_cmd::Machines::Add { machine, project }) => board_cmd::add_machine(&machine, &project, cli.as_machine),
-        Command::Machines(machines_cmd::Machines::Remove { machine, project }) => board_cmd::remove_machine(&machine, &project, cli.as_machine),
+        Command::Machines(machines_cmd::Machines::List) => machines_cmd::list_machines(cli.as_machine),
+        Command::Machines(machines_cmd::Machines::Add { machine, project }) => machines_cmd::add_machine(&machine, &project, cli.as_machine),
+        Command::Machines(machines_cmd::Machines::Remove { machine, project }) => machines_cmd::remove_machine(&machine, &project, cli.as_machine),
         Command::Machines(m) => machines_cmd::machines(m),
-        Command::People(people_cmd::People::List) => board_cmd::list_people(cli.as_machine),
-        Command::People(people_cmd::People::Add { person, project }) => board_cmd::add_person(&person, &project, cli.as_machine),
-        Command::People(people_cmd::People::Remove { person, project }) => board_cmd::remove_person(&person, &project, cli.as_machine),
+        Command::People(people_cmd::People::List) => people_cmd::list_people(cli.as_machine),
+        Command::People(people_cmd::People::Add { person, project }) => people_cmd::add_person(&person, &project, cli.as_machine),
+        Command::People(people_cmd::People::Remove { person, project }) => people_cmd::remove_person(&person, &project, cli.as_machine),
         Command::People(p) => people_cmd::people(p),
-        Command::Projects(c) => board_cmd::projects(c, cli.as_machine),
-        Command::Statuses(c) => board_cmd::statuses(c, cli.as_machine),
-        Command::Tasks(c) => board_cmd::tasks(c, cli.as_machine),
+        Command::Projects(c) => projects_cmd::projects(c, cli.as_machine),
+        Command::Statuses(c) => projects_cmd::statuses(c, cli.as_machine),
+        Command::Tasks(c) => tasks_cmd::tasks(c, cli.as_machine),
     }
 }
 
