@@ -461,13 +461,18 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await page.getByRole("button", { name: "This computer" }).click();
     const sheet = page.getByRole("dialog");
     await expect(sheet.getByRole("heading", { name: machineName })).toBeVisible();
-    await expect(sheet.getByRole("region", { name: "Setup checks" })).toContainText(`Machine: ${machineName}`);
+    await expect(sheet.getByRole("region", { name: "Setup checks" })).toContainText(`This computer: ${machineName}`);
+    // Plain words, and what to run as its own line to copy (#179).
+    const checks = sheet.getByRole("region", { name: "Setup checks" });
+    await expect(checks).not.toContainText("Daemon");
+    await expect(checks).not.toContainText("supabase.co");
+    await expect(checks.getByRole("button", { name: "Copy" }).first()).toBeVisible();
     await expect(sheet.getByRole("region", { name: "Claude accounts" })).toContainText("No saved accounts yet");
     await expect(sheet.getByRole("region", { name: "Teams" })).toBeVisible();
 
     // A loop for a session here: started and stopped from the page.
-    await sheet.getByLabel("Loop prompt for parser").fill("Keep going with the next task");
-    await sheet.getByLabel("How often, for parser").fill("15m");
+    await sheet.getByLabel("What to type into parser").fill("Keep going with the next task");
+    await sheet.getByLabel("How often, for parser").selectOption({ label: "15 minutes" });
     await sheet.getByRole("button", { name: "Start loop" }).click();
     const loops = sheet.getByRole("region", { name: "Loops here" });
     await expect(loops).toContainText("“Keep going with the next task” every 15m");

@@ -60,19 +60,15 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
           )}
 
           <Group title="Setup checks">
-            {(info?.setup ?? ["Checking…"]).map((l, i) => {
-              const fix = l.startsWith("fix");
-              return (
-                <Row key={i} className={cn("py-2 text-sm", fix && "text-[var(--sys-orange)]")}>
-                  {l.replace(/^(ok|fix|skip)\s+/, (m) => (m.trim() === "ok" ? "✓ " : m.trim() === "fix" ? "! " : "· "))}
-                </Row>
-              );
-            })}
+            {!info && <Row className="py-2 text-sm text-muted-foreground">Checking…</Row>}
+            {info?.setup.filter((l) => /^(ok|fix|skip)\s/.test(l)).map((l, i) => <SetupCheck key={i} line={l} />)}
           </Group>
 
           <Group title="Loops here" label="Loops here">
             {here.length === 0 && <Row className="text-sm text-muted-foreground">No sessions running here.</Row>}
-            {here.map((s) => {
+            {[...here]
+              .sort((a, b) => Number(!!project.loops.find((l) => l.session_id === b.id)) - Number(!!project.loops.find((l) => l.session_id === a.id)))
+              .map((s) => {
               const loop = project.loops.find((l) => l.session_id === s.id);
               return loop ? (
                 <Row key={s.id} className="py-2 text-sm">
@@ -90,12 +86,14 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
           </Group>
 
           <Group title="Claude accounts" label="Claude accounts">
-            {(info?.accounts ?? ["…"]).map((l, i) => {
+            {!info && <Row className="py-2 text-sm text-muted-foreground">Loading…</Row>}
+            {info && info.accounts.length === 0 && <Row className="py-2 text-sm text-muted-foreground">No Claude accounts saved on this computer.</Row>}
+            {(info?.accounts ?? []).map((l, i) => {
               const [name, rest] = l.split("\t");
               const inUse = rest?.includes("(in use)");
               return (
                 <Row key={i} className="py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate">
+                  <span className="min-w-0 flex-1 break-words">
                     {rest !== undefined ? (
                       <>
                         <span className="font-medium">{name}</span> <span className="text-muted-foreground">{rest.replace("(in use)", "")}</span>
@@ -181,12 +179,83 @@ function LoopForm({ session, onStart }: { session: string; onStart: (prompt: str
         if (prompt.trim()) onStart(prompt.trim(), every.trim());
       }}
     >
-      <span className="font-medium">{session}</span>
-      <Input aria-label={`Loop prompt for ${session}`} placeholder="Keep going with the next task" value={prompt} onChange={(e) => setPrompt(e.target.value)} className="h-9 min-w-40 flex-1" />
-      <Input aria-label={`How often, for ${session}`} value={every} onChange={(e) => setEvery(e.target.value)} className="h-9 w-20 font-mono" />
-      <Button type="submit" size="sm" disabled={!prompt.trim()}>
+      <span className="w-full font-medium">{session}</span>
+      <Input
+        aria-label={`What to type into ${session}`}
+        required
+        placeholder="What to type, like: Keep going with the next task"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        className="h-9 min-w-40 flex-1"
+      />
+      <label className="flex items-center gap-1.5 text-muted-foreground">
+        every
+        <select aria-label={`How often, for ${session}`} value={every} onChange={(e) => setEvery(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-foreground">
+          {[
+            ["5m", "5 minutes"],
+            ["10m", "10 minutes"],
+            ["15m", "15 minutes"],
+            ["30m", "30 minutes"],
+            ["1h", "hour"],
+          ].map(([v, t]) => (
+            <option key={v} value={v}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Button type="submit" size="sm">
         Start loop
       </Button>
     </form>
+  );
+}
+
+/** Setup checks' subjects in plain words (the command says them its own way). */
+const SETUP_WORDS: Record<string, string> = {
+  Settings: "Database",
+  Machine: "This computer",
+  You: "You",
+  Daemon: "Omicron in the background",
+  "Start at login": "Starts with the computer",
+  "Claude hooks and add-on": "Claude sessions",
+};
+
+/** One setup check: ✓ or what to do, with any command to run made copyable. */
+function SetupCheck({ line }: { line: string }) {
+  const [, kind, rest] = line.match(/^(ok|fix|skip)\s+(.*)$/) ?? [];
+  const colon = rest.indexOf(": ");
+  const subject = colon > 0 ? rest.slice(0, colon) : "";
+  let said = colon > 0 ? rest.slice(colon + 2) : rest;
+  const command = said.match(/`([^`]+)`/)?.[1];
+  said = said
+    // The command to run moves to its own Copy row; its sentence goes.
+    .replace(/[,.]?\s*(?:then )?[Rr]un `[^`]+`(?:\s*\([^)]*\))?[^.]*\.?/, ".")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\bthe daemon\b/g, "Omicron")
+    .replace(/^Supabase at https?:\/\/\S+$/, "connected")
+    .replace(/\.\.$/, ".");
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={cn("grid gap-1.5 px-4 py-2 text-sm", kind === "fix" && "text-[var(--sys-orange)]")}>
+      <span>
+        <span aria-hidden>{kind === "ok" ? "✓ " : kind === "fix" ? "! " : "· "}</span>
+        {subject && <span className="font-medium">{SETUP_WORDS[subject] ?? subject}: </span>}
+        {said}
+      </span>
+      {command && kind === "fix" && (
+        <span className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1 text-foreground">
+          <code className="flex-1 break-all font-mono text-xs">{command}</code>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8"
+            onClick={() => navigator.clipboard?.writeText(command).then(() => setCopied(true), () => {})}
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </span>
+      )}
+    </div>
   );
 }
