@@ -42,11 +42,13 @@ async function escape(page) {
     };
     await page.goto(url);
     await page.getByRole("link", { name: /^Wedding photos/ }).waitFor();
-    await page.getByRole("list", { name: "Machines" }).waitFor();
     await shot("1-projects", true);
     await page.goto(`${url}/people`);
     await page.getByRole("heading", { level: 1, name: "People" }).waitFor();
     await shot("1b-people", true);
+    await page.goto(`${url}/machines`);
+    await page.getByRole("heading", { level: 1, name: "Machines" }).waitFor();
+    await shot("1c-machines", true);
     await page.goto(url);
     await page.getByRole("link", { name: /^Wedding photos/ }).waitFor();
     await page.getByRole("link", { name: /^House and garden/ }).click();
@@ -67,12 +69,6 @@ async function escape(page) {
     await page.getByRole("link", { name: /^Lumen/ }).click();
     await page.getByRole("region", { name: "Claude sessions" }).waitFor();
     await shot("4-lumen");
-    // A stopped session: why, and its open tasks to give away.
-    await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /docs/ }).click();
-    await page.getByTestId("gone-why").waitFor();
-    await shot("4f-stopped-session");
-    await escape(page);
-    await page.getByRole("dialog").waitFor({ state: "detached" });
     await page.getByRole("region", { name: "Claude sessions" }).getByRole("button", { name: /web-page/ }).click();
     await page.getByTestId("loop").waitFor();
     await shot("4g-session-loop");
@@ -96,9 +92,10 @@ async function escape(page) {
     await page.waitForTimeout(300);
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
+    // Given to a session that has ended (its window died): flagged, to give to someone else.
     await page.getByRole("button", { name: /Document the hooks/ }).click();
-    await page.getByTestId("dispatch").waitFor();
-    await shot("4c-dispatch-failed");
+    await page.getByText(/which has ended/).waitFor();
+    await shot("4c-ended-session");
     await escape(page);
     await page.getByRole("button", { name: "Back to Projects" }).click();
     await page.getByRole("link", { name: /^Lisbon trip/ }).click();

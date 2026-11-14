@@ -76,7 +76,7 @@ function machine(name) {
   write({ supabase_url: SUPA, supabase_key: KEY, machine_key: saved.machine_key });
   const env = { ...process.env, OMICRON_HOME: home };
   delete env.OMICRON_SUPABASE_SECRET_KEY;
-  const run = (args, opts = {}) => execFileSync(BIN, args, { env: { ...env, ...(opts.env || {}) }, input: opts.input, encoding: "utf8" });
+  const run = (args, opts = {}) => execFileSync(BIN, args, { env: { ...env, ...(opts.env || {}) }, input: opts.input, encoding: "utf8", cwd: opts.cwd });
   return {
     name,
     home,
@@ -87,8 +87,12 @@ function machine(name) {
       proc.unref();
       const claude = crypto.randomUUID();
       const inWin = { OMICRON_CLAUDE_PID: String(proc.pid) };
-      run(["hook", "session-start"], { env: inWin, input: JSON.stringify({ session_id: claude, cwd: folder, source: "startup" }) });
-      run(["sessions", "add", session, "--project", project], { env: inWin });
+      // A real folder on this made-up machine, named like the one given.
+      const dir = path.join(home, "work", path.basename(folder) || "work");
+      fs.mkdirSync(dir, { recursive: true });
+      run(["hook", "session-start"], { env: inWin, input: JSON.stringify({ session_id: claude, cwd: dir, source: "startup" }) });
+      // Linked in place, the way a chat that's already open becomes a session.
+      run(["link", session, "--project", project], { env: { ...inWin, CLAUDE_CODE_SESSION_ID: claude }, cwd: dir });
       return {
         proc,
         cli: (...args) => run([...args, "--as-machine"], { env: inWin }),

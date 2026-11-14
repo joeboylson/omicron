@@ -145,6 +145,9 @@ Repeated steps, in `scripts/` (run on the Mac):
 - `scripts/desktop.sh`: build the desktop app (`desktop/`, Tauri, a
   workspace of its own) and install it as `~/Applications/Omicron.app`.
   It's a window on `omicron serve` here, starting it and the daemon if off.
+- `/ux-review` (`.claude/skills/ux-review`): fresh screenshots of every
+  page and state into `ref/ux/<date>/`, agents critiquing them as a few
+  real use cases, and the findings filed as tasks labelled `ux`.
 - `scripts/migrate.sh <connection string>`: set up Omicron's tables in a
   Supabase someone hosts themselves (the hosted one gets them from GitHub).
 
