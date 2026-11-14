@@ -118,10 +118,10 @@ async function escape(page) {
     // Filters, a search that finds nothing, adding a task, a column's menu.
     await page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Due soon" }).click();
     await shot("2c-filter-due-soon");
-    await page.getByRole("button", { name: "Clear" }).click();
+    await page.getByRole("button", { name: "Clear", exact: true }).click();
     await page.getByLabel("Search tasks").fill("zzz");
     await shot("2d-search-nothing");
-    await page.getByRole("button", { name: "Clear" }).click();
+    await page.getByRole("button", { name: "Clear search" }).click();
     const todo = page.getByRole("region", { name: "To do", exact: true });
     await todo.getByRole("button", { name: "Add a task" }).click();
     await page.getByLabel("New task in To do").waitFor();

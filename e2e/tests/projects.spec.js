@@ -970,7 +970,7 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   await expect(groups).toHaveCount(1);
   await expect(groups.nth(0)).toHaveAttribute("aria-label", "Done");
   await page.getByLabel("Search tasks").fill("nothing like this");
-  await expect(page.getByText("No tasks match.")).toBeVisible();
+  await expect(page.getByText("No tasks match “nothing like this”.")).toBeVisible();
   await page.getByLabel("Search tasks").fill("");
 
   // Grouped by topic: each row says its status.
@@ -1598,8 +1598,14 @@ test("search and filters narrow the board", async ({ page, request }) => {
   await page.getByLabel("Search tasks").fill("#3");
   await expect(cards()).toHaveCount(1);
   await expect(cards().first()).toContainText("Water plants");
-  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(cards()).toHaveCount(3);
+  // Nothing matches: said once, with the way back (#163).
+  await page.getByLabel("Search tasks").fill("anniversary");
+  await expect(page.getByRole("status").filter({ hasText: "No tasks match “anniversary”." })).toBeVisible();
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(cards()).toHaveCount(3);
+  await expect(page.getByLabel("Search tasks")).toHaveValue("");
 
   // Mine: given to me.
   await cards().first().click();
@@ -1608,7 +1614,7 @@ test("search and filters narrow the board", async ({ page, request }) => {
   await page.getByRole("button", { name: "Mine" }).click();
   await expect(cards()).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(cards()).toHaveCount(3);
 });
 

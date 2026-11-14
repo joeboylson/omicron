@@ -267,6 +267,10 @@ export function ProjectPage({ id }: { id: string }) {
   // Tasks waiting to be deleted (Undo) aren't shown.
   if (hidden.length > 0) project = { ...project, tasks: project.tasks.filter((t) => !hidden.includes(t.id)) };
   const filtering = query.trim() !== "" || filters.mine || filters.review || filters.due || filters.label !== null;
+  const clearFilters = () => {
+    setQuery("");
+    setFilters({ mine: false, review: false, due: false, label: null });
+  };
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const soon = Date.now() + 7 * 86400000;
   const matches = (t: Task) =>
@@ -485,15 +489,13 @@ export function ProjectPage({ id }: { id: string }) {
               </SelectContent>
             </Select>
           )}
-          {filtering && (
+          {/* Not when nothing matches: the message below has its own. */}
+          {filtering && (project.tasks.length === 0 || project.tasks.some(matches)) && (
             <Button
               variant="ghost"
               size="sm"
               className="h-8 text-link"
-              onClick={() => {
-                setQuery("");
-                setFilters({ mine: false, review: false, due: false, label: null });
-              }}
+              onClick={clearFilters}
             >
               Clear
             </Button>
@@ -528,6 +530,15 @@ export function ProjectPage({ id }: { id: string }) {
             Add topics in Project settings
           </Button>
         </p>
+      )}
+      {/* Searched or filtered to nothing: say so, once, with the way back. */}
+      {filtering && project.tasks.length > 0 && !project.tasks.some(matches) && (
+        <div role="status" className="flex items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm">
+          <span className="text-muted-foreground">{query.trim() ? `No tasks match “${query.trim()}”.` : "No tasks match these filters."}</span>
+          <Button variant="link" className="h-auto p-0 text-sm" onClick={clearFilters}>
+            {query.trim() ? "Clear search" : "Clear filters"}
+          </Button>
+        </div>
       )}
       {layout === "list" ? (
         <TaskList
@@ -917,7 +928,7 @@ function TaskList({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       {shown.length === 0 && (
-        <p className="py-8 text-center text-sm text-muted-foreground">{filtering ? "No tasks match." : "No tasks yet."}</p>
+        !filtering && <p className="py-8 text-center text-sm text-muted-foreground">No tasks yet.</p>
       )}
       <div className="mx-auto flex max-w-4xl flex-col gap-4">
         {shown.map((g) => (
