@@ -44,6 +44,26 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum RemoteCmd {
+    /// Make a token that lets one browser control this computer from its
+    /// page for a while. It's shown once: paste it in the page's Settings,
+    /// signed in as this computer's owner.
+    Token {
+        /// How long it lasts, like 8h, 3d or 90m (at most 30d)
+        #[arg(long = "for", default_value = "8h")]
+        lasts: String,
+    },
+    /// The tokens made here, and until when they work
+    List,
+    /// Take a token back (by the id `list` shows), or all of them
+    Revoke {
+        id: Option<String>,
+        #[arg(long)]
+        all: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum GateCmd {
     /// Open it until a time, like 17:00 or 5pm (today, or tomorrow if that's passed)
     Open {
@@ -160,6 +180,9 @@ enum Command {
     /// page, other machines). Closed unless opened here; at most 24 hours
     #[command(subcommand)]
     Gate(GateCmd),
+    /// Remote control tokens: let one browser control this computer for a while
+    #[command(subcommand)]
+    Remote(RemoteCmd),
     /// Claude sessions: list them, pick one, send one a message
     #[command(subcommand)]
     Sessions(sessions_cmd::Sessions),
@@ -249,6 +272,7 @@ fn run(cli: Cli) -> Result<()> {
             let name = std::env::var("OMICRON_SESSION").ok().filter(|n| !n.is_empty()).context("run this inside a session opened with `omicron open`")?;
             omicron::host::detach(&name)
         }
+        Command::Remote(cmd) => remote(cmd),
         Command::Gate(cmd) => {
             let changes = !matches!(cmd, GateCmd::Status);
             match cmd {
@@ -347,5 +371,46 @@ fn setup(url: Option<String>, key: Option<String>, secret_key: Option<String>, p
     config.save()?;
     println!("Saved to {}", config::path()?.display());
     Ok(())
+}
+
+/// `omicron remote`: tokens that let one browser control this computer.
+fn remote(cmd: RemoteCmd) -> Result<()> {
+    use omicron::remote;
+    match cmd {
+        RemoteCmd::Token { lasts } => {
+            let last = remote::parse_last(&lasts)?;
+            // Only its owner can use one, as with the gate.
+            let config = Config::load()?;
+            let board = omicron::board::Board::as_machine(&config.supabase()?, &config.machine_key()?)?;
+            let owner = board.machine_owner()?.context("this computer has no owner yet: `omicron machines owner` first")?;
+            let (token, made) = remote::make(&owner, last)?;
+            println!("{token}");
+            eprintln!(
+                "Shown once: copy it now. Paste it in Settings on this computer's page, signed in as its owner, in each browser that should control it. It works until {} (`omicron remote revoke {}` takes it back).",
+                made.until.with_timezone(&chrono::Local).format("%-I:%M %p %a %-d %b"),
+                made.id
+            );
+            Ok(())
+        }
+        RemoteCmd::List => {
+            let now = chrono::Utc::now();
+            let tokens: Vec<_> = remote::all()?.into_iter().filter(|t| t.until > now).collect();
+            if tokens.is_empty() {
+                println!("No tokens work here now.");
+            }
+            for t in tokens {
+                println!("{}	until {}", t.id, t.until.with_timezone(&chrono::Local).format("%-I:%M %p %a %-d %b"));
+            }
+            Ok(())
+        }
+        RemoteCmd::Revoke { id, all } => {
+            if id.is_none() && !all {
+                bail!("say which token (`omicron remote list`), or --all");
+            }
+            let gone = remote::revoke(if all { None } else { id.as_deref() })?;
+            println!("Took back {gone} {}.", if gone == 1 { "token" } else { "tokens" });
+            Ok(())
+        }
+    }
 }
 

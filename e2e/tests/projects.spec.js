@@ -1876,3 +1876,48 @@ test("a change in a task shows at once, before it's saved", async ({ page, reque
   await page.reload();
   await expect(column(page, "Done")).toContainText("Fix the gate");
 });
+
+test("a remote control token lets the computer's owner in from a visit Tailscale can't vouch for (#96)", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  omicron.cli("machines", "owner", robin.login);
+  // Signed in as Robin, but this visit's Tailscale login is someone else's
+  // (as on a page hosted elsewhere): no Dev side.
+  const dev = (token, who = robin) =>
+    request
+      .post(`${omicron.url}/api/dev`, {
+        headers: { Authorization: `Bearer ${who.session.access_token}`, ...(token ? { "Omicron-Remote": token } : {}) },
+        data: {},
+      })
+      .then((r) => r.json());
+  expect((await dev(null)).dev).toBe(false);
+  // A token made on the computer: Robin's, shown once.
+  const token = omicron.cli("remote", "token", "--for", "2h").trim();
+  expect(token).toMatch(/^omr_[0-9a-f]{64}$/);
+  expect((await dev(token)).dev).toBe(true);
+  expect((await dev("omr_" + "0".repeat(64))).dev).toBe(false);
+  // Someone else holding it: no.
+  const sam = { session: await sessionFor(request, omicron, `${unique("p")}@example.com`, "Sam Example") };
+  expect((await dev(token, sam)).dev).toBe(false);
+
+  // In Settings: pasted, this browser can control the computer; Forget token takes it away.
+  await page.route(`${omicron.url}/api/dev**`, (route) =>
+    route.continue({ headers: { ...route.request().headers(), "tailscale-user-login": "someone-else@example.com", "tailscale-user-name": "Someone" } }),
+  );
+  await page.goto(`${omicron.url}/settings`);
+  const box = page.getByLabel("Remote control");
+  await box.fill("omr_not-a-token");
+  await page.getByRole("button", { name: "Use token" }).click();
+  await expect(page.getByRole("alert")).toContainText("That token doesn't work on this computer");
+  await box.fill(token);
+  await page.getByRole("button", { name: "Use token" }).click();
+  await expect(page.getByText(/^This browser can control /)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/^This browser can control /)).toBeVisible();
+  await page.getByRole("button", { name: "Forget token" }).click();
+  await expect(page.getByLabel("Remote control")).toBeVisible();
+
+  // Taken back on the computer: it stops working at once.
+  const id = omicron.cli("remote", "list").split("\t")[0];
+  omicron.cli("remote", "revoke", id);
+  expect((await dev(token)).dev).toBe(false);
+});

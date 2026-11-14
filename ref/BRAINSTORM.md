@@ -111,3 +111,5 @@ Tasks: #96. Not decided yet. If the board is hosted publicly (like Vercel), a ma
 - Open: this is a way back to hosting publicly, which "The gate" set aside. It reads like the gate opened for one browser only; whether the owner rule still applies is to decide.
 
 Decided (Joe, 13 Nov): the token is shown once when it's made (then carried to the browsers you want); any browser holding it can use it while signed in as the same person who made it; it lasts 8 hours by default, up to 30 days. No Vercel for now. (Answer 1 said "show always"; going with "shown once" from answer 3 until Joe says otherwise.)
+
+Built (14 Nov, #96): `omicron remote token [--for 8h]` prints it once; only a hash is kept, in ~/.omicron/remote-tokens.json on that computer. The page's Settings has Remote control: paste it, and that browser sends it with every request to the computer serving the page. When a visit's Tailscale login can't vouch for the owner, a good token from the owner signed in does instead (never for opening the gate, which stays on the computer itself). `omicron remote list` and `revoke` take tokens back.

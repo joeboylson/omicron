@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { computerHeaders } from "@/lib/remote";
 import { useApp } from "@/lib/app";
 import { cn } from "@/lib/utils";
 
@@ -41,8 +42,7 @@ const EXTRA_KEYS: [string, string, string | null][] = [
 
 /** Bearer header for the computer serving the page. */
 async function auth(db: ReturnType<typeof useApp>["db"]) {
-  const { data } = await db.auth.getSession();
-  return { Authorization: `Bearer ${data.session?.access_token ?? ""}` };
+  return computerHeaders(db);
 }
 
 /**

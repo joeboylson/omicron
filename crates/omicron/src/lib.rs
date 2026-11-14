@@ -12,6 +12,7 @@ pub mod login;
 pub mod names;
 pub mod reactions;
 pub mod realtime;
+pub mod remote;
 pub mod supa;
 pub mod tell;
 pub mod text;

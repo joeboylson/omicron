@@ -1,6 +1,7 @@
 // Claude sessions: Dispatch, giving a session's tasks away, runs and loops.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { computerHeaders } from "../remote";
 import { must } from "../omicron";
 import type { Task, ClaudeSession, ProjectData, Run, SessionLoop } from "./types";
 
@@ -16,10 +17,9 @@ export async function removeSession(db: SupabaseClient, session: ClaudeSession) 
  */
 export async function requestDispatch(db: SupabaseClient, task: Task): Promise<string> {
   try {
-    const { data } = await db.auth.getSession();
     const res = await fetch("/api/dispatch", {
       method: "POST",
-      headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" },
+      headers: { ...(await computerHeaders(db)), "Content-Type": "application/json" },
       body: JSON.stringify({ task_id: task.id }),
     });
     const json = await res.json().catch(() => null);

@@ -73,6 +73,14 @@ Gate
   closes by itself at the time chosen, never more than 24 hours later
   (`omicron gate open --until 17:00`). Don't use "lock" or "unlock".
 
+Remote control token
+  A token a computer makes (`omicron remote token`), shown once, that lets
+  one browser control it from its page for a while (8 hours unless asked,
+  at most 30 days), as if its owner visited from the computer itself: its
+  Dev side, terminals and Dispatch. Only while that browser is signed in as
+  the owner who made it. Kept only on that computer, like the gate, and
+  taken back with `omicron remote revoke`. Don't use "lock" or "unlock".
+
 Owner
   The one person a machine takes orders from (dispatches, loops, tasks and
   team answers from elsewhere), and only while its gate is open. The

@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { computerHeaders } from "./remote";
 
 export type Dev = {
   /** From the computer itself (only then can its gate be opened here). */
@@ -16,10 +17,9 @@ export type Dev = {
 
 /** Ask the computer serving this page. `path` is "" (who am I) or an action. */
 export async function devApi(db: SupabaseClient, path = "", body?: unknown): Promise<Dev | null> {
-  const { data } = await db.auth.getSession();
   const res = await fetch(`/api/dev${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" },
+    headers: { ...(await computerHeaders(db)), "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
   const json = await res.json().catch(() => null);
@@ -33,10 +33,9 @@ export async function devApi(db: SupabaseClient, path = "", body?: unknown): Pro
 
 /** An action on this computer (open, end, hand off): its answer as sent. */
 export async function devAction(db: SupabaseClient, path: string, body: unknown): Promise<any> {
-  const { data } = await db.auth.getSession();
   const res = await fetch(`/api/dev${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" },
+    headers: { ...(await computerHeaders(db)), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => null);
@@ -71,6 +70,13 @@ export function useDev(db: SupabaseClient): [Dev | null, (d: Dev | null) => void
     listeners.forEach((l) => l(d));
   };
   return [dev, update];
+}
+
+/** Ask the computer again (after a remote control token is saved or taken away). */
+export function askDevAgain(db: SupabaseClient): Promise<Dev | null> {
+  known = devApi(db).catch(() => null);
+  known.then((d) => listeners.forEach((l) => l(d)));
+  return known;
 }
 
 /** Is the gate open now? (It closes on its own at its time.) */

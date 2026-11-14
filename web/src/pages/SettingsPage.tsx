@@ -9,6 +9,11 @@ import { TopBar } from "@/components/TopBar";
 import { ShortcutList } from "@/components/Shortcuts";
 import { Group } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/base/button";
+import { Input } from "@/components/base/input";
+import { Row } from "@/components/Grouped";
+import { askDevAgain, useDev } from "@/lib/dev";
+import { remoteToken, setRemoteToken } from "@/lib/remote";
 
 const CHOICES: { value: Appearance; label: string }[] = [
   { value: "system", label: "Match the system" },
@@ -50,6 +55,7 @@ export function SettingsPage() {
             <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
           </button>
         </Group>
+        <RemoteControl />
         <Group title="Appearance">
           <div role="radiogroup" aria-label="Appearance" className="divide-y">
             {CHOICES.map((c) => (
@@ -77,3 +83,78 @@ export function SettingsPage() {
     </>
   );
 }
+
+/**
+ * A remote control token for the computer serving this page, made there
+ * with `omicron remote token`: kept in this browser, it lets you control
+ * that computer from here while you're signed in.
+ */
+function RemoteControl() {
+  const { db } = useApp();
+  const [dev] = useDev(db);
+  const [saved, setSaved] = useState(remoteToken() !== null);
+  const [typed, setTyped] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  // Controlled from here already, without a token: nothing to unlock.
+  if (dev && !saved) return null;
+  const use = async () => {
+    setChecking(true);
+    setRemoteToken(typed);
+    const d = await askDevAgain(db);
+    setChecking(false);
+    if (d) {
+      setSaved(true);
+      setTyped("");
+      setProblem(null);
+    } else {
+      setRemoteToken(null);
+      setProblem("That token doesn't work on this computer. It may have run out, been taken back, or been made for someone else.");
+    }
+  };
+  const forget = async () => {
+    setRemoteToken(null);
+    setSaved(false);
+    await askDevAgain(db);
+  };
+  return (
+    <Group title={<label htmlFor="remote-token">Remote control</label>}>
+      {saved ? (
+        <Row>
+          <span className="flex-1 text-[15px] sm:text-sm">{dev ? `This browser can control ${dev.machine}.` : "This browser's token no longer works."}</span>
+          <Button variant="ghost" size="sm" className="text-destructive" onClick={forget}>
+            Forget token
+          </Button>
+        </Row>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (typed.trim()) use();
+          }}
+        >
+          <Row>
+            <Input
+              id="remote-token"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="Paste a token"
+              autoComplete="off"
+              spellCheck={false}
+              className="flex-1 border-0 bg-transparent px-0 font-mono shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+            <Button type="submit" size="sm" disabled={!typed.trim() || checking}>
+              {checking ? "Checking…" : "Use token"}
+            </Button>
+          </Row>
+          {problem && (
+            <Row className="text-sm text-destructive">
+              <span role="alert">{problem}</span>
+            </Row>
+          )}
+        </form>
+      )}
+    </Group>
+  );
+}
+

@@ -59,6 +59,9 @@ fn json_reply(code: u16, v: serde_json::Value) -> Reply {
     (code, "application/json", v.to_string().into_bytes())
 }
 
+/// The header a browser sends its remote control token in (crate::remote).
+const REMOTE_HEADER: &str = "Omicron-Remote";
+
 /// A visit from this computer's owner, as `owner_visit` checked it.
 #[derive(Clone)]
 struct OwnerVisit {
@@ -317,6 +320,54 @@ impl WebMachine {
     /// or through the home lab's gate) and the machine's owner must all be
     /// the same person. Ok(Err(why)) when not.
     fn owner_visit(&self, request: &Request) -> Result<std::result::Result<OwnerVisit, (u16, String)>> {
+        let checked = self.owner_visit_by_tailscale(request)?;
+        // Not seen as the owner by Tailscale: a remote control token from
+        // this browser lets its owner in all the same (crate::remote).
+        match (&checked, request_header(request, REMOTE_HEADER)) {
+            (Err((409, _)), Some(token)) => self.owner_visit_by_token(request, &token),
+            _ => Ok(checked),
+        }
+    }
+
+    /// The owner, signed in on the page, with a remote control token this
+    /// computer made for them that's still good.
+    fn owner_visit_by_token(&self, request: &Request, remote: &str) -> Result<std::result::Result<OwnerVisit, (u16, String)>> {
+        let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
+            return Ok(Err((401, "sign in first".into())));
+        };
+        type Kept = std::collections::HashMap<(String, String), (std::time::Instant, OwnerVisit)>;
+        static KEPT: std::sync::Mutex<Option<Kept>> = std::sync::Mutex::new(None);
+        let kept_key = (token.clone(), remote.to_string());
+        if let Some((at, v)) = KEPT.lock().unwrap().get_or_insert_with(Default::default).get(&kept_key) {
+            // Checked a moment ago; still checked against the file, which
+            // is quick, so a token taken back stops working at once.
+            if at.elapsed() < std::time::Duration::from_secs(60) && crate::remote::lets_in(remote, &v.login.user.id.to_string()) {
+                return Ok(Ok(v.clone()));
+            }
+        }
+        let Ok(login) = self.supabase.session_for_token(&token) else {
+            return Ok(Err((401, "that login doesn't work any more; reload the page".into())));
+        };
+        if !crate::remote::lets_in(remote, &login.user.id.to_string()) {
+            return Ok(Err((409, "that remote control token doesn't work: it ran out, was taken back, or was made for someone else".into())));
+        }
+        let Ok(key) = crate::config::Config::load().and_then(|c| c.machine_key()) else {
+            return Ok(Err((409, "this computer has no machine key".into())));
+        };
+        let board = crate::board::Board::as_machine(&self.supabase, &key)?;
+        if !crate::gate::Orders::new(&board).owner_visiting(&login.user.id.to_string())? {
+            return Ok(Err((409, "you don't own the computer serving this page".into())));
+        }
+        eprintln!("omicron serve: {} came in with a remote control token", login.user.id);
+        let v = OwnerVisit { login, board, local: false };
+        let mut kept = KEPT.lock().unwrap();
+        let kept = kept.get_or_insert_with(Default::default);
+        kept.retain(|_, (at, _)| at.elapsed() < std::time::Duration::from_secs(60));
+        kept.insert(kept_key, (std::time::Instant::now(), v.clone()));
+        Ok(Ok(v))
+    }
+
+    fn owner_visit_by_tailscale(&self, request: &Request) -> Result<std::result::Result<OwnerVisit, (u16, String)>> {
         let Some(token) = request_header(request, "Authorization").and_then(|h| h.strip_prefix("Bearer ").map(String::from)) else {
             return Ok(Err((401, "sign in first".into())));
         };
