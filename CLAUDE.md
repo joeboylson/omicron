@@ -103,6 +103,9 @@ plainly a test's (see `scripts/lib/clean.py`). It also hides this Mac's own
 Tailscale login from the tests. Run the whole suite before committing a
 change to shared code.
 
+The web page's plain logic has unit tests too (vitest, no Supabase, under a
+second): `cd web && npm test`. Files sit beside the code, as `*.test.ts`.
+
 The browser tests (`e2e/`, Playwright 1.62, using the Chromium already in
 `~/Library/Caches/ms-playwright`) run the same way: `bash scripts/e2e.sh`
 (any Playwright arguments, like `-g "drag"` or `--project a11y`), one test
