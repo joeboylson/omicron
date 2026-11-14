@@ -323,6 +323,9 @@ export function ProjectPage({ id }: { id: string }) {
     } else if (change.topic_id !== undefined && change.topic_id !== before.topic_id) {
       label = `Moved #${n} to ${cur.topics.find((x) => x.id === change.topic_id)?.name ?? "No topic"}`;
       undoneLabel = `Moved #${n} back`;
+    } else if (change.position !== undefined && change.position !== before.position && (change.status_id ?? before.status_id) === before.status_id) {
+      label = `Moved #${n} in ${name(before.status_id)}`;
+      undoneLabel = `Moved #${n} back`;
     } else return;
     const back: Partial<Task> = {
       status_id: before.status_id,
@@ -452,7 +455,7 @@ export function ProjectPage({ id }: { id: string }) {
     })
       .finally(() => done.forEach((d) => d()))
       .then(reload);
-    movedTask(moved, { status_id: statusId, topic_id: topicId, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) });
+    movedTask(moved, { status_id: statusId, topic_id: topicId, position, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) });
   };
   // Added with Shift+Enter: open it, straight into its notes (#72).
   const added = (number?: number, open?: boolean) => {

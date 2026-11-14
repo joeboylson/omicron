@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useToast } from "@/lib/toast";
-import { ArrowRight, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { type Task } from "@/lib/data";
+import { renumberTasks, type Task } from "@/lib/data";
+import { reorder } from "@/lib/board-rules";
+import { useApp } from "@/lib/app";
 import { DialogDescription, DialogHeader, DialogTitle } from "@/components/base/dialog";
 import { Button } from "@/components/base/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,8 +14,22 @@ import { NeedsReview } from "@/components/TaskCard";
 import { type SectionProps } from "@/components/task/save";
 
 /** The sheet's top: where the task is, its ⋯ menu, its title, and Needs review. */
-export function TaskHeader({ project, task, save, onDelete }: SectionProps & { onDelete: (task: Task) => void }) {
+export function TaskHeader({ project, task, save, change, onDelete }: SectionProps & { onDelete: (task: Task) => void }) {
   const toast = useToast();
+  const { db } = useApp();
+  // Higher or lower in its column without dragging (HIG drag-and-drop #2).
+  const places = (
+    [
+      ["top", "To the Top", ArrowUpToLine],
+      ["up", "Move Up", ArrowUp],
+      ["down", "Move Down", ArrowDown],
+      ["bottom", "To the Bottom", ArrowDownToLine],
+    ] as const
+  ).map(([to, label, Icon]) => ({ to, label, Icon, place: reorder(project.tasks, task, to) }));
+  const putAt = async (place: NonNullable<ReturnType<typeof reorder>>) => {
+    if (place.renumber.length) await change(() => renumberTasks(db, place.renumber));
+    await save({ position: place.position });
+  };
   // Scroll the sheet to a section of it, and put focus there for the keyboard.
   const jump = (id: string) => {
     const el = document.getElementById(id);
@@ -59,6 +75,20 @@ export function TaskHeader({ project, task, save, onDelete }: SectionProps & { o
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {places.some((p) => p.place) && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <ArrowUp /> Order
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {places.map(({ to, label, Icon, place }) => (
+                    <DropdownMenuItem key={to} disabled={!place} onSelect={() => place && putAt(place)}>
+                      <Icon /> {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuItem
               onSelect={() => {
                 // This page's address, with the task open (?task=n).

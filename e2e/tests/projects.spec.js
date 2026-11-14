@@ -1746,6 +1746,37 @@ test("Machines: make a key for a new machine, see it, change its Projects, switc
   expect(res.status()).toBe(403);
 });
 
+test("a task moves up or down its column from its menu, without dragging", async ({ page, request }) => {
+  await newPerson(page, request);
+  await startProjectIn(page, unique("House"));
+  await addTaskIn(page, "To do", "First");
+  for (const t of ["Second", "Third"]) {
+    await page.getByLabel("New task in To do").fill(t);
+    await page.getByRole("button", { name: "Add task", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Cancel" }).click();
+  const order = () => column(page, "To do").getByRole("button", { name: /^#\d/ });
+  await expect(order()).toHaveText([/First/, /Second/, /Third/]);
+  const put = async (n, where) => {
+    await page.getByRole("button", { name: new RegExp(`^#${n} `) }).click();
+    await page.getByRole("button", { name: "More for this task" }).click();
+    await page.getByRole("menuitem", { name: "Order" }).click();
+    await page.getByRole("menuitem", { name: where }).click();
+    await escape(page);
+  };
+  // To the top, then one down; it says so, with Undo (#212).
+  await put(3, "To the Top");
+  await expect(order()).toHaveText([/Third/, /First/, /Second/]);
+  await expect(page.getByRole("status").filter({ hasText: "Moved #3 in To do" })).toBeVisible();
+  await put(3, "Move Down");
+  await expect(order()).toHaveText([/First/, /Third/, /Second/]);
+  // Where it can't go is greyed out.
+  await page.getByRole("button", { name: /^#1 / }).click();
+  await page.getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Order" }).click();
+  await expect(page.getByRole("menuitem", { name: "Move Up" })).toBeDisabled();
+});
+
 test("deleting a task can be undone, and it's gone for good after", async ({ page, request }) => {
   const me = await newPerson(page, request);
   const name = unique("House");

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { dropPlace, inOrder, matches, parseColumn, placeAt } from "./board-rules";
+import { describe, expect, it, test } from "vitest";
+import { dropPlace, inOrder, matches, parseColumn, placeAt, reorder } from "./board-rules";
 import type { Task } from "./data";
 
 const card = (id: string, position: number, number: number) => ({ id, position, number });
@@ -145,5 +145,23 @@ describe("matches", () => {
     expect(matches({ ...t, due_on: null }, "", { ...none, due: true }, "me", now)).toBe(false);
     expect(matches(t, "", { ...none, label: "food" }, "me", now)).toBe(true);
     expect(matches(t, "", { ...none, label: "work" }, "me", now)).toBe(false);
+  });
+});
+
+describe("reorder", () => {
+  const t = (id: string, position: number, number: number) => ({ id, position, number, status_id: "s" }) as unknown as Task;
+  const tasks = [t("a", 1, 1), t("b", 2, 2), t("c", 3, 3)];
+  it("moves up, down, to the top and to the bottom", () => {
+    expect(reorder(tasks, tasks[2], "up")!.position).toBeGreaterThan(1);
+    expect(reorder(tasks, tasks[2], "up")!.position).toBeLessThan(2);
+    expect(reorder(tasks, tasks[0], "down")!.position).toBeGreaterThan(2);
+    expect(reorder(tasks, tasks[2], "top")!.position).toBeLessThan(1);
+    expect(reorder(tasks, tasks[0], "bottom")!.position).toBeGreaterThan(3);
+  });
+  it("does nothing where it already is", () => {
+    expect(reorder(tasks, tasks[0], "up")).toBeNull();
+    expect(reorder(tasks, tasks[0], "top")).toBeNull();
+    expect(reorder(tasks, tasks[2], "down")).toBeNull();
+    expect(reorder(tasks, tasks[2], "bottom")).toBeNull();
   });
 });

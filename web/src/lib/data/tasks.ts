@@ -26,7 +26,7 @@ export async function addTask(
 export type TaskChange = Partial<
   Pick<
     Task,
-    "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id" | "assignee_session_id" | "topic_id"
+    "title" | "notes" | "status_id" | "due_on" | "needs_review" | "assignee_person_id" | "assignee_session_id" | "topic_id" | "position"
   >
 >;
 

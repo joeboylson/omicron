@@ -101,3 +101,19 @@ export function matches(task: Task, query: string, filters: Filters, me: string,
     (filters.label === null || task.labelIds.includes(filters.label))
   );
 }
+
+/** Where a task goes when moved up, down, to the top or to the bottom of
+ *  its status's column, without dragging. Null when it's already there. */
+export function reorder(
+  tasks: Task[],
+  task: Task,
+  to: "up" | "down" | "top" | "bottom",
+): { position: number; renumber: { id: string; position: number }[] } | null {
+  const column = inOrder(tasks.filter((t) => t.status_id === task.status_id));
+  const i = column.findIndex((t) => t.id === task.id);
+  if (i < 0) return null;
+  const others = column.filter((t) => t.id !== task.id);
+  const at = { up: i - 1, down: i + 1, top: 0, bottom: others.length }[to];
+  if (at < 0 || at > others.length || at === i) return null;
+  return placeAt(others, at);
+}
