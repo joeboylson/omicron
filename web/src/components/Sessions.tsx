@@ -220,17 +220,11 @@ function SessionNotes({
                     size="sm"
                     className="ml-auto h-8 shrink-0 gap-1 px-2 text-xs"
                     aria-label="Copy pickup command"
+                    title="Copy the command that picks up from this note"
                     onClick={() => copy(n)}
                   >
                     <Copy className="h-3.5 w-3.5" />
-                    {copied === n.number ? (
-                      "Copied"
-                    ) : (
-                      <>
-                        <span className="sm:hidden">Copy</span>
-                        <span className="hidden sm:inline">Copy pickup command</span>
-                      </>
-                    )}
+                    {copied === n.number ? "Copied" : "Copy"}
                   </Button>
                 </div>
                 <Markdown text={n.body} className="line-clamp-[12] text-[0.9375rem] sm:text-sm" />
@@ -277,7 +271,7 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
   return (
     <Group title="Loop">
       <div className="grid gap-1.5 px-4 py-3" data-testid="loop">
-        <p className="flex items-center gap-2 text-[0.9375rem] sm:text-sm">
+        <p className="flex flex-wrap items-center gap-x-2 text-[0.9375rem] sm:text-sm">
           <Repeat className="h-4 w-4 shrink-0 text-[var(--sys-blue)]" aria-hidden />
           <span className="tabular-nums">every {sayEvery(loop.every_seconds)}</span>
           <span className="text-muted-foreground">· {end}</span>

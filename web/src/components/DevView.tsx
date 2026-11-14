@@ -125,19 +125,19 @@ export function DevView({
               <li key={f.id} className="group flex items-center gap-2 rounded px-1 py-1" title={f.path}>
                 <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 {/* Its name first; the rest of the path dimmed, cut from the start (like VS Code's Recent). */}
-                <span className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
-                  <span className="min-w-0 shrink truncate font-medium">{folderParts(f.path).name}</span>
-                  <span className="min-w-0 shrink-[999] truncate text-xs text-muted-foreground [direction:rtl]">
-                    <bdi>{folderParts(f.path).parent}</bdi>
-                  </span>
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5" title={f.path}>
+                  {/* The name, whole; where it is shows on hover (#233). */}
+                  <span className="min-w-0 break-all font-medium">{folderParts(f.path).name}</span>
                 </span>
                 <button
                   type="button"
-                  className="flex min-h-11 shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs text-link hover:bg-muted lg:min-h-0"
+                  // An icon, so the folder's name has the room (#233).
+                  className="flex size-11 shrink-0 items-center justify-center rounded text-link hover:bg-muted lg:size-7"
                   aria-label={`Open a new session in ${f.path}`}
+                  title="New session here"
                   onClick={() => openIn(f.id)}
                 >
-                  <Plus className="h-3.5 w-3.5" aria-hidden /> New session
+                  <Plus className="h-4 w-4" aria-hidden />
                 </button>
               </li>
             ))}
@@ -180,7 +180,7 @@ export function DevView({
                   {/* Its name, then where and what it's doing. */}
                   <span className="grid min-w-0">
                     <span className="truncate font-medium">{s.name}</span>
-                    <span className="truncate text-xs text-muted-foreground" data-testid={`doing-${s.name}`}>
+                    <span className="text-xs text-muted-foreground" data-testid={`doing-${s.name}`}>
                       {sessionDoing(project, s, done)}
                     </span>
                   </span>
@@ -316,7 +316,7 @@ export function DevView({
                       ) : !isDone && here.length > 0 ? (
                         <select
                           aria-label={`Give #${t.number} to a session here`}
-                          className="mt-0.5 min-h-11 max-w-28 shrink-0 truncate rounded-md border bg-transparent px-1 text-base lg:min-h-0 lg:text-xs"
+                          className="mt-0.5 min-h-11 min-w-0 max-w-[45%] shrink truncate rounded-md border bg-transparent px-1 text-base lg:min-h-0 lg:text-xs"
                           value=""
                           onChange={(e) => e.target.value && give(t, e.target.value)}
                         >

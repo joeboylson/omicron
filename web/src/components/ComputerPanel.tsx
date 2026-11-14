@@ -194,7 +194,7 @@ function LoopForm({ session, onStart }: { session: string; onStart: (prompt: str
         placeholder="Keep going with the next task"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        className="h-9 min-w-40 flex-1"
+        className="h-9 w-full"
       />
       <label className="flex items-center gap-1.5 text-muted-foreground">
         every
