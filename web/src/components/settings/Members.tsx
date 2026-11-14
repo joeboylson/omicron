@@ -65,7 +65,7 @@ function AddMember({ people, onAdd }: { people: Person[]; onAdd: (id: string) =>
         <Command>
           <CommandInput placeholder="Search people" />
           <CommandList>
-            <CommandEmpty>Not here yet? Send them this page’s address: they show up once they’ve opened it.</CommandEmpty>
+            <CommandEmpty>Not here yet? Send them the link: they show up once they’ve opened it.</CommandEmpty>
             <CommandGroup>
               {people.map((p) => (
                 <CommandItem

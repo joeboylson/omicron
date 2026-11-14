@@ -212,7 +212,7 @@ test("a Claude session marks a task for review, and a person takes it off", asyn
   await expect(card).not.toContainText("Needs review");
 });
 
-test("statuses and members are set in Project settings", async ({ page, request }) => {
+test("statuses are set in Project settings, members from Share", async ({ page, request }) => {
   await newPerson(page, request, "Robin Example");
   const friend = unique("Alex");
   await sessionFor(request, omicron, `${friend}@example.com`, friend);
@@ -249,8 +249,13 @@ test("statuses and members are set in Project settings", async ({ page, request 
   });
   await expect(page.getByRole("region")).toHaveText([/^To do/, /^Doing/, /^Finished0Tasks here count as done/]);
 
-  await page.getByRole("button", { name: "Project settings" }).click();
+  // Who's in it: from the header's Share button, its faces (#209).
+  await expect(page.getByRole("button", { name: "Share, 1 member" })).toBeVisible();
+  await page.getByRole("button", { name: "Share, 1 member" }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: /^Share / })).toBeVisible();
+  // The page here is on this computer's own address: no link to copy.
+  await expect(dialog.getByRole("region", { name: "Link" })).toContainText("another device");
   // Add a member, who can then be given tasks.
   // Everyone in it is listed, you first (#159).
   const members = dialog.getByRole("list", { name: "Members" });
@@ -266,6 +271,7 @@ test("statuses and members are set in Project settings", async ({ page, request 
   await page.getByRole("option", { name: friend }).click();
   await expect(members).toContainText(friend);
   await escape(page);
+  await expect(page.getByRole("button", { name: "Share, 2 members" })).toBeVisible();
   await addTaskIn(page, "To do", "Plant bulbs");
   await page.getByRole("button", { name: "#1 Plant bulbs" }).click();
   await pick(page, "Given to", friend);

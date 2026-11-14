@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { go, useApp } from "@/lib/app";
-import { listMachines, listPeople, type MachineRow, type Person, type ProjectData } from "@/lib/data";
+import { listMachines, type MachineRow, type ProjectData } from "@/lib/data";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { NameSection } from "@/components/settings/Name";
 import { StatusesSection } from "@/components/settings/Statuses";
 import { TopicsSection } from "@/components/settings/Topics";
 import { LabelsSection } from "@/components/settings/Labels";
-import { MembersSection } from "@/components/settings/Members";
 import { RunRulesSection } from "@/components/settings/RunRules";
 import { MachinesSection } from "@/components/settings/Machines";
 import { FoldersSection } from "@/components/settings/Folders";
@@ -26,14 +25,11 @@ export function ProjectSettings({
   const { db, act } = useApp();
   // Open on a Project that uses Claude sessions; folded on one that doesn't.
   const [claudeOpen, setClaudeOpen] = useState(usesClaude(project));
-  const [people, setPeople] = useState<Person[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
   useEffect(() => {
     if (open) {
       act(async () => {
-        const [p, m] = await Promise.all([listPeople(db), listMachines(db)]);
-        setPeople(p);
-        setMachines(m);
+        setMachines(await listMachines(db));
       });
     }
   }, [open, db, act]);
@@ -73,7 +69,6 @@ export function ProjectSettings({
         <StatusesSection {...section} />
         <TopicsSection {...section} />
         <LabelsSection {...section} />
-        <MembersSection {...section} people={people} />
 
         {/* What only Claude sessions use, together and out of the way on a
             Project without any (a household board). */}

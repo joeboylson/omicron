@@ -49,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GateButton } from "@/components/GateButton";
+import { ShareButton, ShareSheet } from "@/components/ShareSheet";
 import { DevView } from "@/components/DevView";
 import { RunBar } from "@/components/RunBar";
 import { useDev } from "@/lib/dev";
@@ -80,6 +81,7 @@ export function ProjectPage({ id }: { id: string }) {
     [setTaskInAddress],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   // On a phone: the Project's Claude sessions, in a sheet.
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [notesFor, setNotesFor] = useState<number | null>(null);
@@ -155,6 +157,7 @@ export function ProjectPage({ id }: { id: string }) {
           { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => newTask.current() },
           { id: "search", label: "Search tasks", group: ready.name, shortcut: "/", keywords: "find filter", run: () => searchBox.current?.focus() },
           { id: "settings", label: "Project settings", group: ready.name, run: () => setSettingsOpen(true) },
+          { id: "share", label: "Share", group: ready.name, keywords: "members people add invite link", run: () => setShareOpen(true) },
           { id: "group-status", label: "Columns by status", group: ready.name, keywords: "group", run: () => setGroupBy("status") },
           { id: "group-topic", label: "Columns by topic", group: ready.name, keywords: "group", run: () => setGroupBy("topic") },
           { id: "group-person", label: "Columns by person", group: ready.name, keywords: "group given to who", run: () => setGroupBy("person") },
@@ -437,6 +440,7 @@ export function ProjectPage({ id }: { id: string }) {
               <span className="tabular-nums">{project.sessions.length}</span>
             </Button>
           )}
+          <ShareButton project={project} onClick={() => setShareOpen(true)} />
           <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
             <Settings />
           </Button>
@@ -754,6 +758,7 @@ export function ProjectPage({ id }: { id: string }) {
         }}
       />
       <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
+      <ShareSheet project={project} open={shareOpen} onOpenChange={setShareOpen} onChanged={reload} />
       <Dialog open={sessionsOpen} onOpenChange={setSessionsOpen}>
         <DialogContent className="max-h-[92dvh] gap-4 overflow-y-auto" onOpenAutoFocus={focusSheet}>
           <DialogHeader className="text-left">

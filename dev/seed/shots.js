@@ -177,9 +177,15 @@ async function escape(page) {
     await page.getByRole("button", { name: "Project settings" }).click();
     await page.getByRole("region", { name: "Labels" }).waitFor();
     await shot("3b-settings");
-    // The rest of the sheet: members, Claude sessions (folded here), delete.
+    // The rest of the sheet: Claude sessions (folded here), delete.
     await page.getByRole("dialog").getByLabel("Delete Project").scrollIntoViewIfNeeded();
     await shot("3d-settings-lower");
+    await escape(page);
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    // Who's in it, from the header (#209).
+    await page.getByRole("button", { name: /^Share, / }).click();
+    await page.getByRole("list", { name: "Members" }).waitFor();
+    await shot("3e-share");
     await escape(page);
     await page.getByRole("button", { name: "Back to Projects" }).click();
     await page.getByRole("link", { name: /^Lumen/ }).click();
