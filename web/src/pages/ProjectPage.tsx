@@ -4,7 +4,7 @@ import { ArrowUpDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings, Slide
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
+import { updateTask, addTask, deleteTask, loadProject, moveTask, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
 import { inOrder, placeAt } from "@/lib/board-rules";
 import {
   DndContext,
@@ -152,6 +152,20 @@ export function ProjectPage({ id }: { id: string }) {
           { id: "group-person", label: "Columns by person", group: ready.name, keywords: "group given to who", run: () => setGroupBy("person") },
           { id: "show-board", label: "Show as a board", group: ready.name, keywords: "view columns", run: () => setLayout("board") },
           { id: "show-list", label: "Show as a list", group: ready.name, keywords: "view rows", run: () => setLayout("list") },
+          // With a task open: move it to any status from here too.
+          ...(() => {
+            const open = ready.tasks.find((t) => t.number === openTask);
+            if (!open) return [];
+            return ready.statuses
+              .filter((st) => st.id !== open.status_id)
+              .map((st) => ({
+                id: `move-${st.id}`,
+                label: `Move #${open.number} to ${st.name}`,
+                group: `#${open.number} ${open.title}`,
+                keywords: "status column",
+                run: () => act(() => updateTask(db, ready, open, { status_id: st.id })).then(reload),
+              }));
+          })(),
           ...ready.tasks.map((t) => ({
             id: `task-${t.id}`,
             label: `#${t.number} ${t.title}`,
@@ -318,6 +332,33 @@ export function ProjectPage({ id }: { id: string }) {
           }));
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
+
+  // Arrow keys (or j/k/h/l) move between cards on the board: up and down a
+  // column, across to the next column. Not while a card is picked up.
+  const moveFocus = (e: React.KeyboardEvent) => {
+    const step = ({ ArrowDown: [0, 1], j: [0, 1], ArrowUp: [0, -1], k: [0, -1], ArrowRight: [1, 0], l: [1, 0], ArrowLeft: [-1, 0], h: [-1, 0] } as Record<string, [number, number]>)[e.key];
+    if (!step || dragOn.current || e.metaKey || e.ctrlKey || e.altKey) return;
+    const card = (e.target as HTMLElement).closest<HTMLElement>('[role="button"][aria-label^="#"]');
+    const col = card?.closest("section");
+    if (!card || !col || !board.current) return;
+    const cols = [...board.current.querySelectorAll<HTMLElement>(":scope > section")];
+    const cardsIn = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>('[role="button"][aria-label^="#"]')];
+    const here = cardsIn(col);
+    const at = here.indexOf(card);
+    let to: HTMLElement | undefined;
+    if (step[1]) to = here[at + step[1]];
+    else {
+      // The next column that has cards, at about the same height.
+      for (let i = cols.indexOf(col) + step[0]; i >= 0 && i < cols.length && !to; i += step[0]) {
+        const there = cardsIn(cols[i]);
+        to = there[Math.min(at, there.length - 1)];
+      }
+    }
+    if (!to) return;
+    e.preventDefault();
+    to.focus();
+    to.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
 
   const onDragStart = (e: DragStartEvent) => {
     dragOn.current = true;
@@ -602,7 +643,7 @@ export function ProjectPage({ id }: { id: string }) {
       >
       <ColumnJump groups={groups} board={board} />
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={board} className={cn(boardRow, "min-h-0")}>
+        <div ref={board} className={cn(boardRow, "min-h-0")} onKeyDown={moveFocus}>
           {groups.map((g, i) => (
             <Column
               key={g.key}

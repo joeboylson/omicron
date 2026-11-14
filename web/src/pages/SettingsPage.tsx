@@ -75,6 +75,7 @@ export function SettingsPage() {
               ["⌘K or Ctrl-K", "Commands: go anywhere, open a task, change the theme"],
               ["c", "New task (on a Project)"],
               ["/", "Search tasks (on a Project)"],
+              ["Arrows, or j k h l", "Go from task to task on the board"],
               ["Space, then arrows", "Move a task on the board; Space drops it"],
               ["Enter", "Open the task that has focus"],
             ].map(([k, what]) => (

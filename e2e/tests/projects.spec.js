@@ -1444,6 +1444,21 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
   // Saved: the same after reloading.
   await page.reload();
   await expect.poll(async () => (await titles("To do")).map((t) => t.replace(/#\d+$/, "").trim())).toEqual(["Bravo", "Charlie"]);
+  // Arrow keys go from card to card: down the column, across to the next (#174).
+  await card("Bravo").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(card("Charlie")).toBeFocused();
+  await page.keyboard.press("l");
+  await expect(card("Alpha")).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(card("Bravo")).toBeFocused();
+  // Moved without dragging: Move to, in the task's menu.
+  await card("Charlie").click();
+  await page.getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Move to" }).hover();
+  await page.getByRole("menuitem", { name: "Done" }).click();
+  await escape(page);
+  await expect(column(page, "Done")).toContainText("Charlie");
   await expect(column(page, "Done")).toContainText("Alpha");
   // A click still opens a task.
   await card("Charlie").click();

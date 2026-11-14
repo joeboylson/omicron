@@ -2,8 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { formatDate } from "@/components/TaskCard";
+import { ArrowRight } from "lucide-react";
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Loader2, MoreHorizontal, Plus, Send, Terminal, Trash2, X } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useAwakeMachines } from "@/lib/awake";
 import {
@@ -187,6 +196,19 @@ function TaskForm({
                   <Check /> Mark done
                 </DropdownMenuItem>
               )}
+              {/* Moving without dragging (by keyboard, or on a small screen). */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <ArrowRight /> Move to
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {project.statuses.map((st) => (
+                    <DropdownMenuItem key={st.id} disabled={st.id === task.status_id} onSelect={() => save({ status_id: st.id })}>
+                      <ColorDot color={statusColor(st)} /> {st.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(task)}>
                 <Trash2 /> Delete task
               </DropdownMenuItem>
