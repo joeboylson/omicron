@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -35,6 +35,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -327,6 +330,7 @@ export function ProjectPage({ id }: { id: string }) {
   const nav = (
     <NavBar
       title={project.name}
+      titleClassName="text-2xl sm:text-3xl"
       left={
         <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
           <ChevronLeft /> Projects
@@ -379,7 +383,7 @@ export function ProjectPage({ id }: { id: string }) {
       <Sessions project={project} onChanged={reload} />
       <RunBar project={project} onChanged={reload} />
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
-        <div className="relative w-full sm:w-56">
+        <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
             ref={searchBox}
@@ -391,7 +395,33 @@ export function ProjectPage({ id }: { id: string }) {
             className="h-9 pl-8"
           />
         </div>
-        <div role="group" aria-label="Filters" className="flex flex-wrap items-center gap-1.5">
+        {/* On a phone, Show and Columns fold into one menu beside the search. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="size-9 shrink-0 sm:hidden" aria-label="View">
+              <SlidersHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">Show</div>
+            <DropdownMenuRadioGroup value={layout} onValueChange={(v) => setLayout(v as "board" | "list")}>
+              <DropdownMenuRadioItem value="board">Board</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="list">List</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">{layout === "board" ? "Columns" : "Group by"}</div>
+            <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as "status" | "topic")}>
+              <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="topic">Topic</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {/* One row that scrolls sideways on a phone; wraps on wider screens. */}
+        <div
+          role="group"
+          aria-label="Filters"
+          className="-mx-[max(1rem,env(safe-area-inset-left))] flex w-[calc(100%_+_2*max(1rem,env(safe-area-inset-left)))] items-center gap-1.5 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] py-0.5 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:p-0 [&>*]:shrink-0"
+        >
           {(
             [
               ["mine", "Mine"],
@@ -441,6 +471,7 @@ export function ProjectPage({ id }: { id: string }) {
         </div>
         <span className="hidden flex-1 sm:block" />
         <Segmented
+          className="hidden sm:inline-flex"
           label="Show"
           value={layout}
           options={[
@@ -450,6 +481,7 @@ export function ProjectPage({ id }: { id: string }) {
           onChange={setLayout}
         />
         <Segmented
+          className="hidden sm:inline-flex"
           label={layout === "board" ? "Columns" : "Group by"}
           value={groupBy}
           options={[
@@ -796,11 +828,13 @@ function SortableTask({
 
 /** A small set of choices side by side, one picked (like iOS's segmented control). */
 function Segmented<T extends string>({
+  className,
   label,
   value,
   options,
   onChange,
 }: {
+  className?: string;
   label: string;
   value: T;
   options: [T, string][];
@@ -808,7 +842,7 @@ function Segmented<T extends string>({
 }) {
   const labelId = `seg-${label.toLowerCase().replace(/\W+/g, "-")}`;
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className={cn("inline-flex items-center gap-2", className)}>
       <span id={labelId} className="text-sm text-muted-foreground">
         {label}
       </span>

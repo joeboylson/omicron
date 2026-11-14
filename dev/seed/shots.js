@@ -41,6 +41,14 @@ async function escape(page) {
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(out, `${kind}-${name}.png`), fullPage });
     };
+    // Board or List, Status or Topic: switches on wide screens, the View menu on a phone.
+    const view = async (name) => {
+      const radio = page.getByRole("radio", { name, exact: true });
+      if (await radio.isVisible()) return radio.click();
+      await page.getByRole("button", { name: "View", exact: true }).click();
+      await page.getByRole("menuitemradio", { name }).click();
+      await page.getByRole("menu").waitFor({ state: "detached" });
+    };
     // Pages that aren't there.
     await page.goto(`${url}/nowhere`);
     await page.getByRole("heading", { name: "Nothing here" }).waitFor();
@@ -111,14 +119,14 @@ async function escape(page) {
     await shot("2f-column-menu");
     await page.keyboard.press("Escape");
     await escape(page);
-    await page.getByRole("radio", { name: "Topic", exact: true }).click();
+    await view("Topic");
     await page.getByRole("region", { name: "Claire's to-do", exact: true }).waitFor();
     await shot("2b-house-topics", true);
-    await page.getByRole("radio", { name: "Status", exact: true }).click();
-    await page.getByRole("radio", { name: "List", exact: true }).click();
+    await view("Status");
+    await view("List");
     await page.getByRole("list", { name: "To do" }).waitFor();
     await shot("2g-house-list", true);
-    await page.getByRole("radio", { name: "Board", exact: true }).click();
+    await view("Board");
     await page.getByRole("button", { name: /Fix the back gate/ }).click();
     await shot("3-task");
     // Its ⋯ menu, and who it can be given to.
@@ -197,10 +205,10 @@ async function escape(page) {
     await page.getByRole("button", { name: /Day trip to Sintra/ }).waitFor();
     await shot("6-lisbon");
     // Columns by topic with none yet; a task that isn't there; a Project that isn't.
-    await page.getByRole("radio", { name: "Topic", exact: true }).click();
+    await view("Topic");
     await page.getByText(/No topics yet/).waitFor();
     await shot("6b-no-topics");
-    await page.getByRole("radio", { name: "Status", exact: true }).click();
+    await view("Status");
     const lisbon = page.url().split("?")[0];
     await page.goto(`${lisbon}?task=999`);
     await page.getByText(/There's no task #999/).waitFor();

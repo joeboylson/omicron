@@ -162,6 +162,20 @@ for (const [kind, device] of [
         await expect(jump.getByRole("button", { name: new RegExp(`^${last} `) })).toHaveAttribute("aria-current", "true");
         await jump.getByRole("button", { name: new RegExp(`^${statuses[0].name} `) }).tap();
         await expect(todo).toBeInViewport({ ratio: 0.9 });
+
+        // The header is compact (#143): the first card is in the top half,
+        // and Show and Columns are in one View menu.
+        const first = await todo.getByRole("button", { name: /^#\d+ / }).first().boundingBox();
+        expect(first.y, "first card's top").toBeLessThan(page.viewportSize().height / 2);
+        await page.getByRole("button", { name: "View", exact: true }).tap();
+        await page.getByRole("menuitemradio", { name: "List" }).tap();
+        await expect(page.getByRole("list", { name: statuses[0].name })).toBeVisible();
+        await settled(page);
+        await fits(page, "List");
+        await tappable(page, "List");
+        await page.getByRole("button", { name: "View", exact: true }).tap();
+        await page.getByRole("menuitemradio", { name: "Board" }).tap();
+        await expect(todo).toBeVisible();
       }
 
       // A task's sheet.
