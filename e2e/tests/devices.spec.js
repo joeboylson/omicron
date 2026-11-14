@@ -83,7 +83,7 @@ async function swipe(page, from, to) {
 }
 
 /** Press and hold on one place, then drag to another (as a finger does). */
-async function holdAndDrag(page, from, to) {
+async function holdAndDrag(page, from, to, holdMs = 700) {
   const a = await from.boundingBox();
   const b = await to.boundingBox();
   const cdp = await page.context().newCDPSession(page);
@@ -91,7 +91,7 @@ async function holdAndDrag(page, from, to) {
   const ax = a.x + a.width / 2;
   const ay = a.y + a.height / 2;
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(ax, ay) });
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(holdMs);
   const bx = b.x + b.width / 2;
   const by = b.y + 4;
   for (let i = 1; i <= 15; i++) {
@@ -151,6 +151,10 @@ for (const [kind, device] of [
       await expect.poll(order).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
       // A quick swipe over a card scrolls; it doesn't pick the card up (#141).
       await swipe(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
+      await page.waitForTimeout(1500);
+      expect(await order()).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
+      // Held only a moment (under half a second): not picked up either (#191).
+      await holdAndDrag(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }), 300);
       await page.waitForTimeout(1500);
       expect(await order()).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
       const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH" && r.request().postData()?.includes('"status_id"'));
