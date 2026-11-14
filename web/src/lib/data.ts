@@ -572,6 +572,27 @@ export function positionBetween(before: number | undefined, after: number | unde
 }
 
 /** Move a task: to a status (and topic, when given) at a position. */
+/**
+ * Put a column's tasks in order once (#56): by number, by name, or by who
+ * they're given to (people and sessions by name, then nobody). Tasks moved
+ * in later stay where they're put.
+ */
+export async function organize(db: SupabaseClient, project: ProjectData, tasks: Task[], by: "number" | "name" | "assignee") {
+  const who = (t: Task) =>
+    project.members.find((m) => m.id === t.assignee_person_id)?.display_name ?? project.sessions.find((s) => s.id === t.assignee_session_id)?.name ?? null;
+  const sorted = [...tasks].sort((a, b) => {
+    if (by === "name") return a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }) || a.number - b.number;
+    if (by === "assignee") {
+      const [x, y] = [who(a), who(b)];
+      if (x !== y) return x === null ? 1 : y === null ? -1 : x.localeCompare(y);
+    }
+    return a.number - b.number;
+  });
+  // Only the ones whose place changes.
+  const changed = sorted.map((t, i) => ({ t, position: i + 1 })).filter(({ t, position }) => t.position !== position);
+  await Promise.all(changed.map(({ t, position }) => db.from("tasks").update({ position }).eq("id", t.id).then(must)));
+}
+
 export async function moveTask(
   db: SupabaseClient,
   task: Task,

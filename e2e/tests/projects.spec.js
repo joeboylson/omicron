@@ -526,6 +526,36 @@ test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter op
   await expect(column(page, "To do").getByRole("button", { name: /Plant the tulips/ })).toBeVisible();
 });
 
+test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the board away", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("Home");
+  await startProjectIn(page, name);
+  for (const t of ["Cherry pie", "Apple crumble", "Banana bread"]) omicron.cli("tasks", "add", name, t, "--as-machine");
+  // A long Done column.
+  for (let i = 1; i <= 14; i++) omicron.cli("tasks", "add", name, `Old thing ${i}`, "--status", "Done", "--as-machine");
+  await page.reload();
+  const titles = () => column(page, "To do").getByRole("button", { name: /^#\d+ / }).allTextContents();
+
+  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Organize" }).click();
+  await page.getByRole("menuitem", { name: "By name" }).click();
+  await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Apple crumble", "Banana bread", "Cherry pie"]);
+  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await page.getByRole("menuitem", { name: "Organize" }).click();
+  await page.getByRole("menuitem", { name: "By number" }).click();
+  await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Cherry pie", "Apple crumble", "Banana bread"]);
+
+  // Marked done from its sheet: it goes to Done, and closing the sheet
+  // leaves the board where it was.
+  await column(page, "To do").getByRole("button", { name: /Apple crumble/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "More for this task" }).click();
+  await page.getByRole("menuitem", { name: "Mark done" }).click();
+  await escape(page);
+  await expect(column(page, "Done")).toContainText("Apple crumble");
+  const scrolled = await column(page, "Done").getByRole("list").evaluate((el) => el.scrollTop);
+  expect(scrolled).toBe(0);
+});
+
 test("a Project you're not in isn't shown", async ({ page, request }) => {
   await newPerson(page, request);
   await page.goto(`${omicron.url}/p/00000000-0000-4000-8000-000000000000`);

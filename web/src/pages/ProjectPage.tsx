@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, Plus, Search, Settings } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronLeft, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addTask, deleteTask, loadProject, moveTask, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
+import { addTask, deleteTask, loadProject, moveTask, organize, positionBetween, type ProjectData, type Status, type Task } from "@/lib/data";
 import {
   DndContext,
   DragOverlay,
@@ -29,6 +29,15 @@ import { ProjectSettings } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { GateButton } from "@/components/GateButton";
 import { DevView } from "@/components/DevView";
 import { RunBar } from "@/components/RunBar";
@@ -468,7 +477,9 @@ export function ProjectPage({ id }: { id: string }) {
           setOpenTask(null);
           setTimeout(() => {
             const card = number === null ? null : document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`);
-            card?.focus();
+            // Without scrolling: a task just moved (to the bottom of Done,
+            // say) mustn't drag the board away from where you were (#56).
+            card?.focus({ preventScroll: true });
           }, 0);
         }}
         onChanged={reload}
@@ -664,6 +675,33 @@ function Column({
             Done
           </Badge>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-7", !status.is_done && "ml-auto")} aria-label="More for this column">
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <ArrowUpDown /> Organize
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {(
+                  [
+                    ["number", "By number"],
+                    ["name", "By name"],
+                    ["assignee", "By who it's given to"],
+                  ] as const
+                ).map(([by, text]) => (
+                  <DropdownMenuItem key={by} disabled={tasks.length < 2} onSelect={() => act(async () => (await organize(db, project, tasks, by), onAdded()))}>
+                    {text}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </h2>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <ul
