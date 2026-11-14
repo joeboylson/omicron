@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { formatDate } from "@/components/TaskCard";
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Loader2, MoreHorizontal, Plus, Send, Terminal, Trash2, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -115,7 +116,6 @@ function TaskForm({
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
   const [newItem, setNewItem] = useState("");
-  const [newLabel, setNewLabel] = useState("");
   // Ticks show straight away, before the save comes back.
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
   // Once a reload shows the saved value, stop showing our own. A reload
@@ -145,12 +145,19 @@ function TaskForm({
   };
   // Shows at once (the page updates its copy), then saves; a failure says
   // so and the reload puts it back.
+  // Saves go one after another, in the order made: two quick changes to
+  // one field (a date picked, then another) can't land the wrong way round.
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
   const save = (c: Parameters<typeof updateTask>[3]) => {
     const done = onPatch(task.id, c);
-    return act(() => updateTask(db, project, task, c)).finally(() => {
-      done();
-      onChanged();
-    });
+    const next = saving.current
+      .then(() => act(() => updateTask(db, project, task, c)))
+      .finally(() => {
+        done();
+        onChanged();
+      });
+    saving.current = next.catch(() => {});
+    return next;
   };
 
   const done = project.statuses.find((s) => s.is_done);
@@ -323,47 +330,30 @@ function TaskForm({
       <Group title="Labels">
         <Row className="flex-wrap gap-1.5 py-2">
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Labels">
-            {project.labels.map((l) => {
-              const on = task.labelIds.includes(l.id);
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  aria-pressed={on}
-                  className="flex min-h-9 items-center"
-                  onClick={() => change(() => setLabel(db, task, l.id, !on))}
-                >
-                  {l.color ? (
-                    <LabelBadge name={l.name} color={l.color as Color} pressed={on} />
-                  ) : (
-                    <Badge variant={on ? "default" : "outline"} className="cursor-pointer px-3 py-1 font-normal">
-                      {l.name}
-                    </Badge>
-                  )}
-                </button>
-              );
-            })}
-            <form
-              className="flex items-center"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const name = newLabel.trim();
-                if (!name) return;
+            {/* Only the task's own labels, each with ×; the rest are in Add label (like Trello). */}
+            {project.labels
+              .filter((l) => task.labelIds.includes(l.id))
+              .map((l) => (
+                <span key={l.id} className="flex min-h-9 items-center gap-0.5">
+                  <LabelBadge name={l.name} color={l.color as Color | null} />
+                  <button
+                    type="button"
+                    aria-label={`Take off ${l.name}`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => change(() => setLabel(db, task, l.id, false))}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+            <AddLabel
+              labels={project.labels.filter((l) => !task.labelIds.includes(l.id))}
+              onPick={(id) => change(() => setLabel(db, task, id, true))}
+              onCreate={(name) => {
                 const existing = project.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
-                change(async () => {
-                  await setLabel(db, task, existing?.id ?? (await addLabel(db, project.id, name)), true);
-                  setNewLabel("");
-                });
+                change(async () => setLabel(db, task, existing?.id ?? (await addLabel(db, project.id, name)), true));
               }}
-            >
-              <Input
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="New label"
-                aria-label="New label"
-                className={cn(bare, "h-9 w-32 px-1")}
-              />
-            </form>
+            />
           </div>
         </Row>
       </Group>
@@ -663,7 +653,7 @@ function DateField({ id, value, onChange }: { id: string; value: string | null; 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button id={id} variant="ghost" className={cn(bare, "w-auto gap-1 px-0 font-normal text-muted-foreground hover:bg-transparent")}>
+        <Button id={id} variant="ghost" className={cn(bare, "w-auto gap-1 pl-0 pr-3 font-normal text-muted-foreground hover:bg-transparent")}>
           {value ? formatDate(value) : "None"}
           <ChevronDown className="h-4 w-4 opacity-50" aria-hidden />
         </Button>
@@ -690,6 +680,55 @@ function DateField({ id, value, onChange }: { id: string; value: string | null; 
             Clear the date
           </Button>
         )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** + Add label: search the Project's other labels, or make a new one from what's typed. */
+function AddLabel({
+  labels,
+  onPick,
+  onCreate,
+}: {
+  labels: { id: string; name: string; color: string | null }[];
+  onPick: (id: string) => void;
+  onCreate: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const name = typed.trim();
+  const exists = labels.some((l) => l.name.toLowerCase() === name.toLowerCase());
+  const done = () => {
+    setOpen(false);
+    setTyped("");
+  };
+  return (
+    <Popover open={open} onOpenChange={(o) => (setOpen(o), o || setTyped(""))}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-link">
+          <Plus /> Add label
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0">
+        <Command>
+          <CommandInput placeholder="Label" value={typed} onValueChange={setTyped} />
+          <CommandList>
+            {!name && labels.length === 0 && <CommandEmpty>Type a name for a new label.</CommandEmpty>}
+            <CommandGroup>
+              {labels.map((l) => (
+                <CommandItem key={l.id} value={`${l.name} ${l.id}`} onSelect={() => (onPick(l.id), done())}>
+                  <LabelBadge name={l.name} color={l.color as Color | null} />
+                </CommandItem>
+              ))}
+              {name && !exists && (
+                <CommandItem value={`new ${name}`} onSelect={() => (onCreate(name), done())}>
+                  <Plus className="h-4 w-4" aria-hidden /> New label “{name}”
+                </CommandItem>
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );

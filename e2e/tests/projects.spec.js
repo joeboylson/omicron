@@ -113,9 +113,11 @@ test("a task can be filled in and finished", async ({ page, request }) => {
   await page.getByLabel("Pick a date").fill("2026-12-01");
   await expect(dialog.getByLabel("Date", { exact: true })).toHaveText(/^Dec 1/);
   await pick(page, "Given to", me.name);
-  await dialog.getByLabel("New label").fill("outside");
-  await dialog.getByLabel("New label").press("Enter");
-  await expect(dialog.getByRole("button", { name: "outside", pressed: true })).toBeVisible();
+  // Only the task's labels show; Add label finds or makes one (#165).
+  await dialog.getByRole("button", { name: "Add label" }).click();
+  await page.getByPlaceholder("Label", { exact: true }).fill("outside");
+  await page.getByRole("option", { name: "New label “outside”" }).click();
+  await expect(dialog.getByRole("button", { name: "Take off outside" })).toBeVisible();
   await dialog.getByLabel("New checklist item").fill("Buy a new latch");
   await dialog.getByRole("button", { name: "Add item" }).click();
   await dialog.getByLabel("New checklist item").fill("Fit it");
