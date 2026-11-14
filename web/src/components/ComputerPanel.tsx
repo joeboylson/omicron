@@ -143,7 +143,7 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
                           <li key={j.id} className="flex gap-2">
                             <span className="font-mono text-muted-foreground">#{j.number}</span>
                             <span className="min-w-0 flex-1 truncate">{j.title}</span>
-                            <span className={j.state === "blocked" ? "text-[var(--sys-orange)]" : "text-muted-foreground"}>
+                            <span className={j.state === "blocked" ? "text-[var(--orange-text)]" : "text-muted-foreground"}>
                               {j.state === "blocked" ? "waiting on an answer" : j.step ? `${j.state}, ${j.step}` : j.state}
                             </span>
                           </li>
@@ -237,7 +237,7 @@ function SetupCheck({ line }: { line: string }) {
     .replace(/\.\.$/, ".");
   const [copied, setCopied] = useState(false);
   return (
-    <div className={cn("grid gap-1.5 px-4 py-2 text-sm", kind === "fix" && "text-[var(--sys-orange)]")}>
+    <div className={cn("grid gap-1.5 px-4 py-2 text-sm", kind === "fix" && "text-[var(--orange-text)]")}>
       <span>
         <span aria-hidden>{kind === "ok" ? "✓ " : kind === "fix" ? "! " : "· "}</span>
         {subject && <span className="font-medium">{SETUP_WORDS[subject] ?? subject}: </span>}

@@ -103,7 +103,7 @@ export function TaskCard({
             </span>
           )}
           {ended && (
-            <span className="ml-auto flex items-center gap-1 text-[var(--sys-orange)]" title={`${task.ended_session} has ended: give it to someone else`}>
+            <span className="ml-auto flex items-center gap-1 text-[var(--orange-text)]" title={`${task.ended_session} has ended: give it to someone else`}>
               <AlertCircle className="h-3.5 w-3.5" />
               <span className="font-mono">{task.ended_session}</span>
               <span>· ended</span>
@@ -170,7 +170,8 @@ export function isOverdue(iso: string): boolean {
 /** A team member asked this and is waiting on the answer. */
 export function TeamWaiting() {
   return (
-    <Badge className="border-transparent font-medium text-white hover:opacity-90" style={{ background: "var(--sys-blue)" }}>
+    // The darker blue buttons use: white text on it reads at 4.5:1 (#203).
+    <Badge className="border-transparent bg-primary font-medium text-primary-foreground hover:bg-primary/90">
       Team is waiting on you
     </Badge>
   );

@@ -100,7 +100,7 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
             {/* As on its card: still shown as its ended session's, until given out. */}
             {ended && (
               <SelectItem value={ENDED} disabled className="hidden">
-                <span className="flex items-center gap-1.5 text-[var(--sys-orange)]">
+                <span className="flex items-center gap-1.5 text-[var(--orange-text)]">
                   <AlertCircle className="h-4 w-4" aria-hidden /> {ended} (ended)
                 </span>
               </SelectItem>
@@ -130,7 +130,7 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
       {task.assignee_session_id && <DispatchRow project={project} task={task} onChanged={onChanged} />}
       {!task.assignee_session_id && !task.assignee_person_id && task.ended_session && (
         <Row className="text-sm text-muted-foreground">
-          <AlertCircle className="h-4 w-4 shrink-0 text-[var(--sys-orange)]" aria-hidden />
+          <AlertCircle className="h-4 w-4 shrink-0 text-[var(--orange-text)]" aria-hidden />
           <span data-testid="ended-session" className="flex-1">
             {task.ended_session} has ended.
           </span>

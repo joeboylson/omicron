@@ -15,6 +15,10 @@
        red for destructive actions, orange for attention. */
     --sys-red: #ff3b30;
     --sys-orange: #ff9500;
+    /* Orange and indigo for text: Apple's darker orange in light mode reads
+       at 4.5:1 on white, where #ff9500 is 2.2:1 (#203). */
+    --orange-text: #c93400;
+    --indigo-text: #5856d6;
     --sys-yellow: #ffcc00;
     --sys-green: #34c759;
     --sys-teal: #30b0c7;
@@ -62,6 +66,8 @@
       --popover-foreground: 0 0% 98%;
       --sys-red: #ff453a;
       --sys-orange: #ff9f0a;
+      --orange-text: #ff9f0a;
+      --indigo-text: #7d7aff;
       --sys-yellow: #ffd60a;
       --sys-green: #30d158;
       --sys-teal: #40c8e0;
@@ -98,6 +104,8 @@
         --popover-foreground: 0 0% 98%;
         --sys-red: #ff453a;
         --sys-orange: #ff9f0a;
+        --orange-text: #ff9f0a;
+        --indigo-text: #7d7aff;
         --sys-yellow: #ffd60a;
         --sys-green: #30d158;
         --sys-teal: #40c8e0;

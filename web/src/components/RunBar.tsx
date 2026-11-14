@@ -75,7 +75,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
             <span className="min-w-0 truncate">{run.note ?? run.state}</span>
           </span>
           {going && session && run.started_by !== run.machine_id && (
-            <span className={cn("hidden shrink-0 text-xs sm:inline", gateUntil(session) ? "text-muted-foreground" : "text-[var(--sys-orange)]")} data-testid="run-gate">
+            <span className={cn("hidden shrink-0 text-xs sm:inline", gateUntil(session) ? "text-muted-foreground" : "text-[var(--orange-text)]")} data-testid="run-gate">
               {gateUntil(session) ? `gate open until ${clock(gateUntil(session)!)}` : "gate closed"}
             </span>
           )}
@@ -213,7 +213,7 @@ function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessi
         </p>
       </div>
       {chosen && fromElsewhere && (
-        <p className={gateUntil(chosen) ? "text-muted-foreground" : "text-[var(--sys-orange)]"} data-testid="start-gate">
+        <p className={gateUntil(chosen) ? "text-muted-foreground" : "text-[var(--orange-text)]"} data-testid="start-gate">
           {gateWords(chosen)}
           {gateUntil(chosen) ? " The run stops when it closes." : " It won't start until it's opened there."}
         </p>

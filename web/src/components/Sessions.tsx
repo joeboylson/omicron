@@ -289,7 +289,7 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
         </p>
         {loop.note && (
           <p role="status" className="flex items-start gap-1.5 text-sm">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-orange)]" aria-hidden />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--orange-text)]" aria-hidden />
             <span>{loop.note[0].toUpperCase() + loop.note.slice(1)}.</span>
           </p>
         )}

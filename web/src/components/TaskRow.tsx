@@ -73,7 +73,7 @@ export function TaskRow({
             </span>
           )}
           {ended && (
-            <span className="flex items-center gap-1 text-[var(--sys-orange)]" title={`${ended} has ended: give it to someone else`}>
+            <span className="flex items-center gap-1 text-[var(--orange-text)]" title={`${ended} has ended: give it to someone else`}>
               <AlertCircle className="h-3.5 w-3.5" />
               <span className="font-mono">{ended}</span>
             </span>
