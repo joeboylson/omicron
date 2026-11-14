@@ -10,6 +10,7 @@ pub mod inbox;
 pub mod known_folders;
 pub mod login;
 pub mod names;
+pub mod reactions;
 pub mod realtime;
 pub mod supa;
 pub mod text;

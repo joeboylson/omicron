@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 mod accounts_cmd;
 mod board_cmd;
+mod daemon_reactions;
 mod dispatch_cmd;
 mod doctor_cmd;
 mod folders_cmd;
@@ -668,28 +669,16 @@ fn daemon() -> Result<()> {
     }
     // Sessions' loops on this machine, run when due.
     let runner = loops_cmd::Runner::start(supabase.clone(), key.clone());
-    let react = |row: &serde_json::Value| {
-        runner.heard(row);
-        if matches!(row["table_name"].as_str(), Some("runs" | "tasks" | "jobs")) {
-            runs_cmd::heard(&supabase, &key, row);
-        }
-        if matches!(row["table_name"].as_str(), Some("teams" | "jobs" | "comments")) {
-            let (supabase, key, row) = (supabase.clone(), key.clone(), row.clone());
-            std::thread::spawn(move || {
-                if let Err(e) = teams_run::heard(&supabase, &key, &row) {
-                    eprintln!("omicron daemon: teams: {e:#}");
-                }
-            });
-        }
-        if row["table_name"] == "dispatches" && row["kind"] == "INSERT" {
-            let (supabase, key, name, record) = (supabase.clone(), key.clone(), name.clone(), row["record"].clone());
-            std::thread::spawn(move || {
-                if let Err(e) = dispatch_cmd::carry_out(&supabase, &key, &name, &record) {
-                    eprintln!("omicron daemon: dispatch: {e:#}");
-                }
-            });
-        }
-    };
+    let reactions = omicron::reactions::Reactions::start(
+        vec![
+            std::sync::Arc::new(daemon_reactions::Loops(runner.clone())),
+            std::sync::Arc::new(daemon_reactions::RunSteps { supabase: supabase.clone(), key: key.clone() }),
+            std::sync::Arc::new(daemon_reactions::Teams { supabase: supabase.clone(), key: key.clone() }),
+            std::sync::Arc::new(daemon_reactions::Dispatch { supabase: supabase.clone(), key: key.clone(), name: name.clone() }),
+        ],
+        std::sync::Arc::new(|m| eprintln!("omicron daemon: {m}")),
+    );
+    let react = |row: &serde_json::Value| reactions.heard(row);
     realtime::listen(&supabase, &listen, login, &stop, |event| {
         match event {
             Event::Listening => {
