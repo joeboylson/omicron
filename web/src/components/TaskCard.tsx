@@ -99,14 +99,14 @@ export function TaskCard({
             >
               <Terminal className="h-3.5 w-3.5" />
               <span className="font-mono">{session.name}</span>
-              {!task.picked_up_at && <span>· waiting</span>}
+              {!task.picked_up_at && <span>hasn't started it</span>}
             </span>
           )}
           {ended && (
             <span className="ml-auto flex items-center gap-1 text-[var(--orange-text)]" title={`${task.ended_session} has ended: give it to someone else`}>
               <AlertCircle className="h-3.5 w-3.5" />
               <span className="font-mono">{task.ended_session}</span>
-              <span>· ended</span>
+              <span>has ended</span>
             </span>
           )}
           {assignee && (

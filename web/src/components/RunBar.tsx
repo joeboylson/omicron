@@ -26,6 +26,14 @@ function gateUntil(s: ClaudeSession): string | null {
 }
 
 /** "studio's remote control is on until 7:00 AM." or "… is off." */
+/** What a run is doing now, in words: the task it's on, or how it ended. */
+export function runNow(project: ProjectData, run: Run): string {
+  const task = project.tasks.find((t) => t.id === run.task_id);
+  if (task && (run.state === "running" || run.state === "pausing")) return `Working on #${task.number} ${task.title}`;
+  if (run.note) return run.note;
+  return { running: "Starting the next task", pausing: "Pausing after this task", stopped: "Stopped", finished: "Finished: nothing left in To do" }[run.state];
+}
+
 function gateWords(s: ClaudeSession): string {
   const until = gateUntil(s);
   return until ? `${s.machine}'s remote control is on until ${clock(until)}.` : `${s.machine}'s remote control is off.`;
@@ -72,11 +80,11 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
               {label && <span className="text-muted-foreground"> ({label})</span>}
               <span className="hidden sm:inline">: </span>
             </span>
-            <span className="min-w-0 truncate">{run.note ?? run.state}</span>
+            <span className="min-w-0 truncate">{runNow(project, run)}</span>
           </span>
           {going && session && run.started_by !== run.machine_id && (
             <span className={cn("hidden shrink-0 text-xs sm:inline", gateUntil(session) ? "text-muted-foreground" : "text-[var(--orange-text)]")} data-testid="run-gate">
-              {gateUntil(session) ? `gate open until ${clock(gateUntil(session)!)}` : "gate closed"}
+              {gateUntil(session) ? `remote control on until ${clock(gateUntil(session)!)}` : "remote control off"}
             </span>
           )}
           <span className="shrink-0 text-xs text-muted-foreground">
@@ -222,7 +230,6 @@ function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessi
 /** The night so far: what it's on, its diary, and what's waiting on Joe. */
 function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
   const session = project.sessions.find((s) => s.id === run.session_id);
-  const task = project.tasks.find((t) => t.id === run.task_id);
   const diary = project.handoffs.filter((h) => h.session_id === run.session_id && h.written_at >= run.started_at);
   const waiting = project.statuses.find((s) => s.name.toLowerCase().startsWith("waiting"));
   const waitingTasks = waiting ? project.tasks.filter((t) => t.status_id === waiting.id) : [];
@@ -236,7 +243,7 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
         </DialogDescription>
       </DialogHeader>
       <Group title="Now">
-        <Row className="py-2 text-sm">{task ? `#${task.number} ${task.title}` : (run.note ?? run.state)}</Row>
+        <Row className="py-2 text-sm">{runNow(project, run)}</Row>
       </Group>
       {active(run) && (
         <Group title="Up next">

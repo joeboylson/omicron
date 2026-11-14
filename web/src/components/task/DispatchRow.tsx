@@ -6,7 +6,7 @@ import { giveUpDispatch, requestDispatch, type ProjectData, type Task } from "@/
 import { Button } from "@/components/base/button";
 import { Row } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
-import { when } from "@/components/task/when";
+import { ago } from "@/components/task/when";
 
 /**
  * Whether the session has the task, and the Dispatch button: hands it to the
@@ -75,6 +75,8 @@ export function DispatchRow({ project, task, onChanged }: { project: ProjectData
   // When the last send happened, beside what it said.
   const at = !working && !task.picked_up_at && latest && (latest.state === "done" || failed) ? latest.created_at : null;
   const off = asleep && !working && !task.picked_up_at ? ` ${machine} is off, so it can't be sent now.` : "";
+  // When the last send happened, at the end, in words.
+  const time = at ? ` (${ago(at)})` : "";
 
   return (
     <Row className="text-sm">
@@ -86,21 +88,23 @@ export function DispatchRow({ project, task, onChanged }: { project: ProjectData
         <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       )}
       <span role="status" aria-live="polite" data-testid="dispatch" className={cn("flex-1", !failed && "text-muted-foreground")}>
-        {line}
+        {at ? line.replace(/\.$/, "") : line}
         {at && (
-          <time dateTime={at} title={new Date(at).toLocaleString()} className="ml-1.5 font-mono text-xs text-muted-foreground">
-            {when(at)}
+          <time dateTime={at} title={new Date(at).toLocaleString()}>
+            {time}
           </time>
         )}
+        {at && line.endsWith(".") && "."}
         {off}
       </span>
-      {!task.picked_up_at && (
+      {/* Off (its computer asleep, or no session): not shown, the line says why. */}
+      {!task.picked_up_at && session && !asleep && (
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="shrink-0"
-          disabled={!session || working || asleep}
+          disabled={working}
           onClick={dispatch}
           title={`Hand it to ${name} now, on ${machine}`}
         >

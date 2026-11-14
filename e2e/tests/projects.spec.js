@@ -609,7 +609,7 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
     const bar = page.getByTestId("run");
     await expect(bar).toContainText("Run in parser");
-    await expect(bar).toContainText("on #1: Write the parser");
+    await expect(bar).toContainText("Working on #1 Write the parser");
     await expect(bar).toContainText("0 of 2 done");
     // Its sheet: what's next, and when it ends.
     await bar.click();
@@ -936,7 +936,7 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     await escape(page);
     await expect(card).toContainText("2");
     await expect(card).toContainText("parser");
-    await expect(card).not.toContainText("waiting");
+    await expect(card).not.toContainText("hasn't started it");
   } finally {
     win.kill();
   }
@@ -962,7 +962,8 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     const button = page.getByRole("button", { name: /^(Send now|Send again)$/ });
     const outcome = page.getByTestId("dispatch");
     await expect(outcome).toHaveText(`parser gets it when it next looks for tasks. ${machineName} is off, so it can't be sent now.`);
-    await expect(button).toBeDisabled();
+    // Off: no button to press, the line says why (#219).
+    await expect(button).toHaveCount(0);
 
     // It wakes up: the page hears at once.
     daemon = await omicron.daemon();
@@ -981,12 +982,12 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
     // Its window is running but no add-on follows the inbox yet: the task
     // waits until one does.
     await button.click();
-    await expect(outcome).toContainText(`parser on ${machineName} isn't ready for it yet. It gets the task as soon as it is.`);
+    await expect(outcome).toContainText(`parser on ${machineName} isn't ready for it yet. It gets the task as soon as it is (just now).`);
 
     // With the add-on: the waiting one arrives, and the next goes straight in.
     addon = await omicron.follow(claude);
     await button.click();
-    await expect(outcome).toHaveText(`Sent the task to parser on ${machineName}.now`);
+    await expect(outcome).toHaveText(`Sent the task to parser on ${machineName} (just now).`);
     await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
     await expect.poll(() => addon.got().length).toBe(2);
     expect(addon.got().every((m) => m.startsWith("Omicron dispatched task #1 \"Write the parser\""))).toBe(true);
@@ -1312,7 +1313,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   await rest(request, robin.session, "DELETE", `/rest/v1/project_machines?project_id=eq.${projectId}&machine_id=eq.${uuid}`);
   await expect(sessions).toHaveCount(0);
   const card = page.getByRole("button", { name: "#1 Write the parser" });
-  await expect(card).toContainText("parser· ended");
+  await expect(card).toContainText(/parser\s*has ended/);
   await card.click();
   // The sheet says what the card says, and offers Give to… right there (#172).
   await expect(page.getByLabel("Given to", { exact: true })).toHaveText("parser (ended)");
@@ -1326,7 +1327,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   await escape(page);
   await expect(card).toContainText("RE");
   await expect(card).not.toContainText("ended");
-  await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText("parser· ended");
+  await expect(page.getByRole("button", { name: "#2 Write the docs" })).toContainText(/parser\s*has ended/);
 });
 
 test("a session's loop shows on the page, live, and can be stopped there", async ({ page, request }) => {

@@ -373,7 +373,7 @@ function sessionDoing(project: ProjectData, s: ProjectData["sessions"][number], 
   const folder = s.folder ? s.folder.replace(/\/+$/, "").split("/").pop() : null;
   const mine = project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id));
   const on = mine.find((t) => t.picked_up_at);
-  const what = on ? `on #${on.number}` : mine.length ? `${mine.length} waiting` : "free";
+  const what = on ? `working on #${on.number}` : mine.length ? `${mine.length} ${mine.length === 1 ? "task" : "tasks"} to start` : "not working on anything";
   return folder ? `${folder} · ${what}` : what;
 }
 
