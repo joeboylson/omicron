@@ -105,6 +105,11 @@ impl<'a> Orders<'a> {
         o
     }
 
+    /// Whether the gate was open when these were read.
+    pub fn gate_open(&self) -> bool {
+        self.gate_open
+    }
+
     fn owner(&self) -> Result<Option<&str>> {
         if let Some(o) = self.owner.get() {
             return Ok(o.as_deref());

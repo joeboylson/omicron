@@ -1,6 +1,8 @@
 -- A session takes its new tasks: the ones its own machine gave it, and,
 -- while its computer's gate is open, the ones its machine's owner gave it.
 -- Nobody else's, ever (see ref/BRAINSTORM.md, "The gate").
+-- The same rule as Orders / decide in crates/omicron/src/gate.rs: change
+-- them together. The computer says only whether its gate is open.
 create or replace function public.pick_up_tasks(session uuid, gate_open boolean default false) returns setof public.tasks
 language sql volatile set search_path = '' as $$
   update public.tasks t set picked_up_at = now()

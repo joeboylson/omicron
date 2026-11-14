@@ -782,12 +782,12 @@ pub fn tasks_mine() -> Result<()> {
         .and_then(|w| w.session_id.clone())
         .context("run this inside a Claude session Omicron tracks (opened with `omicron open`)")?;
     let board = sign_in(true)?;
-    let gate_open = omicron::gate::open_until().is_some();
-    let new: Vec<String> = board.pick_up_tasks(&session_id, gate_open)?.into_iter().map(|(_, t)| t.id).collect();
     // Only tasks given on this computer are handed over, or, while the gate
     // is open, ones from this machine's owner; the rest are only to read
-    // (ref/BRAINSTORM.md, "The gate").
+    // (ref/BRAINSTORM.md, "The gate"). The database applies the same rule
+    // when it marks them picked up, told only whether the gate is open.
     let orders = omicron::gate::Orders::new(&board);
+    let new: Vec<String> = board.pick_up_tasks(&session_id, orders.gate_open())?.into_iter().map(|(_, t)| t.id).collect();
     let mut tasks = Vec::new();
     let mut to_read = Vec::new();
     for (s, t) in board.session_tasks(&session_id)? {
