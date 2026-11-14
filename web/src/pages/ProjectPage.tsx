@@ -16,7 +16,9 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type Announcements,
   type DragStartEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -87,6 +89,8 @@ export function ProjectPage({ id }: { id: string }) {
   // Bumped to open "Add a task" in the first column (c, or the menu).
   const [addSignal, setAddSignal] = useState(0);
   const board = useRef<HTMLDivElement>(null);
+  // The task whose sheet just closed, to give its card focus back.
+  const closedTask = useRef<number | null>(null);
   // A new task is typed into the board's first column; from the list, the
   // board comes back first. (A ref, so the key handler always has the latest.)
   const newTask = useRef(() => {});
@@ -522,6 +526,7 @@ export function ProjectPage({ id }: { id: string }) {
           screenReaderInstructions: {
             draggable: "To move this task, press Space. Use the arrow keys to move it, Space again to drop it, or Escape to cancel. Enter opens it.",
           },
+          announcements: sayMoves(project, groups),
         }}
       >
       <ColumnJump groups={groups} board={board} />
@@ -559,16 +564,17 @@ export function ProjectPage({ id }: { id: string }) {
         task={task}
         focusNotes={task !== null && task.number === notesFor}
         onClose={() => {
+          closedTask.current = openTask;
+          setOpenTask(null);
+        }}
+        onClosed={() => {
           // Back to the task's card (the board may have redrawn it while the
           // sheet was open, so the browser can't find it by itself).
-          const number = openTask;
-          setOpenTask(null);
-          setTimeout(() => {
-            const card = number === null ? null : document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`);
-            // Without scrolling: a task just moved (to the bottom of Done,
-            // say) mustn't drag the board away from where you were (#56).
-            card?.focus({ preventScroll: true });
-          }, 0);
+          const number = closedTask.current;
+          const card = number === null ? null : document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`);
+          // Without scrolling: a task just moved (to the bottom of Done,
+          // say) mustn't drag the board away from where you were (#56).
+          card?.focus({ preventScroll: true });
         }}
         onChanged={reload}
         onDelete={removeTask}
@@ -815,13 +821,13 @@ function SortableTask({
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn("touch-manipulation", isDragging && "opacity-40")}
-      {...attributes}
       {...listeners}
       // The card inside is the button; this is just its place in the list.
       role="listitem"
       tabIndex={-1}
     >
-      <TaskCard project={project} task={task} showStatus={showStatus} onOpen={onOpen} />
+      {/* How to move it is read with the card, which is what has focus. */}
+      <TaskCard project={project} task={task} showStatus={showStatus} describedBy={attributes["aria-describedby"]} onOpen={onOpen} />
     </li>
   );
 }
@@ -969,4 +975,38 @@ function MoreToTheRight({ board }: { board: React.RefObject<HTMLDivElement | nul
   const { more } = useBoardScroll(board);
   if (!more) return null;
   return <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />;
+}
+
+/** What a screen reader hears while a task is moved: its number and title,
+ *  the column it's over and its place there, never ids. */
+function sayMoves(project: ProjectData, groups: Group[]): Announcements {
+  const task = (id: UniqueIdentifier) => project.tasks.find((t) => t.id === id);
+  const name = (id: UniqueIdentifier) => {
+    const t = task(id);
+    return t ? `#${t.number} ${t.title}` : "the task";
+  };
+  // The column something is over (a card in it, or the column itself), and the place there.
+  const where = (over: { id: UniqueIdentifier; data: { current?: { column?: string } } } | null, moved: UniqueIdentifier) => {
+    if (!over) return null;
+    const col = parseColumn(String(over.data.current?.column ?? over.id));
+    if (!col) return null;
+    const group = groups.find((g) => ("statusId" in col ? g.status?.id === col.statusId : !g.status && g.topicId === col.topicId));
+    if (!group) return null;
+    const others = group.tasks.filter((t) => t.id !== moved);
+    const at = others.findIndex((t) => t.id === over.id);
+    const place = at < 0 ? others.length + 1 : at + 1;
+    return `${group.name}, place ${place} of ${others.length + 1}`;
+  };
+  return {
+    onDragStart: ({ active }) => `Picked up ${name(active.id)}.`,
+    onDragOver: ({ active, over }) => {
+      const w = where(over, active.id);
+      return w ? `${name(active.id)} is over ${w}.` : `${name(active.id)} is not over a column.`;
+    },
+    onDragEnd: ({ active, over }) => {
+      const w = where(over, active.id);
+      return w ? `Dropped ${name(active.id)} in ${w}.` : `${name(active.id)} was put back where it was.`;
+    },
+    onDragCancel: ({ active }) => `Moving ${name(active.id)} was cancelled. It's back where it was.`,
+  };
 }

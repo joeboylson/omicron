@@ -834,13 +834,13 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
-  await expect(said).toContainText(/Picked up|was moved over/);
+  await expect(said).toContainText(/Picked up|is over/);
   const b = await column(page, "Claire's to-do").boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 });
   await page.waitForTimeout(150);
   const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
   await page.mouse.up();
-  await expect(said).toContainText("dropped");
+  await expect(said).toContainText("Dropped");
   await saved;
   await expect(column(page, "Claire's to-do")).toContainText("Water the plants");
   // Nothing left without a topic: that column goes.
@@ -1145,13 +1145,13 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await page.mouse.down();
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
-    await expect(said).toContainText(/Picked up|was moved over/);
+    await expect(said).toContainText(/Picked up|is over/);
     const b = await to.boundingBox();
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + dy, { steps: 15 });
     // Let the board see where it's over before letting go.
     await page.waitForTimeout(150);
     await page.mouse.up();
-    await expect(said).toContainText("dropped");
+    await expect(said).toContainText("Dropped");
   }
 
   // Within a status: Charlie to the top.
@@ -1162,16 +1162,19 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
   await expect(column(page, "Done")).toContainText("Alpha");
 
   // With the keyboard: Space picks Bravo up, the up arrow moves it, Space drops it.
+  // The card says how to move it (#147).
+  await expect(card("Bravo")).toHaveAccessibleDescription(/press Space/);
   await card("Bravo").focus();
   await page.keyboard.press("Space");
-  // Picked up, and over its own place...
-  await expect(said).toHaveText(/item (\S+) was moved over droppable area \1\./);
+  // Picked up, and over its own place, in words: no ids (#147)...
+  await expect(said).toContainText(/#\d+ Bravo is over To do, place 2 of 2\./);
   // ...then the up arrow moves it over Charlie's.
   await page.keyboard.press("ArrowUp");
-  await expect(said).toHaveText(/item (\S+) was moved over droppable area (?!\1\.)/);
+  await expect(said).toContainText(/#\d+ Bravo is over To do, place 1 of 2\./);
   const moved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH");
   await page.keyboard.press("Space");
-  await expect(said).toContainText("dropped");
+  await expect(said).toContainText(/Dropped #\d+ Bravo in To do, place 1 of 2\./);
+  await expect(said).not.toContainText(/[0-9a-f]{8}-[0-9a-f]{4}|col\|/);
   await moved;
   await expect.poll(async () => (await titles("To do")).map((t) => t.replace(/#\d+$/, "").trim())).toEqual(["Bravo", "Charlie"]);
 

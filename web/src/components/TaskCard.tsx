@@ -10,12 +10,15 @@ export function TaskCard({
   project,
   task,
   showStatus = false,
+  describedBy,
   onOpen,
 }: {
   project: ProjectData;
   task: Task;
   /** In columns that aren't statuses (by topic), say which status it's in. */
   showStatus?: boolean;
+  /** The id of what's read after its name (how to move it, on the board). */
+  describedBy?: string;
   onOpen: () => void;
 }) {
   const labels = project.labels.filter((l) => task.labelIds.includes(l.id));
@@ -35,6 +38,7 @@ export function TaskCard({
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), onOpen())}
       className="cursor-pointer p-3 text-[15px] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`#${task.number} ${task.title}`}
+      aria-describedby={describedBy}
     >
       <div className="flex items-start gap-2">
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>

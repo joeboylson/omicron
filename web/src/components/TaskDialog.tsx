@@ -49,6 +49,7 @@ export function TaskDialog({
   project,
   task,
   onClose,
+  onClosed,
   onChanged,
   onDelete,
   onPatch,
@@ -59,6 +60,8 @@ export function TaskDialog({
   /** Opened right after adding it: straight into its notes. */
   focusNotes?: boolean;
   onClose: () => void;
+  /** Once it has finished closing: where focus goes next is up to the page. */
+  onClosed?: () => void;
   onChanged: () => void;
   /** Delete it (the page keeps an Undo for a few seconds). */
   onDelete: (task: Task) => void;
@@ -79,8 +82,12 @@ export function TaskDialog({
             notes.focus();
           } else focusSheet(e);
         }}
-        // The board puts focus back on the task's card itself.
-        onCloseAutoFocus={(e) => e.preventDefault()}
+        // The board puts focus back on the task's card itself, once the
+        // sheet is gone (while it closes, it still holds focus).
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          onClosed?.();
+        }}
       >
         {task && <TaskForm key={task.id} project={project} task={task} onChanged={onChanged} onDelete={onDelete} onPatch={onPatch} />}
       </DialogContent>
