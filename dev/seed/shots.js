@@ -193,11 +193,13 @@ async function escape(page) {
     await page.getByTestId("run").getByText(/^Run/).waitFor();
     await shot("4j-run");
     await page.getByTestId("run").click();
-    await page.getByRole("dialog").getByRole("region", { name: "Diary" }).waitFor();
+    await page.getByRole("dialog").getByRole("region", { name: "Notes after each task" }).waitFor();
     await shot("4k-run-sheet");
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await page.getByRole("button", { name: "Stop now" }).click();
+    await shot("4l-run-stop");
+    await page.getByRole("dialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop now" }).click();
     await page.getByTestId("run").getByText("Last run").waitFor();
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();

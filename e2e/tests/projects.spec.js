@@ -565,22 +565,35 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     // On its own computer a run needs no gate, so nothing about one (#152).
     await expect(page.getByRole("dialog").getByRole("button", { name: "Start", exact: true })).toBeVisible();
     await expect(page.getByTestId("start-gate")).toHaveCount(0);
+    // What it'll do, said before it starts (#169).
+    await expect(page.getByTestId("start-summary")).toContainText("2 tasks to do, starting with #1 Write the parser.");
     await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
     const bar = page.getByTestId("run");
-    await expect(bar).toContainText("Run in parser: on #1: Write the parser");
-    await expect(bar).toContainText("0 done");
+    await expect(bar).toContainText("Run in parser");
+    await expect(bar).toContainText("on #1: Write the parser");
+    await expect(bar).toContainText("0 of 2 done");
+    // Its sheet: what's next, and when it ends.
+    await bar.click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet).toContainText("It stops when To do is empty.");
+    await expect(sheet.getByRole("region", { name: "Up next" })).toContainText("#2 Write the tests");
+    await escape(page);
+    // Stop now asks first; Keep going keeps it.
+    await page.getByRole("button", { name: "Stop now" }).click();
+    await page.getByRole("dialog", { name: "Stop the run now?" }).getByRole("button", { name: "Keep going" }).click();
+    await expect(bar).toContainText("Run in parser");
     await expect(page.getByTestId("run-gate")).toHaveCount(0);
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/run-bar.png` });
 
     // Paused: it stops once the task it's on is finished.
-    await page.getByRole("button", { name: "Pause" }).click();
+    await page.getByRole("button", { name: "Pause after this task" }).click();
     await expect(bar).toContainText("Run, pausing");
     omicron.cli("tasks", "done", name, "1", "--as-machine");
     await expect(bar).toContainText("Last run in parser: paused after #1");
     await expect(bar).toContainText("1 done");
     await bar.click();
     await expect(page.getByRole("dialog")).toContainText("The last run");
-    await expect(page.getByRole("dialog").getByRole("region", { name: "Diary" })).toContainText("No notes yet.");
+    await expect(page.getByRole("dialog").getByRole("region", { name: "Notes after each task" })).toContainText("No notes yet.");
   } finally {
     daemon?.stop();
     win.kill();

@@ -4,8 +4,9 @@ import { useApp } from "@/lib/app";
 import { devAction, useDev, whenDev } from "@/lib/dev";
 import { setRunState, startRun, type ClaudeSession, type ProjectData, type Run } from "@/lib/data";
 import { cn } from "@/lib/utils";
+import { inOrder } from "@/lib/board-rules";
 import { Button } from "@/components/base/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Group, Row } from "@/components/Grouped";
 
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -29,10 +30,19 @@ function gateWords(s: ClaudeSession): string {
   return until ? `${s.machine}'s gate is open until ${clock(until)}.` : `${s.machine}'s gate is closed.`;
 }
 
+/** What a run works down: the first status's tasks (only its label, if it
+ *  has one), in board order, as the computer picks them. */
+function runQueue(project: ProjectData, labelId: string | null, skip?: string | null): ProjectData["tasks"] {
+  const first = [...project.statuses].sort((a, b) => a.position - b.position)[0];
+  if (!first) return [];
+  return inOrder(project.tasks.filter((t) => t.status_id === first.id && (!labelId || t.labelIds.includes(labelId)) && t.id !== skip));
+}
+
 export function RunBar({ project, onChanged }: { project: ProjectData; onChanged: () => void }) {
   const { db, act } = useApp();
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const run = project.runs.find(active) ?? project.runs[0] ?? null;
   const session = run && project.sessions.find((s) => s.id === run.session_id);
   if (!run && project.sessions.length === 0) return null;
@@ -44,34 +54,59 @@ export function RunBar({ project, onChanged }: { project: ProjectData; onChanged
       {run && (
         <button
           type="button"
-          className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-left"
+          className="flex min-h-9 min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-left sm:basis-0"
           onClick={() => setOpen(true)}
           data-testid="run"
         >
           <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: going ? "var(--sys-green)" : "var(--sys-gray)" }} />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium">{going ? (run.state === "pausing" ? "Run, pausing" : "Run") : "Last run"}</span>
-            {session && <span className="text-muted-foreground"> in {session.name}</span>}
-            {label && <span className="text-muted-foreground"> ({label})</span>}: {run.note ?? run.state}
+          {/* Two lines on a phone, so the state is never what's cut off. */}
+          <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:gap-1">
+            <span className="shrink-0">
+              <span className="font-medium">{going ? (run.state === "pausing" ? "Run, pausing" : "Run") : "Last run"}</span>
+              {session && <span className="text-muted-foreground"> in {session.name}</span>}
+              {label && <span className="text-muted-foreground"> ({label})</span>}
+              <span className="hidden sm:inline">: </span>
+            </span>
+            <span className="min-w-0 truncate">{run.note ?? run.state}</span>
           </span>
           {going && session && run.started_by !== run.machine_id && (
             <span className={cn("hidden shrink-0 text-xs sm:inline", gateUntil(session) ? "text-muted-foreground" : "text-[var(--sys-orange)]")} data-testid="run-gate">
               {gateUntil(session) ? `gate open until ${clock(gateUntil(session)!)}` : "gate closed"}
             </span>
           )}
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">{run.done} done</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {going ? `${run.done} of ${run.done + (run.task_id ? 1 : 0) + runQueue(project, run.label_id, run.task_id).length} done` : `${run.done} done`}
+          </span>
         </button>
       )}
       {going ? (
         <>
           {run.state === "running" && (
             <Button size="sm" variant="outline" className="gap-1" onClick={() => act(async () => (await setRunState(db, run, "pausing"), onChanged()))}>
-              <Pause className="h-3.5 w-3.5" aria-hidden /> Pause
+              <Pause className="h-3.5 w-3.5" aria-hidden /> Pause after this task
             </Button>
           )}
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => act(async () => (await setRunState(db, run, "stopped"), onChanged()))}>
-            <Square className="h-3.5 w-3.5" aria-hidden /> Stop
+          <Button size="sm" variant="ghost" className="gap-1 text-destructive hover:text-destructive" onClick={() => setStopping(true)}>
+            <Square className="h-3.5 w-3.5" aria-hidden /> Stop now
           </Button>
+          <Dialog open={stopping} onOpenChange={setStopping}>
+            <DialogContent className="gap-4 sm:max-w-md">
+              <DialogHeader className="text-left">
+                <DialogTitle>Stop the run now?</DialogTitle>
+                <DialogDescription>
+                  {session?.name ?? "The session"} stops where it is, even partway through a task. Pause after this task lets it finish first.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="ghost" onClick={() => setStopping(false)}>
+                  Keep going
+                </Button>
+                <Button variant="destructive" onClick={() => act(async () => (await setRunState(db, run, "stopped"), setStopping(false), onChanged()))}>
+                  Stop now
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       ) : (
         project.sessions.length > 0 && (
@@ -127,6 +162,7 @@ function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessi
   const [sessionId, setSessionId] = useState(project.sessions[0]?.id ?? "");
   const [labelId, setLabelId] = useState("");
   const chosen = project.sessions.find((s) => s.id === sessionId);
+  const queue = runQueue(project, labelId || null);
   const { db } = useApp();
   const [dev] = useDev(db);
   // Started on its own computer, it needs no gate; from elsewhere, it does.
@@ -160,13 +196,24 @@ function StartForm({ project, onStart }: { project: ProjectData; onStart: (sessi
           ))}
         </select>
       </label>
+      {/* What it'll do, before it starts. */}
+      <div className="grid gap-1 rounded-lg border bg-background p-3" data-testid="start-summary">
+        <p>
+          {queue.length === 0
+            ? "Nothing to do: To do is empty."
+            : `${queue.length} task${queue.length === 1 ? "" : "s"} to do, starting with #${queue[0].number} ${queue[0].title}.`}
+        </p>
+        <p className="text-muted-foreground">
+          {project.run_rules.trim() ? "It follows the Project's run rules." : "No run rules yet: set them in Project settings."}
+        </p>
+      </div>
       {chosen && fromElsewhere && (
         <p className={gateUntil(chosen) ? "text-muted-foreground" : "text-[var(--sys-orange)]"} data-testid="start-gate">
           {gateWords(chosen)}
           {gateUntil(chosen) ? " The run stops when it closes." : " It won't start until it's opened there."}
         </p>
       )}
-      <Button type="submit" disabled={!sessionId}>
+      <Button type="submit" disabled={!sessionId || queue.length === 0}>
         Start
       </Button>
     </form>
@@ -186,13 +233,24 @@ function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
         <DialogTitle>{active(run) ? "The run" : "The last run"}</DialogTitle>
         <DialogDescription>
           {session ? `In ${session.name} on ${session.machine}` : "Its session has ended"}, since {when(run.started_at)}. {run.done} done.
+          {active(run) && " It stops when To do is empty."}
           {session && run.started_by !== run.machine_id && ` ${gateWords(session)} Started from elsewhere, it stops when the gate closes.`}
         </DialogDescription>
       </DialogHeader>
       <Group title="Now">
         <Row className="py-2 text-sm">{task ? `#${task.number} ${task.title}` : (run.note ?? run.state)}</Row>
       </Group>
-      <Group title="Diary" note="The session's handoff notes, one each time it finished a task and started fresh.">
+      {active(run) && (
+        <Group title="Up next">
+          {runQueue(project, run.label_id, run.task_id).length === 0 && <Row className="text-sm text-muted-foreground">Nothing after this.</Row>}
+          {runQueue(project, run.label_id, run.task_id).map((t) => (
+            <Row key={t.id} className="py-2 text-sm">
+              <span className="font-mono text-xs text-muted-foreground">#{t.number}</span> {t.title}
+            </Row>
+          ))}
+        </Group>
+      )}
+      <Group title="Notes after each task">
         {diary.length === 0 && <Row className="text-sm text-muted-foreground">No notes yet.</Row>}
         {diary.map((n) => (
           <details key={n.id} className="px-4 py-2 text-sm">
