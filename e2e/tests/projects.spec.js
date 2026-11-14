@@ -541,7 +541,7 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
     await expect(page.getByRole("region", { name: "Terminals" })).toBeHidden();
     await panes.getByRole("radio", { name: /^Terminal/ }).click();
     await expect(page.getByText("Pick a session to open its terminal here.")).toBeVisible();
-    await panes.getByRole("radio", { name: "Tasks" }).click();
+    await panes.getByRole("radio", { name: "Board" }).click();
     await expect(page.getByRole("complementary", { name: "Tasks by column" })).toContainText("Write the parser");
     await panes.getByRole("radio", { name: "Sessions" }).click();
     // Opening a session shows its terminal.

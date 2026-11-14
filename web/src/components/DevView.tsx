@@ -88,7 +88,8 @@ export function DevView({
         [
           ["sessions", "Sessions"],
           ["terminal", "Terminal"],
-          ["tasks", "Tasks"],
+          // Not "Tasks": the header's switch already means the Tasks view (#232).
+          ["tasks", "Board"],
         ] as const
       ).map(([p, label]) => (
         <button
@@ -109,6 +110,10 @@ export function DevView({
     </div>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-px border-t bg-border lg:grid-cols-[15rem_minmax(0,1fr)_19rem] lg:grid-rows-1">
       <aside aria-label="Folders and sessions" className={cn("flex flex-col overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
+        {/* This computer first: the folders below are on it (#232). */}
+        <div className="-mt-2 mb-2 border-b pb-2">
+          <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
+        </div>
         <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Folders <span className="normal-case tracking-normal">on {dev.machine}</span>
         </h2>
@@ -188,10 +193,6 @@ export function DevView({
             ))}
           </ul>
         )}
-        {/* This computer is the machine itself, not a session: set apart at the bottom. */}
-        <div className="mt-auto border-t pt-2">
-          <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
-        </div>
       </aside>
 
       <section aria-label="Terminals" className={cn("flex min-h-0 min-w-0 flex-col bg-background", pane !== "terminal" && "max-lg:hidden")}>

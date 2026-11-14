@@ -68,7 +68,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
       {run && (
         <button
           type="button"
-          className="flex min-h-9 min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-left sm:basis-0"
+          className="flex min-h-9 min-w-0 flex-1 basis-0 items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-left"
           onClick={() => setOpen(true)}
           data-testid="run"
         >
@@ -96,12 +96,26 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
       {going ? (
         <>
           {run.state === "running" && (
-            <Button size="sm" variant="outline" className="gap-1" onClick={() => act(async () => (await setRunState(db, run, "pausing"), onChanged()))}>
-              <Pause className="h-3.5 w-3.5" aria-hidden /> Pause after this task
+            <Button
+              size="sm"
+              variant="outline"
+              className="size-11 shrink-0 gap-1 p-0 sm:h-9 sm:w-auto sm:px-3"
+              aria-label="Pause after this task"
+              title="Pause after this task"
+              onClick={() => act(async () => (await setRunState(db, run, "pausing"), onChanged()))}
+            >
+              <Pause className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Pause after this task</span>
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="gap-1 text-destructive hover:text-destructive" onClick={() => setStopping(true)}>
-            <Square className="h-3.5 w-3.5" aria-hidden /> Stop now
+          <Button
+            size="sm"
+            variant="ghost"
+            className="size-11 shrink-0 gap-1 p-0 text-destructive hover:text-destructive sm:h-9 sm:w-auto sm:px-3"
+            aria-label="Stop now"
+            title="Stop now"
+            onClick={() => setStopping(true)}
+          >
+            <Square className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Stop now</span>
           </Button>
           <Confirm
             open={stopping}

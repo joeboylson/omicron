@@ -49,7 +49,6 @@ export function GateButton() {
         >
           <Icon className="h-4 w-4" style={{ color: open ? "var(--sys-green)" : undefined }} aria-hidden />
           {/* Its name, and On or Off like a switch's state (HIG toggles #6). */}
-          <span className="sm:hidden">Remote</span>
           <span className="hidden sm:inline">Remote control</span>
           <span className="rounded-full bg-secondary px-1.5 text-xs font-medium text-secondary-foreground">
             {open ? "On" : "Off"}

@@ -331,7 +331,7 @@ async function escape(page) {
       await page.getByTestId("run").getByText("Last run").waitFor();
       // On a phone, one pane at a time.
       const panes = page.getByRole("radiogroup", { name: "Show" });
-      const pane = panes.getByRole("radio", { name: "Tasks", exact: true });
+      const pane = panes.getByRole("radio", { name: "Board", exact: true });
       if (await pane.isVisible()) {
         await pane.click();
         await shot("7e-dev-tasks");

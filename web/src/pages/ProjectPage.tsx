@@ -1029,7 +1029,7 @@ function Column({
       data-group={groupKey}
       className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", landing && "bg-accent/80")}
     >
-      <h2 className="flex min-h-9 items-center gap-2 px-2 pb-1 text-[0.9375rem] font-semibold sm:text-sm">
+      <h2 className="relative flex min-h-9 items-center gap-2 px-2 pb-1 text-[0.9375rem] font-semibold sm:text-sm">
         {/* On a phone the strip above names the column: here, only for
             screen readers, with its ⋯ (#231). */}
         <span className={cn("flex min-w-0 items-center gap-2", !renaming && "max-sm:sr-only")}>
