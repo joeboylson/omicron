@@ -47,7 +47,7 @@ export function SettingsPage() {
   return (
     <>
       <TopBar here="/settings" title="Settings" />
-      <main className="mx-auto grid w-full max-w-3xl gap-6 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+      <main className="mx-auto grid w-full max-w-5xl gap-6 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 [&>*]:max-w-3xl">
         <Group title="Signed in as">
           <div className="grid gap-0.5 px-4 py-3">
             <span className="text-[0.9375rem] font-medium sm:text-sm">{me.displayName}</span>

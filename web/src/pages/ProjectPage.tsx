@@ -1372,7 +1372,7 @@ function TaskList({
       {shown.length === 0 && (
         !filtering && <p className="py-8 text-center text-sm text-muted-foreground">No tasks yet.</p>
       )}
-      <div className="mx-auto flex max-w-4xl flex-col gap-4">
+      <div className="flex max-w-4xl flex-col gap-4">
         {shown.map((g) => (
           <section key={g.key} aria-label={g.name}>
             <h2 className="sticky top-0 z-10 flex min-h-9 items-center gap-2 bg-background px-3 text-[0.9375rem] font-semibold sm:text-sm">
