@@ -146,8 +146,12 @@ for (const [kind, device] of [
       await swipe(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
       await page.waitForTimeout(1500);
       expect(await order()).toEqual(["Plant the tulips before the first frost comes", "Fix the gate", "Prune the roses"]);
+      const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/tasks") && r.request().method() === "PATCH" && r.request().postData()?.includes('"status_id"'));
       await holdAndDrag(page, todo.getByRole("button", { name: /Prune the roses/ }), todo.getByRole("button", { name: /Plant the tulips/ }));
       await expect.poll(order).toEqual(["Prune the roses", "Plant the tulips before the first frost comes", "Fix the gate"]);
+      // Shown at once; wait for it to save (and the board to reload) before going on.
+      await saved;
+      await settled(page);
 
       // On a phone, every column's name and count is above the board; a tap
       // goes to that column (#142).
@@ -213,6 +217,14 @@ for (const [kind, device] of [
         await settled(page);
         await fits(page, heading);
         await tappable(page, heading);
+        // On a phone, tables are lists: each row a short block, its name on
+        // one line, not a letter per line (#144).
+        if (kind === "phone" && heading === "People") {
+          const me = page.getByRole("list", { name: "People" }).getByRole("listitem", { name: "Robin Example" }).filter({ hasText: login });
+          await expect(me).toBeVisible();
+          expect((await me.boundingBox()).height, "Robin's row height").toBeLessThan(160);
+          await expect(me).toContainText(login);
+        }
       }
     });
   });

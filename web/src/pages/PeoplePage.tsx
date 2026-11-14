@@ -8,6 +8,7 @@ import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { addMember, deletePerson, listPeopleTable, listProjects, removeMember, type PersonRow, type ProjectSummary } from "@/lib/data";
 import { Button } from "@/components/base/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/base/dialog";
 import { TopBar } from "@/components/TopBar";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -28,8 +29,8 @@ export function PeoplePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   // Only people in one Project ("" for everyone).
   const [inProject, setInProject] = useState("");
-  // Deleting asks once more, on the same row.
-  const [deleting, setDeleting] = useState<string | null>(null);
+  // Deleting asks once more, in a dialog.
+  const [deleting, setDeleting] = useState<PersonRow | null>(null);
 
   const reload = useCallback(() => {
     act(async () => {
@@ -57,16 +58,19 @@ export function PeoplePage() {
           <span className="font-medium">
             {p.display_name}
             {p.id === me.personId && <span className="font-normal text-muted-foreground"> (you)</span>}
+            {/* On a phone, the login sits under the name. */}
+            <span className="block break-all font-mono text-xs font-normal text-muted-foreground sm:hidden">{p.logins.join(", ")}</span>
           </span>
         </div>
       ),
+      meta: { phone: "main" },
     },
     {
       id: "login",
       accessorFn: (p) => p.logins.join(", "),
       header: ({ column }) => <SortHeader column={column} label="Login" />,
       cell: ({ getValue }) => <span className="font-mono text-xs text-muted-foreground">{getValue()}</span>,
-      meta: { className: "hidden md:table-cell" },
+      meta: { className: "hidden md:table-cell", phone: "hide" },
     },
     {
       id: "projects",
@@ -92,24 +96,15 @@ export function PeoplePage() {
         // Only people all of whose Projects you're in (the Web Machine checks too).
         const yours = p.projectIds.every((id) => projects.some((pr) => pr.id === id));
         if (!yours) return null;
-        return deleting === p.id ? (
-          <div className="flex justify-end gap-1">
-            <Button size="sm" variant="ghost" onClick={() => setDeleting(null)}>
-              Cancel
-            </Button>
-            <Button size="sm" variant="destructive" onClick={() => (setDeleting(null), change(() => deletePerson(db, p.id)))}>
-              Delete {p.display_name}
-            </Button>
-          </div>
-        ) : (
+        return (
           <div className="flex justify-end">
-            <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label={`Delete ${p.display_name}`} onClick={() => setDeleting(p.id)}>
+            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-destructive" aria-label={`Delete ${p.display_name}…`} onClick={() => setDeleting(p)}>
               <Trash2 />
             </Button>
           </div>
         );
       },
-      meta: { className: "w-0 whitespace-nowrap" },
+      meta: { className: "w-0 whitespace-nowrap", phone: "end" },
     },
   ];
 
@@ -147,6 +142,26 @@ export function PeoplePage() {
           />
         )}
       </main>
+      <Dialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent className="gap-4 sm:max-w-md">
+          {deleting && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle>Delete {deleting.display_name}?</DialogTitle>
+                <DialogDescription>They're taken out of every Project and can't sign in again. This can't be undone.</DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="ghost" onClick={() => setDeleting(null)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={() => change(() => deletePerson(db, deleting.id)).then(() => setDeleting(null))}>
+                  Delete {deleting.display_name}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

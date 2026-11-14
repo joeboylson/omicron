@@ -77,7 +77,7 @@ test("start a Project and add a task to it", async ({ page, request }) => {
 
   // Back on the Projects list, it shows with its task count.
   await page.getByRole("button", { name: "Back to Projects" }).click();
-  await expect(page.getByRole("row", { name: new RegExp(name) }).getByRole("cell").nth(1)).toHaveText("1");
+  await expect(page.getByRole("row", { name: new RegExp(name) }).getByRole("cell").nth(1)).toHaveText(/^1\b/);
 });
 
 test("a task can be filled in and finished", async ({ page, request }) => {
@@ -1087,9 +1087,12 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/people.png` });
 
   // Deleted, after asking once more: gone for good. Not yourself.
-  await expect(page.getByRole("button", { name: "Delete Robin Example" })).toHaveCount(0);
-  await row.getByRole("button", { name: `Delete ${sam}` }).click();
-  await row.getByRole("button", { name: `Delete ${sam}` }).click();
+  await expect(page.getByRole("button", { name: /^Delete Robin Example/ })).toHaveCount(0);
+  await row.getByRole("button", { name: `Delete ${sam}…` }).click();
+  const asked = page.getByRole("dialog", { name: `Delete ${sam}?` });
+  await expect(asked).toContainText("taken out of every Project");
+  await asked.getByRole("button", { name: `Delete ${sam}`, exact: true }).click();
+  await expect(asked).toHaveCount(0);
   await expect(page.getByRole("table", { name: "People" }).getByRole("row", { name: sam })).toHaveCount(0);
   await page.getByLabel("Only people in").selectOption({ label: "Everyone" });
   await page.getByLabel("Search people").fill(sam);

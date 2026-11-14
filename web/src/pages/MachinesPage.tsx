@@ -92,6 +92,7 @@ export function MachinesPage() {
           <span className="font-mono font-medium">{m.name}</span>
         </div>
       ),
+      meta: { phone: "main" },
     },
     {
       id: "status",
@@ -133,7 +134,7 @@ export function MachinesPage() {
           </Button>
         </div>
       ),
-      meta: { className: "py-0 text-right" },
+      meta: { className: "py-0 text-right", phone: "end" },
     },
   ];
 

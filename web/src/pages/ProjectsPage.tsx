@@ -78,11 +78,17 @@ export function ProjectsPage() {
     }
   };
 
-  const count = (key: keyof ProjectSummary, label: string, className?: string): ColumnDef<ProjectSummary, number> => ({
+  const count = (key: keyof ProjectSummary, label: string, className?: string, phone?: "end"): ColumnDef<ProjectSummary, number> => ({
     accessorKey: key,
     header: ({ column }) => <SortHeader column={column} label={label} />,
-    cell: ({ getValue }) => <span className="font-mono">{getValue()}</span>,
-    meta: { className: cn("text-right", className) },
+    cell: ({ getValue }) => (
+      <span className="text-muted-foreground sm:text-foreground">
+        <span className="font-mono">{getValue()}</span>
+        {/* On a phone there's no heading above it. */}
+        <span className="sm:hidden"> {getValue() === 1 ? label.toLowerCase().replace(/s$/, "") : label.toLowerCase()}</span>
+      </span>
+    ),
+    meta: { className: cn("text-right", className), phone: phone ?? "hide" },
   });
   const columns: ColumnDef<ProjectSummary, any>[] = [
     {
@@ -100,8 +106,9 @@ export function ProjectsPage() {
           {row.original.name}
         </a>
       ),
+      meta: { phone: "main" },
     },
-    count("taskCount", "Tasks"),
+    count("taskCount", "Tasks", undefined, "end"),
     count("memberCount", "People", "hidden sm:table-cell"),
     count("machineCount", "Machines", "hidden sm:table-cell"),
     count("sessionCount", "Sessions", "hidden md:table-cell"),
@@ -119,7 +126,7 @@ export function ProjectsPage() {
           <Trash2 />
         </Button>
       ),
-      meta: { className: "w-12 py-0 text-right" },
+      meta: { className: "w-12 py-0 text-right", phone: "end" },
     },
   ];
 

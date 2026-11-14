@@ -1,13 +1,14 @@
 // Every table in Omicron: shadcn's Data Table (TanStack Table on shadcn's
 // Table). A page hands it its rows and its columns; it searches, sorts and
 // says when nothing matches.
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
   useReactTable,
+  type Cell,
   type Column,
   type ColumnDef,
   type RowData,
@@ -25,6 +26,10 @@ declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     /** Classes for the column's heading and cells (like hiding it on phones). */
     className?: string;
+    /** On a phone the table is a list, one block per row: this cell is its
+     *  first line ("main"), at that line's end ("end"), on a line below
+     *  ("below", the default), or not shown ("hide"). */
+    phone?: "main" | "end" | "below" | "hide";
   }
 }
 
@@ -92,6 +97,14 @@ export function DataTable<T>({
     getFilteredRowModel: getFilteredRowModel(),
   });
   const rows = table.getRowModel().rows;
+  const nothing = data.length === 0 ? (empty ?? "Nothing here yet.") : `Nothing matches “${query}”.`;
+  // Called, not mounted: a page's cells are new functions each render, and
+  // mounting them would remount (and close) what's open in them.
+  const show = (c: Cell<T, unknown>) => (
+    <Fragment key={c.id}>
+      {typeof c.column.columnDef.cell === "function" ? c.column.columnDef.cell(c.getContext()) : flexRender(c.column.columnDef.cell, c.getContext())}
+    </Fragment>
+  );
   return (
     <div className="grid min-w-0 gap-3">
       {(search || toolbar) && (
@@ -105,7 +118,23 @@ export function DataTable<T>({
           {toolbar}
         </div>
       )}
-      <div className="min-w-0 rounded-lg border">
+      {/* On a phone: a list, one block per row (a table doesn't fit). */}
+      <ul aria-label={label} className={cn("min-w-0 divide-y rounded-lg border sm:hidden", rows.length === 0 && "hidden")}>
+        {rows.map((r) => {
+          const cells = r.getVisibleCells();
+          const at = (where: string) => cells.filter((c) => (c.column.columnDef.meta?.phone ?? "below") === where);
+          return (
+            <li key={r.id} aria-label={rowLabel?.(r.original)} className="grid gap-2 p-3">
+              <div className="flex min-h-9 items-center gap-2">
+                <div className="min-w-0 flex-1 break-words">{at("main").map(show)}</div>
+                {at("end").map(show)}
+              </div>
+              {at("below").map(show)}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="hidden min-w-0 rounded-lg border sm:block">
         <Table aria-label={label}>
           <TableHeader>
             {table.getHeaderGroups().map((g) => (
@@ -130,22 +159,16 @@ export function DataTable<T>({
               <TableRow key={r.id} aria-label={rowLabel?.(r.original)}>
                 {r.getVisibleCells().map((c) => (
                   <TableCell key={c.id} className={c.column.columnDef.meta?.className}>
-                    {/* Called, not mounted: a page's cells are new functions each render, and mounting them would remount (and close) what's open in them. */}
-                    {typeof c.column.columnDef.cell === "function" ? c.column.columnDef.cell(c.getContext()) : flexRender(c.column.columnDef.cell, c.getContext())}
+                    {show(c)}
                   </TableCell>
                 ))}
               </TableRow>
             ))}
-            {rows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="text-muted-foreground">
-                  {data.length === 0 ? (empty ?? "Nothing here yet.") : `Nothing matches “${query}”.`}
-                </TableCell>
-              </TableRow>
-            )}
           </TableBody>
         </Table>
       </div>
+      {/* Once, for the list and the table alike. */}
+      {rows.length === 0 && <p className="px-1 text-sm text-muted-foreground">{nothing}</p>}
     </div>
   );
 }

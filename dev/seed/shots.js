@@ -78,11 +78,12 @@ async function escape(page) {
     await shot("1b-people", true);
     // One Project's people, and deleting someone (asks once more; cancelled).
     await page.getByLabel("Only people in").selectOption({ label: "In Lisbon trip" });
-    const sam = page.getByRole("row", { name: "Sam Rivera" });
-    await sam.getByRole("button", { name: "Delete Sam Rivera" }).click();
-    await sam.getByRole("button", { name: "Cancel" }).waitFor();
+    await page.getByRole("button", { name: "Delete Sam Rivera…" }).click();
+    const asked = page.getByRole("dialog", { name: "Delete Sam Rivera?" });
+    await asked.waitFor();
     await shot("1h-people-delete");
-    await sam.getByRole("button", { name: "Cancel" }).click();
+    await asked.getByRole("button", { name: "Cancel" }).click();
+    await asked.waitFor({ state: "detached" });
     await page.goto(`${url}/machines`);
     await page.getByRole("heading", { level: 1, name: "Machines" }).waitFor();
     await shot("1c-machines", true);
