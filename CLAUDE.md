@@ -151,6 +151,11 @@ Repeated steps, in `scripts/` (run on the Mac):
 - `/ux-review` (`.claude/skills/ux-review`): fresh screenshots of every
   page and state into `ref/ux/<date>/`, agents critiquing them as a few
   real use cases, and the findings filed as tasks labelled `ux`.
+- `/hig-review` (`.claude/skills/hig-review`): the same against Apple's
+  guidelines (summarized in `ref/hig/`), tasks labelled `hig`.
+- `/improve` (`.claude/skills/improve`, from github.com/shadcn/improve):
+  audits the code and writes self-contained plans into `plans/` for
+  another session to carry out; it never edits code itself.
 - `scripts/migrate.sh <connection string>`: set up Omicron's tables in a
   Supabase someone hosts themselves (the hosted one gets them from GitHub).
 
