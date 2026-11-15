@@ -28,7 +28,8 @@ export function ProjectTabs({ tab, onTab, badges = {} }: { tab: ProjectTab; onTa
         "lg:[body:has([data-beside])_&]:left-[calc(50%-16rem)]",
       )}
     >
-      <ul className="flex sm:gap-1">
+      {/* Close together in the middle, not spread edge to edge (#255). */}
+      <ul className="mx-auto flex max-w-[18rem] justify-center sm:max-w-none sm:gap-0.5">
         {PROJECT_TABS.map(({ tab: t, label, Icon }) => {
           const on = t === tab;
           const count = badges[t];
@@ -40,7 +41,7 @@ export function ProjectTabs({ tab, onTab, badges = {} }: { tab: ProjectTab; onTa
                 onClick={() => onTab(t)}
                 className={cn(
                   "relative flex h-[3.25rem] w-full flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                  "sm:h-10 sm:flex-row sm:gap-2 sm:rounded-xl sm:px-4 sm:text-sm",
+                  "sm:h-10 sm:flex-row sm:gap-1.5 sm:rounded-xl sm:px-3 sm:text-sm",
                   on ? "text-[var(--sys-blue)] sm:bg-accent sm:text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
