@@ -2,7 +2,7 @@ import { scrollMotion } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useToast } from "@/lib/toast";
 import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 import { renumberTasks, type Task } from "@/lib/data";
 import { reorder } from "@/lib/board-rules";
 import { useApp } from "@/lib/app";

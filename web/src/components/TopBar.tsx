@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { GateButton } from "@/components/GateButton";
 import { Settings } from "lucide-react";
 import { initials } from "@/components/TaskCard";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 
 const PAGES = [
   { path: "/", label: "Projects" },

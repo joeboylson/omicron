@@ -770,7 +770,10 @@ test("a dispatch left waiting by an asker who went away shows as failed, and Dis
     await page.getByRole("button", { name: "#1 Write the parser" }).click();
     await expect(page.getByTestId("dispatch")).toContainText("didn't pick it up in time");
     await expect(page.getByRole("button", { name: "Sending" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
+    // Its computer isn't awake here (no daemon): no button, and the line
+    // says why (#219). Awake, Send again shows (the Dispatch test).
+    await expect(page.getByTestId("dispatch")).toContainText("is off, so it can't be sent now");
+    await expect(page.getByRole("button", { name: "Send again" })).toHaveCount(0);
   } finally {
     win.kill();
   }

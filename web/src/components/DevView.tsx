@@ -4,7 +4,7 @@ import { Folder as FolderIcon, LogOut, Plus, Terminal as TerminalIcon, Undo2, X 
 import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
 import type { Folder, ProjectData, Task } from "@/lib/data";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn, radioArrows } from "@/lib/utils";

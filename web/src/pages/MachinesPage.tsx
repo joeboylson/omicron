@@ -6,7 +6,7 @@
 
 import { useCallback, useRef, useEffect, useState } from "react";
 import { Check, Copy, KeyRound, MoreHorizontal, Power, Trash2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
 import { useAwakeMachines } from "@/lib/awake";

@@ -1,6 +1,6 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, X, Check, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, X, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -44,11 +44,12 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/base/dropdown-menu";
 import { GateButton } from "@/components/GateButton";
 import { UndoSteps, type Step } from "@/lib/undo";
 import { openCommands, rememberTask } from "@/lib/recent";
@@ -692,24 +693,21 @@ export function ProjectPage({ id }: { id: string }) {
             )
               .filter(([k]) => k !== "review" || filters.review || usesClaude(project) || project.tasks.some((t) => t.needs_review))
               .map(([k, label]) => (
-                <DropdownMenuItem
+                // A tick on the leading edge, like Show and Columns (#238).
+                <DropdownMenuCheckboxItem
                   key={k}
                   className="lg:hidden"
-                  role="menuitemcheckbox"
-                  aria-checked={filters[k]}
+                  checked={filters[k]}
                   // Stays open, to pick more than one.
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setFilters({ ...filters, [k]: !filters[k] });
-                  }}
+                  onSelect={(e) => e.preventDefault()}
+                  onCheckedChange={(on) => setFilters({ ...filters, [k]: on === true })}
                 >
-                  <span className="flex-1">{label}</span>
-                  {filters[k] && <Check className="h-4 w-4" aria-hidden />}
-                </DropdownMenuItem>
+                  {label}
+                </DropdownMenuCheckboxItem>
               ))}
             {project.labels.length > 0 && (
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="lg:hidden">{filters.label ? `Label: ${project.labels.find((l) => l.id === filters.label)?.name ?? ""}` : "Any label"}</DropdownMenuSubTrigger>
+                <DropdownMenuSubTrigger inset className="lg:hidden">{filters.label ? `Label: ${project.labels.find((l) => l.id === filters.label)?.name ?? ""}` : "Any label"}</DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup value={filters.label ?? "any"} onValueChange={(v) => setFilters({ ...filters, label: v === "any" ? null : v })}>
                     <DropdownMenuRadioItem value="any">Any label</DropdownMenuRadioItem>
@@ -723,7 +721,7 @@ export function ProjectPage({ id }: { id: string }) {
               </DropdownMenuSub>
             )}
             {filtering && (
-              <DropdownMenuItem className="text-link lg:hidden" onSelect={clearFilters}>
+              <DropdownMenuItem inset className="lg:hidden" onSelect={clearFilters}>
                 Clear filters
               </DropdownMenuItem>
             )}
