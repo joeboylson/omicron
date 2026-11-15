@@ -32,7 +32,7 @@ export function AddLabel({
     <Popover open={open} onOpenChange={(o) => (setOpen(o), o || setTyped(""))}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="h-11 gap-1 px-2 text-link sm:h-9">
-          <Plus /> Add label
+          <Plus /> Add Label
         </Button>
       </PopoverTrigger>
       <PopoverContent title="Labels" align="start" className="w-64 p-0">

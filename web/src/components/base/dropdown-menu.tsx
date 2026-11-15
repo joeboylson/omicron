@@ -6,10 +6,10 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import { DropdownMenu as UiDropdownMenu, DropdownMenuContent as UiDropdownMenuContent } from "@/components/ui/dropdown-menu";
+
 export {
-  DropdownMenu,
   DropdownMenuCheckboxItem,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -22,6 +22,46 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+// Escape always closes the menu. Radix can be left thinking another layer
+// is on top (one that was redrawn away as it closed), and then ignores
+// Escape here; this closes it whatever Radix thinks.
+const CloseMenu = React.createContext<(() => void) | null>(null);
+
+export function DropdownMenu({ open, defaultOpen, onOpenChange, ...props }: React.ComponentProps<typeof UiDropdownMenu>) {
+  const [own, setOwn] = React.useState(defaultOpen ?? false);
+  const shown = open ?? own;
+  const change = (o: boolean) => {
+    if (open === undefined) setOwn(o);
+    onOpenChange?.(o);
+  };
+  return (
+    <CloseMenu.Provider value={() => change(false)}>
+      <UiDropdownMenu open={shown} onOpenChange={change} {...props} />
+    </CloseMenu.Provider>
+  );
+}
+
+export const DropdownMenuContent = React.forwardRef<
+  React.ElementRef<typeof UiDropdownMenuContent>,
+  React.ComponentPropsWithoutRef<typeof UiDropdownMenuContent>
+>(({ onKeyDown, ...props }, ref) => {
+  const close = React.useContext(CloseMenu);
+  return (
+    <UiDropdownMenuContent
+      ref={ref}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (e.key === "Escape" && !e.defaultPrevented && close) {
+          e.preventDefault();
+          close();
+        }
+      }}
+      {...props}
+    />
+  );
+});
+DropdownMenuContent.displayName = "DropdownMenuContent";
 
 export const DropdownMenuRadioItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>,

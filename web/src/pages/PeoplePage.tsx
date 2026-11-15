@@ -147,7 +147,7 @@ export function PeoplePage() {
         title="People"
         actions={
           <Button onClick={() => setAdding(true)}>
-            <UserPlus /> Add person
+            <UserPlus /> Add Person
           </Button>
         }
       />

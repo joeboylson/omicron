@@ -73,7 +73,7 @@ const viewIs = async (page, name) => {
 };
 
 async function addTaskIn(page, status, title) {
-  await column(page, status).getByRole("button", { name: "Add a task" }).click();
+  await column(page, status).getByRole("button", { name: "Add Task" }).click();
   await page.getByLabel(`New task in ${status}`).fill(title);
   await page.getByRole("button", { name: "Add task", exact: true }).click();
   await expect(column(page, status).getByRole("button", { name: new RegExp(title) })).toBeVisible();
@@ -361,7 +361,7 @@ test("on the computer itself, its owner opens and closes its gate from the page"
   await gate.click();
   if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/gate-closed.png` });
   await page.getByLabel("On until").fill("23:59");
-  await page.getByRole("button", { name: "Turn on", exact: true }).click();
+  await page.getByRole("button", { name: "Turn On", exact: true }).click();
   await expect(gate).toHaveAccessibleName(new RegExp(`^${machineName}'s remote control: on until`));
   expect(omicron.cli("remote", "status")).toContain("Remote control is on until 11:59 PM");
   await page.getByRole("button", { name: "Turn off remote control" }).click();
@@ -441,7 +441,7 @@ test("the Dev view's session buttons: open in a folder, hand off, end", async ({
   // Open: a new session in the folder, named after it, in a new tab.
   // The folder by its name, the rest dimmed; New session says what it does (#178).
   await expect(page.getByRole("complementary", { name: "Folders and sessions" })).toContainText(dir.replace(/\/+$/, "").split("/").pop());
-  await page.getByRole("button", { name: "Add a folder" }).click();
+  await page.getByRole("button", { name: "Add Folder" }).click();
   await expect(page.getByText("omicron folders add", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: `Open a new session in ${dir}` }).click();
@@ -612,9 +612,9 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     daemon = await omicron.daemon();
     // Runs are on the Dev side (#192), not the Tasks view.
     await page.reload();
-    await expect(page.getByRole("button", { name: "Start a run" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start Run" })).toHaveCount(0);
     await page.goto(`${page.url().split("?")[0]}?view=dev`);
-    await page.getByRole("button", { name: "Start a run" }).click();
+    await page.getByRole("button", { name: "Start Run" }).click();
     // On its own computer a run needs no gate, so nothing about one (#152).
     await expect(page.getByRole("dialog").getByRole("button", { name: "Start", exact: true })).toBeVisible();
     await expect(page.getByTestId("start-gate")).toHaveCount(0);
@@ -658,7 +658,7 @@ test("a run: started from the page, followed, paused after its task", async ({ p
 test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter opens it at its notes", async ({ page, request }) => {
   await newPerson(page, request);
   await startProjectIn(page, unique("Home"));
-  await column(page, "To do").getByRole("button", { name: "Add a task" }).click();
+  await column(page, "To do").getByRole("button", { name: "Add Task" }).click();
   const box = page.getByLabel("New task in To do");
   await box.fill("Buy milk");
   await page.keyboard.press("Enter");
@@ -729,7 +729,7 @@ test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the 
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Cherry pie", "Apple crumble", "Banana bread"]);
   // Add a task here, from the same menu.
   await column(page, "To do").getByRole("button", { name: /^More for / }).click();
-  await page.getByRole("menuitem", { name: "Add a task here" }).click();
+  await page.getByRole("menuitem", { name: "Add Task Here" }).click();
   await expect(page.getByLabel("New task in To do")).toBeFocused();
   await page.keyboard.press("Escape");
   // The Done column says so with a check, not a second "Done".
@@ -1347,7 +1347,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   await expect(page.getByRole("button", { name: /^Send (now|again)$/ })).toHaveCount(0);
 
   // Given to a person, from the warning: no longer flagged.
-  await page.getByRole("button", { name: "Give to…" }).click();
+  await page.getByRole("button", { name: "Give To…" }).click();
   await page.getByRole("option", { name: "Robin Example" }).click();
   await expect(page.getByTestId("ended-session")).toHaveCount(0);
   await escape(page);
@@ -1928,7 +1928,7 @@ test("keyboard: c adds where you are, Escape keeps your place, ? lists every sho
   await page.keyboard.press("c");
   await expect(page.getByLabel("New task in Done")).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(column(page, "Done").getByRole("button", { name: "Add a task" })).toBeFocused();
+  await expect(column(page, "Done").getByRole("button", { name: "Add Task" })).toBeFocused();
 
   await page.keyboard.press("?");
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
@@ -2200,7 +2200,10 @@ test("columns are added, renamed and deleted from the board itself", async ({ pa
   // Deleted while empty; a column with tasks, or Done, can't be.
   await column(page, "Done").getByRole("button", { name: /^More for / }).click();
   await expect(page.getByRole("menuitem", { name: "Delete Column" })).toBeDisabled();
+  // Escape once the menu has focus (pressed sooner, it goes nowhere).
+  await expect(page.getByRole("menu")).toBeFocused();
   await page.keyboard.press("Escape");
+  await page.getByRole("menu").waitFor({ state: "detached" });
   await column(page, "Waiting on someone").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Delete Column" }).click();
   await expect(page.getByRole("region")).toHaveText([/^To do/, /^Done/]);

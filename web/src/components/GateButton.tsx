@@ -81,7 +81,7 @@ export function GateButton() {
               On until
             </label>
             <Input id="gate-until" type="time" value={until} onChange={(e) => setUntil(e.target.value)} className="h-9" />
-            <Button type="submit">Turn on</Button>
+            <Button type="submit">Turn On</Button>
           </form>
         )}
       </PopoverContent>

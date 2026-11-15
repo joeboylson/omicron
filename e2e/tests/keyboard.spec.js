@@ -79,8 +79,8 @@ test("everything can be reached and seen with the keyboard, and a whole flow nee
 
   // The board: Add a task is reachable; add one by keyboard.
   const boardStops = await tabThrough(page, "Board");
-  expect(boardStops.some((w) => w.includes("Add a task"))).toBe(true);
-  await page.getByRole("region", { name: "To do", exact: true }).getByRole("button", { name: "Add a task" }).focus();
+  expect(boardStops.some((w) => w.includes("Add Task"))).toBe(true);
+  await page.getByRole("region", { name: "To do", exact: true }).getByRole("button", { name: "Add Task" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("New task in To do")).toBeFocused();
   await page.keyboard.type("Plant tulips");

@@ -41,7 +41,7 @@ for (const scheme of ["light", "dark"]) {
     await page.getByLabel("New Project name").fill(name);
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-    await page.getByRole("region", { name: "To do", exact: true }).getByRole("button", { name: "Add a task" }).click();
+    await page.getByRole("region", { name: "To do", exact: true }).getByRole("button", { name: "Add Task" }).click();
     await page.getByLabel("New task in To do").fill("Fix the gate");
     await page.keyboard.press("Enter");
     await page.getByRole("button", { name: "Cancel" }).click();

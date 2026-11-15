@@ -26,7 +26,7 @@ test("offline and back: failures say so, nothing is lost or doubled, and the boa
   // Offline: adding a task can't get through. The page says so plainly,
   // and the add can't be sent twice while it waits.
   await context.setOffline(true);
-  await column.getByRole("button", { name: "Add a task" }).click();
+  await column.getByRole("button", { name: "Add Task" }).click();
   await page.getByLabel(`New task in ${todo.name}`).fill("Water the beans");
   await page.getByRole("button", { name: "Add task", exact: true }).click();
   const alert = page.getByRole("alert");
@@ -95,7 +95,7 @@ test("an hour later, the sign-in has renewed itself and the page still works", a
   // An hour and five minutes go by.
   await page.clock.fastForward("01:05:00");
   await renewed;
-  await column.getByRole("button", { name: "Add a task" }).click();
+  await column.getByRole("button", { name: "Add Task" }).click();
   await page.getByLabel(`New task in ${todo.name}`).fill("Still works");
   await page.getByRole("button", { name: "Add task", exact: true }).click();
   await expect(column.getByRole("button", { name: /Still works/ })).toHaveCount(1);

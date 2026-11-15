@@ -137,7 +137,7 @@ async function escape(page) {
     await shot("2d-search-nothing");
     await page.getByRole("button", { name: "Clear search" }).click();
     const todo = page.getByRole("region", { name: "To do", exact: true });
-    await todo.getByRole("button", { name: "Add a task" }).click();
+    await todo.getByRole("button", { name: "Add Task" }).click();
     await page.getByLabel("New task in To do").waitFor();
     await shot("2e-add-task");
     await todo.getByRole("button", { name: "Cancel" }).click();
@@ -314,8 +314,8 @@ async function escape(page) {
       await page.keyboard.type("hello from the Dev view");
       await shot("7c-dev-terminal");
       // A run, on the Dev side (#192): starting one, the bar while it goes, the night so far; then stopped.
-      await page.getByRole("button", { name: "Start a run" }).click();
-      await page.getByRole("heading", { name: "Start a run" }).waitFor();
+      await page.getByRole("button", { name: "Start Run" }).click();
+      await page.getByRole("heading", { name: "Start Run" }).waitFor();
       await shot("4i-start-run");
       await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
       await page.getByTestId("run").getByText(/^Run/).waitFor();

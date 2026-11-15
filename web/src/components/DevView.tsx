@@ -117,7 +117,7 @@ export function DevView({
           <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
         </div>
         <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Folders <span className="normal-case tracking-normal">on {dev.machine}</span>
+          Folders
         </h2>
         {folders.length === 0 ? (
           <p className="px-1 pb-1 text-muted-foreground">No folders yet.</p>
@@ -263,7 +263,8 @@ export function DevView({
           const tasks = project.tasks.filter((t) => t.status_id === st.id).sort((a, b) => a.position - b.position);
           return (
             <section key={st.id} aria-label={st.name} className="pb-3">
-              <h2 className="flex items-center gap-2 px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {/* A status's name as it was typed, not uppercased (#239). */}
+              <h2 className="flex items-center gap-2 px-1 pb-1 text-xs font-semibold text-muted-foreground">
                 {st.name} <span className="tabular-nums">{tasks.length}</span>
               </h2>
               <ul>
@@ -322,7 +323,7 @@ export function DevView({
                           value=""
                           onChange={(e) => e.target.value && give(t, e.target.value)}
                         >
-                          <option value="">{session ? session.name : person ? person.display_name : "Give to…"}</option>
+                          <option value="">{session ? session.name : person ? person.display_name : "Give To…"}</option>
                           {here.map((x) => (
                             <option key={x.id} value={x.id}>
                               {x.name}
@@ -395,7 +396,7 @@ function AddFolder() {
     <Popover onOpenChange={() => setCopied(false)}>
       <PopoverTrigger asChild>
         <button type="button" className="mb-3 flex items-center gap-1 rounded px-1 py-1 text-xs text-link hover:bg-muted">
-          <Plus className="h-3.5 w-3.5" aria-hidden /> Add a folder
+          <Plus className="h-3.5 w-3.5" aria-hidden /> Add Folder
         </button>
       </PopoverTrigger>
       <PopoverContent title="Add a folder" align="start" className="grid w-72 gap-2 text-sm">

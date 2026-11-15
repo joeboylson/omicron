@@ -312,7 +312,7 @@ function NewKey({
                   Cancel
                 </Button>
                 <Button type="submit" disabled={!name.trim() || picked.length === 0}>
-                  Make key
+                  Make Key
                 </Button>
               </DialogFooter>
             </form>

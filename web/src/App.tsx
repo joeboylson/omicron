@@ -179,7 +179,7 @@ export default function App() {
             <span className="flex-1 text-destructive">{error.message}</span>
             {error.retry && (
               <Button variant="outline" size="sm" className="h-11 shrink-0 sm:h-9" disabled={retrying} onClick={retry}>
-                {retrying ? "Trying…" : "Try again"}
+                {retrying ? "Trying…" : "Try Again"}
               </Button>
             )}
             <button aria-label="Dismiss" className="flex h-11 w-11 items-center justify-center" onClick={() => setError(null)}>

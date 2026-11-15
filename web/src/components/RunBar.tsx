@@ -100,22 +100,22 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
               size="sm"
               variant="outline"
               className="size-11 shrink-0 gap-1 p-0 sm:h-9 sm:w-auto sm:px-3"
-              aria-label="Pause after this task"
-              title="Pause after this task"
+              aria-label="Pause After This Task"
+              title="Pause After This Task"
               onClick={() => act(async () => (await setRunState(db, run, "pausing"), onChanged()))}
             >
-              <Pause className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Pause after this task</span>
+              <Pause className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Pause After This Task</span>
             </Button>
           )}
           <Button
             size="sm"
             variant="ghost"
             className="size-11 shrink-0 gap-1 p-0 text-destructive hover:text-destructive sm:h-9 sm:w-auto sm:px-3"
-            aria-label="Stop now"
-            title="Stop now"
+            aria-label="Stop Now"
+            title="Stop Now"
             onClick={() => setStopping(true)}
           >
-            <Square className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Stop now</span>
+            <Square className="h-3.5 w-3.5" aria-hidden /> <span className="hidden sm:inline">Stop Now</span>
           </Button>
           <Confirm
             open={stopping}
@@ -129,7 +129,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
       ) : (
         here.length > 0 && (
           <Button size="sm" variant="outline" className="gap-1" onClick={() => setStarting(true)}>
-            <Play className="h-3.5 w-3.5" aria-hidden /> Start a run
+            <Play className="h-3.5 w-3.5" aria-hidden /> Start Run
           </Button>
         )
       )}

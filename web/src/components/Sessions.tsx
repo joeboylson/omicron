@@ -173,7 +173,7 @@ function SessionNotes({
                 </button>
                 <GiveTo
                   label={`Give #${t.number} to`}
-                  text="Give to…"
+                  text="Give To…"
                   project={project}
                   others={others}
                   onPick={(to) => act(() => updateTask(db, project, t, { assignee_person_id: to.person ?? null, assignee_session_id: to.session ?? null })).then((ok) => ok && onChanged())}
@@ -317,7 +317,7 @@ function since(iso: string): string {
   return `${Math.round(min / 60)} h`;
 }
 
-/** A "Give to…" picker: a person in the Project, or another Claude session. */
+/** A "Give To…" picker: a person in the Project, or another Claude session. */
 function GiveTo({
   label,
   text,

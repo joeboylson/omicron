@@ -60,13 +60,13 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
           <DropdownMenuContent align="end">
             {done && !isDone && (
               <DropdownMenuItem onSelect={() => save({ status_id: done.id })}>
-                <Check /> Mark done
+                <Check /> Mark Done
               </DropdownMenuItem>
             )}
             {/* Moving without dragging (by keyboard, or on a small screen). */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
-                <ArrowRight /> Move to
+                <ArrowRight /> Move To
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {project.statuses.map((st) => (
@@ -101,11 +101,11 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
                 );
               }}
             >
-              <Link2 /> Copy link
+              <Link2 /> Copy Link
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(task)}>
-              <Trash2 /> Delete task
+              <Trash2 /> Delete Task
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

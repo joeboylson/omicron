@@ -722,7 +722,7 @@ export function ProjectPage({ id }: { id: string }) {
             )}
             {filtering && (
               <DropdownMenuItem inset className="lg:hidden" onSelect={clearFilters}>
-                Clear filters
+                Clear Filters
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -1116,12 +1116,12 @@ function Column({
                 setAdding(true);
               }}
             >
-              <Plus /> Add a task here
+              <Plus /> Add Task Here
             </DropdownMenuItem>
             {status && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger disabled={tasks.length < 2}>
-                <ArrowUpDown /> Sort by
+                <ArrowUpDown /> Sort By
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {(
@@ -1235,7 +1235,7 @@ function Column({
               {saving ? "Adding…" : "Add task"}
             </Button>
             <Button type="button" size="sm" variant="outline" disabled={!title.trim() || saving} onClick={(e) => add(e, true)}>
-              Add and open
+              Add and Open
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
               Cancel
@@ -1243,8 +1243,8 @@ function Column({
           </div>
         </form>
       ) : (
-        <Button ref={addButton} variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" aria-label={`Add a task to ${status ? status.name : label}`} onClick={() => setAdding(true)}>
-          <Plus /> Add a task
+        <Button ref={addButton} variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" aria-label={`Add Task to ${status ? status.name : label}`} onClick={() => setAdding(true)}>
+          <Plus /> Add Task
         </Button>
       )}
     </section>

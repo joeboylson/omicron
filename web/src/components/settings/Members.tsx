@@ -58,7 +58,7 @@ function AddMember({ people, onAdd }: { people: Person[]; onAdd: (id: string) =>
     <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button variant="ghost" className="-mx-2 justify-start gap-2 px-2 text-link">
-          <UserPlus /> Add member
+          <UserPlus /> Add Member
         </Button>
       </PopoverTrigger>
       <PopoverContent title="Add member" align="start" className="w-72 p-0">

@@ -144,7 +144,7 @@ function RemoteControl() {
         <Row>
           <span className="flex-1 text-[0.9375rem] sm:text-sm">{dev ? `This browser can control ${dev.machine}.` : "This browser's token no longer works."}</span>
           <Button variant="ghost" size="sm" className="text-destructive" onClick={forget}>
-            Forget token
+            Forget Token
           </Button>
         </Row>
       ) : (
@@ -176,7 +176,7 @@ function RemoteControl() {
             )}
             {/* Grey until there's a token to use (not a pale blue). */}
             <Button type="submit" size="sm" variant={typed.trim() ? "default" : "secondary"} disabled={!typed.trim() || checking}>
-              {checking ? "Checking…" : "Use token"}
+              {checking ? "Checking…" : "Use Token"}
             </Button>
           </Row>
           {problem && (

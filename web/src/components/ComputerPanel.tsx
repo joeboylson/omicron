@@ -291,7 +291,7 @@ function SetupCheck({ line, onFix }: { line: string; onFix: (action: string) => 
       </span>
       {fix === "start-at-login" && (
         <Button size="sm" variant="outline" onClick={() => onFix(fix)}>
-          Start with this computer
+          Start With This Computer
         </Button>
       )}
     </Row>
