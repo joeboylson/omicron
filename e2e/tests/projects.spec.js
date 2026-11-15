@@ -539,8 +539,16 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await wizard.getByLabel("Every").selectOption({ label: "15 minutes" });
     await wizard.getByRole("button", { name: "Next" }).click();
     await wizard.getByRole("radio", { name: /^parser/ }).click();
+    // Run Now (#260): the first run at once, not in 15 minutes.
+    await wizard.getByRole("switch", { name: "Run Now" }).click();
+    await expect(wizard.getByRole("switch", { name: "Run Now" })).toBeChecked();
     await wizard.getByRole("button", { name: "Start", exact: true }).click();
     await expect(wizard).toHaveCount(0);
+    // Its next run is now, not 15 minutes away.
+    const [, hh, mm] = omicron.cli("loops", "list", "--project", name, "--as-machine").match(/next \w+ \d+ (\d+):(\d+)/);
+    const next = new Date();
+    next.setHours(Number(hh), Number(mm), 0, 0);
+    expect(Math.abs(next.getTime() - Date.now())).toBeLessThan(3 * 60_000);
     const loops = page.getByRole("table", { name: "Loops" });
     await expect(loops).toContainText("Keep going with the next task");
     await expect(loops).toContainText("every 15m");

@@ -1031,6 +1031,8 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
 
     // Another loop, started with --now (#260): its first run is due straight
     // away, not in an hour. The session is quit: it ends, and its loop with it.
+    // (The last run's turn ends first, as Claude's Stop hook would say.)
+    let _ = std::fs::remove_file(&busy);
     let said = ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--now", "--session", "parser", "--project", &project]);
     assert!(said.contains("First run now."), "{said}");
     wait_for("the first run, straight away", || {
