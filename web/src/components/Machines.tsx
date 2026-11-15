@@ -54,6 +54,8 @@ function Meter({ label, w, className }: { label: string; w: UsageWindow; classNa
         <span className="tabular-nums">
           {percent === null ? `${label} limit: not known yet` : `${percent}% of the ${label.toLowerCase()} limit used`}
           {w?.resets_at && `, ${resetsIn(w.resets_at)}`}
+          {/* Not by color alone (#240). */}
+          {percent !== null && percent >= 90 && <span className="font-medium text-foreground"> · Almost used up</span>}
         </span>
       </div>
       <Progress

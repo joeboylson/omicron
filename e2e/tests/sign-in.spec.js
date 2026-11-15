@@ -152,5 +152,7 @@ test("each machine's Claude accounts show on the Machines page, live", async ({ 
   // In words (#220).
   await expect(machines).toContainText("Using work");
   await expect(machines).toContainText("93% of the 5-hour limit used");
+  // Nearly used up says so in words, not by color alone (#240).
+  await expect(machines).toContainText("Almost used up");
   await expect(machines).toContainText("20% of the weekly limit used");
 });

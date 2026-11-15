@@ -17,6 +17,12 @@ export function applyAppearance(a: Appearance) {
   const root = document.documentElement;
   if (a === "system") delete root.dataset.theme;
   else root.dataset.theme = a;
+  // The browser's bar follows a chosen Light or Dark too, not only the
+  // system's (#240): each tag keeps its own color for "system".
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
+    const own = m.media.includes("dark") ? "#0a0a0a" : "#ffffff";
+    m.content = a === "system" ? own : a === "dark" ? "#0a0a0a" : "#ffffff";
+  });
   try {
     if (a === "system") localStorage.removeItem("omicron.theme");
     else localStorage.setItem("omicron.theme", a);
