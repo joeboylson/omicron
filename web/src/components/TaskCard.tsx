@@ -39,7 +39,7 @@ export function TaskCard({
       onClick={onOpen}
       // Enter opens it; Space picks it up to move it (on the board).
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), onOpen())}
-      className="relative cursor-pointer p-3 text-[0.9375rem] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/card relative cursor-pointer p-3 text-[0.9375rem] transition-colors hover:bg-accent active:bg-accent sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`#${task.number} ${task.title}`}
       aria-describedby={[summary ? summaryId : "", describedBy ?? ""].filter(Boolean).join(" ") || undefined}
     >
@@ -50,7 +50,7 @@ export function TaskCard({
       )}
       <div className="flex items-start gap-2">
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
-        <span className="tabular-nums text-xs text-muted-foreground">#{task.number}</span>
+        <span className="tabular-nums text-xs text-muted-foreground group-hover/card:text-foreground/80 group-active/card:text-foreground/80">#{task.number}</span>
       </div>
       {((showStatus && status) || task.needs_review || task.question?.open || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">

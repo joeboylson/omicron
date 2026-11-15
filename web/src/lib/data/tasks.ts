@@ -14,12 +14,20 @@ export async function addTask(
   topicId: string | null = null,
   who?: Who,
   dueOn?: string | null,
+  more: { notes?: string; labelIds?: string[] } = {},
 ) {
   const position = after(project.tasks.filter((t) => t.status_id === statusId));
-  const given = { ...(who ? { assignee_person_id: who.person, assignee_session_id: who.session } : {}), ...(dueOn ? { due_on: dueOn } : {}) };
+  const given = {
+    ...(who ? { assignee_person_id: who.person, assignee_session_id: who.session } : {}),
+    ...(dueOn ? { due_on: dueOn } : {}),
+    ...(more.notes ? { notes: more.notes } : {}),
+  };
   const row = must(
-    await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId, ...given }).select("number").single(),
-  ) as { number: number };
+    await db.from("tasks").insert({ project_id: project.id, status_id: statusId, title, position, topic_id: topicId, ...given }).select("id,number").single(),
+  ) as { id: string; number: number };
+  if (more.labelIds?.length) {
+    must(await db.from("task_labels").insert(more.labelIds.map((label_id) => ({ task_id: row.id, label_id }))));
+  }
   return row.number;
 }
 

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useLiveDown } from "@/lib/live";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
@@ -168,9 +169,11 @@ export default function App() {
           <NotFound />
         )}
         <LiveDown />
-        {error && (
+        {error && createPortal(
           // Above any open sheet (they're z-50 and block the page), so an
           // error made in one is seen and can be tried again from there.
+          // On the body, not in the page: an open sheet hides the page from
+          // screen readers, and the error must still be heard.
           <div
             role="alert"
             data-error-bar
@@ -185,7 +188,8 @@ export default function App() {
             <button aria-label="Dismiss" className="flex h-11 w-11 items-center justify-center" onClick={() => setError(null)}>
               <X className="h-4 w-4" />
             </button>
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
       </ToastProvider>

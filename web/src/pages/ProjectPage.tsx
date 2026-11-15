@@ -1,10 +1,9 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addStatus, addTopic, deleteStatus, deleteTopic, renameStatus, renameTopic, updateTask, addTask, deleteTask, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task, type Who } from "@/lib/data";
+import { addStatus, addTopic, deleteStatus, deleteTopic, renameStatus, renameTopic, updateTask, deleteTask, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task } from "@/lib/data";
 import { usePendingChanges, useUndoableDelete } from "@/lib/pending";
 import { dropPlace, inOrder, matches as shows, parseColumn, type ColumnKind } from "@/lib/board-rules";
 import {
@@ -30,12 +29,12 @@ import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
-import { DateField, TaskDialog } from "@/components/TaskDialog";
+import { TaskDialog } from "@/components/TaskDialog";
+import { NewTask, type NewTaskStart } from "@/components/NewTask";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
 import { NavBar } from "@/components/NavBar";
 import { TopBar } from "@/components/TopBar";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -114,24 +113,23 @@ export function ProjectPage({ id }: { id: string }) {
   }, [openTask]);
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
   const [layout, setLayout] = useStored<"board" | "list">(`omicron.layout.${id}`, "board");
+  const [zoomed, setZoomed] = useStored(`omicron.zoom.${id}`, false);
   const [dragging, setDragging] = useState<Task | null>(null);
   const [dropHint, setDropHint] = useState<{ column: string; before: string | null } | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
-  // Bumped to open "Add a task" in the first column (c, or the menu).
-  const [addSignal, setAddSignal] = useState(0);
   const board = useRef<HTMLDivElement>(null);
   // The task whose sheet just closed, to give its card focus back.
   const closedTask = useRef<number | null>(null);
-  // A new task is typed into the board's first column; from the list, the
-  // board comes back first. (A ref, so the key handler always has the latest.)
+  // New Task opens its window, starting in the column focus is in (or the
+  // first). (A ref, so the key handler always has the latest.)
   const newTask = useRef(() => {});
-  // Which column "c" adds in: the one focus is in, or the first.
-  const [addIn, setAddIn] = useState<string | null>(null);
+  // Where the open New Task starts (null: closed); `openNew` sets it from a
+  // column's key once the board's columns are known.
+  const [newStart, setNewStart] = useState<NewTaskStart | null>(null);
+  const openNew = useRef<(key: string) => void>(() => {});
   newTask.current = () => {
-    setLayout("board");
-    const here = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("section[data-group]")?.dataset.group ?? null;
-    setAddIn(here);
-    setAddSignal((n) => n + 1);
+    const here = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("section[data-group]")?.dataset.group ?? "";
+    openNew.current(here);
   };
   // Search and filters (not kept: a fresh look each visit).
   // The search is in the address too.
@@ -438,6 +436,14 @@ export function ProjectPage({ id }: { id: string }) {
             topicId: null,
             tasks: byStatus(project, project.tasks.filter((t) => c.has(t) && matches(t))),
           }));
+  openNew.current = (key: string) => {
+    const g = groups.find((x) => x.key === key) ?? groups[0];
+    setNewStart({
+      statusId: g?.status?.id ?? project.statuses[0].id,
+      topicId: g?.topicId ?? null,
+      who: g?.kind === "p" ? { person: g.ref, session: null } : g?.kind === "c" ? { person: null, session: g.ref } : undefined,
+    });
+  };
   // Found by number, so the dialog follows the task as it reloads.
   const task = project.tasks.find((t) => t.number === openTask) ?? null;
 
@@ -784,6 +790,20 @@ export function ProjectPage({ id }: { id: string }) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        {/* Zoom the board out to see more of it at once; again to come back (#254). */}
+        {layout === "board" && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-11 shrink-0 sm:size-9"
+            aria-label="Zoom Out"
+            aria-pressed={zoomed}
+            title={zoomed ? "Zoom In" : "Zoom Out"}
+            onClick={() => setZoomed(!zoomed)}
+          >
+            {zoomed ? <ZoomIn /> : <ZoomOut />}
+          </Button>
+        )}
       </div>
       {groupBy === "topic" && project.topics.length === 0 && (
         <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
@@ -855,16 +875,14 @@ export function ProjectPage({ id }: { id: string }) {
           announcements: sayMoves(project, groups),
         }}
       >
-      <ColumnJump groups={groups} board={board} />
       <div className="relative flex min-h-0 flex-1 flex-col">
         <DropHint.Provider value={dropHint}>
-        <div ref={board} className={cn(boardRow, "min-h-0", dragging && "snap-none")} onKeyDown={moveFocus}>
-          {groups.map((g, i) => (
+        <div ref={board} className={cn(boardRow, "min-h-0", dragging && "snap-none")} style={zoomed ? { zoom: 0.75 } : undefined} onKeyDown={moveFocus}>
+          {groups.map((g) => (
             <Column
               key={g.key}
               groupKey={g.key}
-              addSignal={(addIn ? g.key === addIn : i === 0) ? addSignal : 0}
-              onAddShown={() => setAddSignal(0)}
+              onAdd={() => openNew.current(g.key)}
               project={project}
               kind={g.kind}
               refId={g.ref}
@@ -891,6 +909,16 @@ export function ProjectPage({ id }: { id: string }) {
       </DndContext>
       </>
       )}
+      <NewTask
+        project={project}
+        start={newStart}
+        onClose={() => setNewStart(null)}
+        onAdded={(number, open) => {
+          added(number, open);
+          // Shown: the new card scrolls into view once it's there.
+          if (!open) setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`)?.scrollIntoView({ block: "nearest", behavior: scrollMotion() }), 400);
+        }}
+      />
       <TaskDialog
         project={project}
         task={task}
@@ -971,9 +999,7 @@ function Column({
   kind,
   refId,
   status,
-  topicId,
-  addSignal,
-  onAddShown,
+  onAdd,
   label,
   tasks,
   onOpen,
@@ -988,9 +1014,8 @@ function Column({
   /** A status column, or (null) a topic column, by `topicId`. */
   status: Status | null;
   topicId: string | null;
-  /** Set to open "Add a task" here; `onAddShown` once it's open. */
-  addSignal: number;
-  onAddShown: () => void;
+  /** Open New Task, starting in this column. */
+  onAdd: () => void;
   /** What the column is called to screen readers (and tests). */
   label: string;
   tasks: Task[];
@@ -1000,37 +1025,7 @@ function Column({
 }) {
   const { db, act } = useApp();
   const toast = useToast();
-  const addFromMenu = useRef(false);
-  const [adding, setAdding] = useState(false);
-  // Closed (Escape, Cancel): focus goes back to its Add a task, not the page.
-  const addButton = useRef<HTMLButtonElement>(null);
-  const wasAdding = useRef(false);
-  useEffect(() => {
-    if (wasAdding.current && !adding && !document.querySelector('[role="dialog"]')) addButton.current?.focus();
-    wasAdding.current = adding;
-  }, [adding]);
-  // Who it's for and when, picked in the add form; and what was just added.
-  const [forWho, setForWho] = useState<Who | undefined>(undefined);
-  const [due, setDue] = useState<string | null>(null);
-  const [justAdded, setJustAdded] = useState<number | null>(null);
-  const [title, setTitle] = useState("");
-  // The box grows with what's typed, and shrinks back once it's added.
-  const titleBox = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = titleBox.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [title, adding]);
   const column = `col|${kind}|${refId ?? "none"}`;
-  // New tasks go into this status; in a topic column, the first status.
-  const addTo = status ?? project.statuses[0];
-  useEffect(() => {
-    if (addSignal > 0) {
-      setAdding(true);
-      onAddShown();
-    }
-  }, [addSignal]);
   const { setNodeRef } = useDroppable({ id: column });
   // A topic column's topic (renamed or deleted from its menu).
   const topic = kind === "t" && refId ? (project.topics.find((t) => t.id === refId) ?? null) : null;
@@ -1064,35 +1059,6 @@ function Column({
     };
   }, [tasks.length]);
 
-  // One add at a time: while it's on its way (it may wait for the
-  // connection), pressing Add again mustn't add it twice.
-  const [saving, setSaving] = useState(false);
-  const add = async (e: React.FormEvent, open = false) => {
-    e.preventDefault();
-    const t = title.trim();
-    if (!t || saving) return;
-    setSaving(true);
-    let number: number | undefined;
-    const ok = await act(async () => {
-      // Given to whoever was picked; in a person's or session's column, them.
-      const who = forWho ?? (kind === "p" ? { person: refId, session: null } : kind === "c" ? { person: null, session: refId } : undefined);
-      number = await addTask(db, project, addTo.id, t, topicId, who, due);
-    });
-    setSaving(false);
-    if (ok) {
-      // Only if it's still what was sent (more may have been typed since).
-      setTitle((now) => (now.trim() === t ? "" : now));
-      setForWho(undefined);
-      setDue(null);
-      // Said, and shown: the new card scrolls into view once it's there.
-      setJustAdded(number ?? null);
-      onAdded(number, open);
-      if (!open && number !== undefined) {
-        setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`)?.scrollIntoView({ block: "nearest", behavior: scrollMotion() }), 400);
-      }
-    }
-  };
-
   return (
     <section
       // The whole column takes a drop, header to Add a task (the list itself
@@ -1103,9 +1069,7 @@ function Column({
       className={cn("flex min-h-0 w-[86vw] shrink-0 snap-start flex-col rounded-xl bg-muted/60 p-2 transition-colors sm:w-72", landing && "bg-accent/80")}
     >
       <h2 className="relative flex min-h-9 items-center gap-2 px-2 pb-1 text-[0.9375rem] font-semibold sm:text-sm">
-        {/* On a phone the strip above names the column: here, only for
-            screen readers, with its ⋯ (#231). */}
-        <span className={cn("flex min-w-0 items-center gap-2", !renaming && "max-sm:sr-only")}>
+        <span className="flex min-w-0 items-center gap-2">
         {status && <ColorDot color={statusColor(status)} />}
         {renaming ? (
           <form
@@ -1148,23 +1112,8 @@ function Column({
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            // Adding from here: focus goes to the new task's box, not back to ⋯.
-            onCloseAutoFocus={(e) => {
-              if (addFromMenu.current) {
-                e.preventDefault();
-                titleBox.current?.focus();
-              }
-              addFromMenu.current = false;
-            }}
-          >
-            <DropdownMenuItem
-              onSelect={() => {
-                addFromMenu.current = true;
-                setAdding(true);
-              }}
-            >
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onAdd}>
               <Plus /> Add Task Here
             </DropdownMenuItem>
             {status && (
@@ -1247,55 +1196,9 @@ function Column({
           {landing && landing.before === null && <DropLine />}
         </ul>
       </SortableContext>
-      {adding ? (
-        <form onSubmit={add} className="mt-2 flex flex-col gap-2">
-          <span role="status" className="sr-only">
-            {justAdded !== null && `Added #${justAdded}.`}
-          </span>
-          <Textarea
-            autoFocus
-            rows={1}
-            value={title}
-            // A title is one line: what's typed wraps, and a pasted line
-            // break becomes a space.
-            ref={titleBox}
-            onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setAdding(false);
-              // Enter adds it and keeps going; Shift+Enter adds it and opens it.
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) add(e, e.shiftKey);
-            }}
-            placeholder="What needs doing?"
-            aria-label={`New task in ${label}`}
-            className="min-h-9 w-full resize-none overflow-hidden bg-background py-2 [field-sizing:content] [overflow-wrap:anywhere]"
-          />
-          {/* Who and when, set as it's added (or later, in the task). */}
-          <div className="flex flex-wrap gap-1.5">
-            <WhoChip project={project} value={forWho} onChange={setForWho} />
-            <DateField
-              value={due}
-              onChange={setDue}
-              none="No date"
-              className="h-11 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground sm:h-8"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={!title.trim() || saving} aria-label="Add task">
-              {saving ? "Adding…" : "Add task"}
-            </Button>
-            <Button type="button" size="sm" variant="outline" disabled={!title.trim() || saving} onClick={(e) => add(e, true)}>
-              Add and Open
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <Button ref={addButton} variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" aria-label={`Add Task to ${status ? status.name : label}`} onClick={() => setAdding(true)}>
-          <Plus /> Add Task
-        </Button>
-      )}
+      <Button variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" aria-label={`Add Task to ${status ? status.name : label}`} onClick={onAdd}>
+        <Plus /> Add Task
+      </Button>
     </section>
   );
 }
@@ -1517,30 +1420,6 @@ function useBoardScroll(board: React.RefObject<HTMLDivElement | null>) {
 }
 
 /** On a phone: every column's name and count, tapped to go to it. */
-function ColumnJump({ groups, board }: { groups: Group[]; board: React.RefObject<HTMLDivElement | null> }) {
-  const { first } = useBoardScroll(board);
-  return (
-    <nav aria-label="Go to column" className="flex gap-1 overflow-x-auto px-[max(1rem,env(safe-area-inset-left))] pb-2 sm:hidden">
-      {groups.map((g, i) => (
-        <button
-          key={g.key}
-          type="button"
-          aria-current={i === first ? "true" : undefined}
-          onClick={() => (board.current?.children[i] as HTMLElement | undefined)?.scrollIntoView({ behavior: scrollMotion(), inline: "start", block: "nearest" })}
-          className={cn(
-            "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[0.9375rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            i === first ? "bg-secondary font-medium" : "text-foreground/75",
-          )}
-        >
-          {g.status && <ColorDot color={statusColor(g.status)} />}
-          {g.name}
-          <span className="tabular-nums text-muted-foreground">{g.tasks.length}</span>
-        </button>
-      ))}
-    </nav>
-  );
-}
-
 /** A fade on the board's right edge while columns are hidden past it. */
 function MoreToTheRight({ board }: { board: React.RefObject<HTMLDivElement | null> }) {
   const { more } = useBoardScroll(board);
@@ -1580,32 +1459,4 @@ function sayMoves(project: ProjectData, groups: Group[]): Announcements {
     },
     onDragCancel: ({ active }) => `Moving ${name(active.id)} was cancelled. It's back where it was.`,
   };
-}
-
-/** Who a new task is for: a member, or anyone (not given to anyone yet). */
-function WhoChip({ project, value, onChange }: { project: ProjectData; value: Who | undefined; onChange: (w: Who | undefined) => void }) {
-  const { me } = useApp();
-  const people = [...project.members].sort((a, b) => Number(b.id === me.personId) - Number(a.id === me.personId) || a.display_name.localeCompare(b.display_name));
-  const name = value?.person ? (project.members.find((m) => m.id === value.person)?.display_name ?? "Someone") : "Anyone";
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" className="h-11 gap-1 rounded-full border bg-background px-3 text-xs font-normal text-muted-foreground sm:h-8" aria-label={`For: ${name}`}>
-          <User className="h-3.5 w-3.5" aria-hidden /> {name}
-          <ChevronDown className="h-4 w-4 opacity-50" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuRadioGroup value={value?.person ?? ""} onValueChange={(v) => onChange(v ? { person: v, session: null } : undefined)}>
-          <DropdownMenuRadioItem value="">Anyone</DropdownMenuRadioItem>
-          {people.map((m) => (
-            <DropdownMenuRadioItem key={m.id} value={m.id}>
-              {m.display_name}
-              {m.id === me.personId && <span className="text-muted-foreground"> (you)</span>}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }

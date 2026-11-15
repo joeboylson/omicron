@@ -73,7 +73,7 @@ for (const scheme of ["light", "dark"]) {
     // An error showing.
     await context.setOffline(true);
     await page.getByRole("region", { name: todo.name, exact: true }).getByRole("button", { name: "Add Task" }).click();
-    await page.getByLabel(`New task in ${todo.name}`).fill("Won't save");
+    await page.getByRole("dialog").getByLabel("Title").fill("Won't save");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("alert")).toBeVisible();
     await check(page, "An error showing");

@@ -137,9 +137,10 @@ async function escape(page) {
     await page.getByRole("button", { name: "Clear search" }).click();
     const todo = page.getByRole("region", { name: "To do", exact: true });
     await todo.getByRole("button", { name: "Add Task" }).click();
-    await page.getByLabel("New task in To do").waitFor();
+    await page.getByRole("dialog").getByLabel("Title").waitFor();
     await shot("2e-add-task");
-    await todo.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     await todo.getByRole("button", { name: /^More for / }).click();
     await page.getByRole("menuitem", { name: "Sort by" }).hover();
     await page.getByRole("menuitem", { name: "Name", exact: true }).waitFor();

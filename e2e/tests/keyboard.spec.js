@@ -82,12 +82,11 @@ test("everything can be reached and seen with the keyboard, and a whole flow nee
   expect(boardStops.some((w) => w.includes("Add Task"))).toBe(true);
   await page.getByRole("region", { name: "To do", exact: true }).getByRole("button", { name: "Add Task" }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByLabel("New task in To do")).toBeFocused();
+  await expect(page.getByRole("dialog").getByLabel("Title")).toBeFocused();
   await page.keyboard.type("Plant tulips");
   await page.keyboard.press("Enter");
   const card = page.getByRole("button", { name: /^#1 Plant tulips/ });
   await expect(card).toBeVisible();
-  await page.keyboard.press("Escape");
 
   // Open it from the keyboard: focus goes into the sheet and stays there.
   await card.focus();

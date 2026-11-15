@@ -77,8 +77,9 @@ const viewIs = async (page, name) => {
 
 async function addTaskIn(page, status, title) {
   await column(page, status).getByRole("button", { name: "Add Task" }).click();
-  await page.getByLabel(`New task in ${status}`).fill(title);
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Title").fill(title);
+  await page.getByRole("dialog").getByRole("button", { name: "Add Task", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
   await expect(column(page, status).getByRole("button", { name: new RegExp(title) })).toBeVisible();
 }
 
@@ -686,31 +687,40 @@ test("a run: started from the page, followed, paused after its task", async ({ p
   }
 });
 
-test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter opens it at its notes", async ({ page, request }) => {
-  await newPerson(page, request);
+test("adding tasks: New Task's window has every choice, long titles wrap, Shift+Enter opens it at its notes", async ({ page, request }) => {
+  const me = await newPerson(page, request);
   await startProjectIn(page, unique("Home"));
   await column(page, "To do").getByRole("button", { name: "Add Task" }).click();
-  const box = page.getByLabel("New task in To do");
+  const dialog = page.getByRole("dialog", { name: "New Task" });
+  const box = dialog.getByLabel("Title");
+  await expect(box).toBeFocused();
   await box.fill("Buy milk");
   await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
   await expect(column(page, "To do").getByRole("button", { name: /Buy milk/ })).toBeVisible();
-  await expect(box).toHaveValue("");
-  await expect(box).toBeFocused();
-  // Said for screen readers, and who and when can be set as it's added (#167).
-  await expect(column(page, "To do").getByRole("status")).toHaveText("Added #1.");
-  await page.getByRole("button", { name: "For: Anyone" }).click();
-  await page.getByRole("menuitemradio", { name: /\(you\)/ }).click();
-  await page.getByRole("button", { name: "No date" }).click();
-  await page.getByRole("button", { name: /^Tomorrow/ }).click();
+  // Everything can be set as it's added (#254): notes, status, date, who, labels.
+  await column(page, "To do").getByRole("button", { name: "Add Task" }).click();
   await box.fill("Book a sitter");
-  await page.keyboard.press("Enter");
-  const sitter = column(page, "To do").getByRole("button", { name: /^#2 Book a sitter/ });
+  await dialog.getByLabel("Notes").fill("Friday night.");
+  await pick(page, "Status", "Done");
+  await dialog.getByLabel("Date", { exact: true }).click();
+  await page.getByRole("button", { name: /^Tomorrow/ }).click();
+  await pick(page, "Given to", me.name);
+  await dialog.getByRole("button", { name: "Add label" }).click();
+  await page.getByPlaceholder("Label", { exact: true }).fill("family");
+  await page.getByRole("option", { name: "New label “family”" }).click();
+  await expect(dialog.getByRole("button", { name: "Take off family" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Add Task", exact: true }).click();
+  const sitter = column(page, "Done").getByRole("button", { name: /^#2 Book a sitter/ });
   await expect(sitter).toBeVisible();
   const [y, m, d] = (() => { const t = new Date(); t.setDate(t.getDate() + 1); return [t.getFullYear(), t.getMonth(), t.getDate()]; })();
   await expect(sitter).toContainText(new Date(y, m, d).toLocaleDateString("en-US", { month: "short", day: "numeric" }));
-  // Picked for that one only: the next starts again from Anyone and no date.
-  await expect(page.getByRole("button", { name: "For: Anyone" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "No date" })).toBeVisible();
+  await expect(sitter).toContainText("family");
+  // Picked for that one only: the next starts again from its column, no one and no date.
+  await column(page, "To do").getByRole("button", { name: "Add Task" }).click();
+  await expect(dialog.getByLabel("Status")).toContainText("To do");
+  await expect(dialog.getByLabel("Given to")).toContainText("Nobody");
+  await expect(dialog.getByLabel("Date", { exact: true })).toHaveText("None");
 
   // A long title wraps onto more lines instead of scrolling sideways.
   const before = (await box.boundingBox()).height;
@@ -718,18 +728,30 @@ test("adding tasks: Enter adds and keeps going, long titles wrap, Shift+Enter op
   expect((await box.boundingBox()).height).toBeGreaterThan(before);
   expect(await box.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
-  // Shift+Enter (or Add and open) adds it and opens it, ready for its notes.
-  await page.getByRole("button", { name: "Add and open" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Plant the tulips along the fence");
-  await expect(dialog.getByLabel("Notes")).toBeFocused();
+  // Shift+Enter (or Add and Open) adds it and opens it, ready for its notes.
+  await page.getByRole("button", { name: "Add and Open" }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText("Plant the tulips along the fence");
+  await expect(sheet.getByLabel("Notes")).toBeFocused();
   // Its long title wraps in the sheet too (#59).
-  const titleBox = dialog.getByLabel("Title");
+  const titleBox = sheet.getByLabel("Title");
   expect(await titleBox.evaluate((el) => el.scrollWidth <= el.clientWidth && el.clientHeight > 40)).toBe(true);
   if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/task-sheet.png` });
   await page.keyboard.type("Bulbs are in the shed.");
   await escape(page);
   await expect(column(page, "To do").getByRole("button", { name: /Plant the tulips/ })).toBeVisible();
+
+  // Zoom Out shows more of the board at once; again comes back, and it's kept (#254).
+  const zoom = page.getByRole("button", { name: "Zoom Out" });
+  const width = async () => (await column(page, "To do").boundingBox()).width;
+  const full = await width();
+  await zoom.click();
+  await expect(zoom).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(width).toBeLessThan(full * 0.9);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Zoom Out" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Zoom Out" }).click();
+  await expect.poll(width).toBeGreaterThan(full * 0.95);
 });
 
 test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the board away", async ({ page, request }) => {
@@ -761,8 +783,9 @@ test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the 
   // Add a task here, from the same menu.
   await column(page, "To do").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Add Task Here" }).click();
-  await expect(page.getByLabel("New task in To do")).toBeFocused();
+  await expect(page.getByRole("dialog").getByLabel("Title")).toBeFocused();
   await page.keyboard.press("Escape");
+  await page.getByRole("dialog").waitFor({ state: "detached" });
   // The Done column says so with a check, not a second "Done".
   await expect(column(page, "Done").getByTitle("Tasks here count as done")).toBeVisible();
 
@@ -1104,7 +1127,6 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
 
   // A task added in a topic column gets that topic, in the first status.
   await addTaskIn(page, "Joe's to-do", "Fix the gate");
-  await page.getByRole("button", { name: "Cancel" }).click();
 
   // Dragged to another topic: the topic changes, the status doesn't.
   const card = (t) => page.getByRole("button", { name: new RegExp(`^#\\d+ ${t}`) });
@@ -1146,7 +1168,6 @@ test("the board's columns can be who each task is given to (#166)", async ({ pag
   const name = unique("House");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Water the plants");
-  await page.getByRole("button", { name: "Cancel" }).click();
 
   await viewAs(page, "Person");
   // You first, then Nobody (no other members yet).
@@ -1158,7 +1179,6 @@ test("the board's columns can be who each task is given to (#166)", async ({ pag
 
   // Added in your column: given to you.
   await addTaskIn(page, "Robin Example", "Fix the gate");
-  await page.getByRole("button", { name: "Cancel" }).click();
 
   // Dragged from Nobody to you: given to you, status kept.
   const card = page.getByRole("button", { name: /^#1 Water the plants/ });
@@ -1186,10 +1206,7 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   const name = unique("House");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Water the plants");
-  await page.getByLabel("New task in To do").fill("Fix the gate");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
-  await expect(column(page, "To do")).toContainText("Fix the gate");
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await addTaskIn(page, "To do", "Fix the gate");
   await page.getByRole("button", { name: /Fix the gate/ }).click();
   await pick(page, "Status", "Done");
   await escape(page);
@@ -1232,8 +1249,8 @@ test("a list view shows every task in one grouped list", async ({ page, request 
   await page.reload();
   await viewIs(page, "List");
   await page.keyboard.press("c");
-  await expect(page.getByLabel(/^New task in /)).toBeFocused();
-  await expect(page.getByRole("region").first()).toBeVisible();
+  await expect(page.getByRole("dialog").getByLabel("Title")).toBeFocused();
+  await page.keyboard.press("Escape");
 });
 
 test("a team's question shows it's waiting on you, and what happened to the answer (#153)", async ({ page, request }) => {
@@ -1351,10 +1368,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   const name = unique("Code");
   const projectId = await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Write the parser");
-  // The add form stays open for the next one.
-  await page.getByLabel("New task in To do").fill("Write the docs");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
-  await expect(column(page, "To do").getByRole("button", { name: /Write the docs/ })).toBeVisible();
+  await addTaskIn(page, "To do", "Write the docs");
 
   // A machine in just this Project, with a session holding both tasks
   // (signed in with its own key, as its daemon and hooks do).
@@ -1541,11 +1555,8 @@ test("tasks move by dragging, within and between statuses, and with the keyboard
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Alpha");
   for (const t of ["Bravo", "Charlie"]) {
-    await page.getByLabel("New task in To do").fill(t);
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
-    await expect(column(page, "To do").getByRole("button", { name: new RegExp(t) })).toBeVisible();
+    await addTaskIn(page, "To do", t);
   }
-  await page.getByRole("button", { name: "Cancel" }).click();
   const titles = (status) => column(page, status).getByRole("button", { name: /^#\d+ / }).allTextContents();
   const card = (t) => page.getByRole("button", { name: new RegExp(`^#\\d+ ${t}$`) });
   // What a drag says aloud, as a screen reader hears it: each step waits for it.
@@ -1838,11 +1849,7 @@ test("a task moves up or down its column from its menu, without dragging", async
   await newPerson(page, request);
   await startProjectIn(page, unique("House"));
   await addTaskIn(page, "To do", "First");
-  for (const t of ["Second", "Third"]) {
-    await page.getByLabel("New task in To do").fill(t);
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Cancel" }).click();
+  for (const t of ["Second", "Third"]) await addTaskIn(page, "To do", t);
   const order = () => column(page, "To do").getByRole("button", { name: /^#\d/ });
   await expect(order()).toHaveText([/First/, /Second/, /Third/]);
   const put = async (n, where) => {
@@ -1870,9 +1877,7 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
   const name = unique("House");
   const id = await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Fix the gate");
-  await page.getByLabel("New task in To do").fill("Paint the fence");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await addTaskIn(page, "To do", "Paint the fence");
   const card = page.getByRole("button", { name: /#1 Fix the gate/ });
   const next = page.getByRole("button", { name: /#2 Paint the fence/ });
   const del = async () => {
@@ -1928,9 +1933,7 @@ test("search and filters narrow the board", async ({ page, request }) => {
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Fix the gate");
   for (const t of ["Paint the fence", "Water plants"]) {
-    await page.getByLabel("New task in To do").fill(t);
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
-    await expect(column(page, "To do").getByRole("button", { name: new RegExp(t) })).toBeVisible();
+    await addTaskIn(page, "To do", t);
   }
   const cards = () => column(page, "To do").getByRole("button", { name: /^#\d+ / });
   await expect(cards()).toHaveCount(3);
@@ -1971,9 +1974,11 @@ test("keyboard: c adds where you are, Escape keeps your place, ? lists every sho
   const done = page.getByRole("button", { name: /^#1 Paint the fence/ });
   await done.focus();
   await page.keyboard.press("c");
-  await expect(page.getByLabel("New task in Done")).toBeFocused();
+  // New Task starts in the column focus was in.
+  await expect(page.getByRole("dialog").getByLabel("Title")).toBeFocused();
+  await expect(page.getByRole("dialog").getByLabel("Status")).toContainText("Done");
   await page.keyboard.press("Escape");
-  await expect(column(page, "Done").getByRole("button", { name: "Add Task" })).toBeFocused();
+  await expect(done).toBeFocused();
 
   await page.keyboard.press("?");
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
@@ -2009,7 +2014,7 @@ test("the command menu (Ctrl/⌘-K) and shortcuts", async ({ page, request }) =>
   await expect(column(page, "To do")).toBeVisible();
   await settled(page);
   await page.keyboard.press("c");
-  await expect(page.getByLabel("New task in To do")).toBeFocused();
+  await expect(page.getByRole("dialog").getByLabel("Title")).toBeFocused();
   await page.keyboard.type("Plant tulips");
   await page.keyboard.press("Enter");
   await expect(column(page, "To do")).toContainText("Plant tulips");
@@ -2259,7 +2264,6 @@ test("⌘K finds tasks in every Project, and lists recently opened ones before y
   const garden = unique("Garden");
   await startProjectIn(page, garden);
   await addTaskIn(page, "To do", "Prune the roses");
-  await page.getByRole("button", { name: "Cancel" }).click();
   await startProjectIn(page, unique("Kitchen"));
   // (#234) From another Project: found by its words, grouped by its Project.
   await page.keyboard.press("ControlOrMeta+k");

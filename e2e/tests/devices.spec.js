@@ -177,19 +177,11 @@ for (const [kind, device] of [
       await saved;
       await settled(page);
 
-      // On a phone, every column's name and count is above the board; a tap
-      // goes to that column (#142).
+      // On a phone, each column shows its own name and count, with no
+      // strip of names above the board (#254).
       if (kind === "phone") {
-        const jump = page.getByRole("navigation", { name: "Go to column" });
-        const last = statuses[statuses.length - 1].name;
-        await expect(jump.getByRole("button", { name: `${statuses[0].name} 3` })).toHaveAttribute("aria-current", "true");
-        const lastColumn = page.getByRole("region", { name: last, exact: true });
-        await expect(lastColumn).not.toBeInViewport({ ratio: 0.9 });
-        await jump.getByRole("button", { name: new RegExp(`^${last} `) }).tap();
-        await expect(lastColumn).toBeInViewport({ ratio: 0.9 });
-        await expect(jump.getByRole("button", { name: new RegExp(`^${last} `) })).toHaveAttribute("aria-current", "true");
-        await jump.getByRole("button", { name: new RegExp(`^${statuses[0].name} `) }).tap();
-        await expect(todo).toBeInViewport({ ratio: 0.9 });
+        await expect(page.getByRole("navigation", { name: "Go to column" })).toHaveCount(0);
+        await expect(todo.getByRole("heading", { name: new RegExp(`^${statuses[0].name} 3`) })).toBeVisible();
         // A sideways swipe over the cards moves to the next column; the
         // column doesn't keep it (#190).
         const strip = () => page.evaluate(() => document.querySelector("section[data-group]").parentElement.scrollLeft);
@@ -198,7 +190,7 @@ for (const [kind, device] of [
         const cdp = await page.context().newCDPSession(page);
         await cdp.send("Input.synthesizeScrollGesture", { x: card.x + card.width / 2, y: card.y + card.height / 2, xDistance: -250, yDistance: 0, gestureSourceType: "touch", speed: 800 });
         await expect.poll(strip).toBeGreaterThan(before + 100);
-        await jump.getByRole("button", { name: new RegExp(`^${statuses[0].name} `) }).tap();
+        await page.evaluate(() => document.querySelector("section[data-group]").parentElement.scrollTo({ left: 0 }));
         await expect(todo).toBeInViewport({ ratio: 0.9 });
 
         // The header is compact (#143): the first card is in the top half,

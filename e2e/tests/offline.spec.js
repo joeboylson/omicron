@@ -27,13 +27,13 @@ test("offline and back: failures say so, nothing is lost or doubled, and the boa
   // and the add can't be sent twice while it waits.
   await context.setOffline(true);
   await column.getByRole("button", { name: "Add Task" }).click();
-  await page.getByLabel(`New task in ${todo.name}`).fill("Water the beans");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Title").fill("Water the beans");
+  await page.getByRole("dialog").getByRole("button", { name: "Add Task", exact: true }).click();
   const alert = page.getByRole("alert");
   await expect(alert).toBeVisible();
   await expect(alert).toContainText("Couldn't reach Omicron. Check your connection, then try again.");
   await expect(alert).not.toContainText(/TypeError|Failed to fetch|NetworkError/);
-  await page.getByRole("button", { name: "Add task", exact: true }).click({ force: true }).catch(() => {});
+  await page.getByRole("dialog").getByRole("button", { name: "Add Task", exact: true }).click({ force: true }).catch(() => {});
   await page.keyboard.press("Enter");
 
   // Meanwhile, someone else adds a task.
@@ -45,20 +45,23 @@ test("offline and back: failures say so, nothing is lost or doubled, and the boa
   // saying so once it's back.
   await expect(page.getByTestId("live-down")).toHaveText("Not up to date. Reconnecting…", { timeout: 10_000 });
   await context.setOffline(false);
-  await expect(column.getByRole("button", { name: /Added elsewhere/ })).toHaveCount(1, { timeout: 15_000 });
   await expect(page.getByTestId("live-down")).toHaveCount(0, { timeout: 15_000 });
-  const box = page.getByLabel(`New task in ${todo.name}`);
-  if ((await box.inputValue()) === "Water the beans") {
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
+  // Still open with what was typed, if it didn't get through: sent again.
+  const box = page.getByRole("dialog").getByLabel("Title");
+  if ((await box.count()) && (await box.inputValue()) === "Water the beans") {
+    await page.getByRole("dialog").getByRole("button", { name: "Add Task", exact: true }).click();
   }
   await expect(column.getByRole("button", { name: /Water the beans/ })).toHaveCount(1);
-  await expect(box).toHaveValue("");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // (The board is behind New Task while it's open, so it's checked after.)
+  await expect(column.getByRole("button", { name: /Added elsewhere/ })).toHaveCount(1, { timeout: 15_000 });
   await page.waitForTimeout(1500);
   const titles = await rest(request, me, "GET", `/rest/v1/tasks?project_id=eq.${project.id}&select=title&order=number`);
   expect(titles.map((t) => t.title).sort()).toEqual(["Added elsewhere", "Already here", "Water the beans"]);
   // Working again: the error goes once the connection is back (#197).
-  await page.getByLabel(`New task in ${todo.name}`).fill("One more");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await column.getByRole("button", { name: "Add Task" }).click();
+  await page.getByRole("dialog").getByLabel("Title").fill("One more");
+  await page.getByRole("dialog").getByRole("button", { name: "Add Task", exact: true }).click();
   await expect(column.getByRole("button", { name: /One more/ })).toHaveCount(1);
   await expect(alert).toHaveCount(0);
 
@@ -96,8 +99,8 @@ test("an hour later, the sign-in has renewed itself and the page still works", a
   await page.clock.fastForward("01:05:00");
   await renewed;
   await column.getByRole("button", { name: "Add Task" }).click();
-  await page.getByLabel(`New task in ${todo.name}`).fill("Still works");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Title").fill("Still works");
+  await page.getByRole("dialog").getByRole("button", { name: "Add Task", exact: true }).click();
   await expect(column.getByRole("button", { name: /Still works/ })).toHaveCount(1);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });

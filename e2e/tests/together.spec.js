@@ -51,13 +51,13 @@ test("two people at once end up seeing the same board, with nothing lost or doub
 
   // Both add tasks at the same moment, several each.
   const addMany = async (page, titles) => {
-    await column(page, todo.name).getByRole("button", { name: "Add Task" }).click();
     for (const t of titles) {
-      await page.getByLabel(`New task in ${todo.name}`).fill(t);
+      await column(page, todo.name).getByRole("button", { name: "Add Task" }).click();
+      await page.getByRole("dialog").getByLabel("Title").fill(t);
       await page.keyboard.press("Enter");
+      await page.getByRole("dialog").waitFor({ state: "detached" });
       await expect(column(page, todo.name).getByRole("button", { name: new RegExp(`^#\\d+ ${t}$`) })).toHaveCount(1);
     }
-    await page.keyboard.press("Escape");
   };
   await Promise.all([addMany(a, ["Ada one", "Ada two", "Ada three"]), addMany(b, ["Ben one", "Ben two", "Ben three"])]);
   // Every task once, with its own number, on both boards.
