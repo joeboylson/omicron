@@ -302,13 +302,35 @@ async function escape(page) {
       await shot("7f-team-question");
       await escape(page);
       await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
-      await page.getByRole("list", { name: "Sessions" }).waitFor();
+      // The Dev tab (#252): Sessions, Folders and Keys, each a table.
+      const devShow = (name) => page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name, exact: true }).click();
+      await page.getByRole("button", { name: /^docs-site/ }).filter({ visible: true }).first().waitFor();
       await shot("7b-dev-view");
-      await page.getByRole("list", { name: "Sessions" }).getByRole("button", { name: /docs-site/ }).click();
-      await page.getByRole("tab", { name: "docs-site" }).waitFor();
+      await devShow("Folders");
+      await page.getByRole("button", { name: /^Open a new session in/ }).filter({ visible: true }).first().waitFor();
+      await shot("7g-dev-folders");
+      await devShow("Keys");
+      await page.getByText(/^No keys\.|^Works until/).filter({ visible: true }).first().waitFor();
+      await shot("7h-dev-keys");
+      await devShow("Sessions");
+      // Pinned to the top bar, and opened as a page.
+      await page.getByRole("button", { name: "Pin docs-site to the top bar" }).filter({ visible: true }).first().click();
+      await page.getByRole("button", { name: /^docs-site/ }).filter({ visible: true }).first().click();
+      await page.getByRole("region", { name: "Session docs-site" }).waitFor();
       await page.getByTestId("terminal-docs-site").locator(".xterm").click();
       await page.keyboard.type("hello from the Dev view");
       await shot("7c-dev-terminal");
+      // Beside the board, on a wide screen.
+      const besideButton = page.getByRole("button", { name: "Open beside the page" });
+      if (await besideButton.isVisible()) {
+        await besideButton.click();
+        await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Tasks", exact: true }).click();
+        await page.getByRole("complementary", { name: "Beside the page" }).waitFor();
+        await shot("7i-session-beside");
+        await page.getByRole("button", { name: "Close docs-site beside the page" }).click();
+      } else {
+        await page.getByRole("button", { name: "Back to sessions" }).click();
+      }
       // A run, on the Runs tab (#251): starting one, the bar while it goes, the night so far; then stopped.
       await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Runs", exact: true }).click();
       await page.getByRole("button", { name: "Start Run" }).click();
@@ -328,10 +350,6 @@ async function escape(page) {
       await page.getByTestId("run").getByText("Last run").waitFor();
       await shot("4m-runs-tab");
       await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
-      // On a phone, one pane at a time: back to Sessions.
-      const panes = page.getByRole("radiogroup", { name: "Show" });
-      const pane = panes.getByRole("radio", { name: "Sessions", exact: true });
-      if (await pane.isVisible()) await pane.click();
       await page.getByRole("button", { name: "This computer" }).click();
       await page.getByRole("dialog").getByRole("region", { name: "Setup checks" }).waitFor();
       await page.waitForTimeout(1500);

@@ -1,272 +1,310 @@
 import { CopyButton } from "@/components/CopyButton";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Confirm } from "@/components/base/confirm";
-import { Folder as FolderIcon, LogOut, Plus, Terminal as TerminalIcon, Undo2, X } from "lucide-react";
+import { Folder as FolderIcon, LogOut, PanelRight, Pin, PinOff, Plus, Terminal as TerminalIcon, Undo2, X } from "lucide-react";
+import { Button } from "@/components/base/button";
+import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
-import type { Folder, ProjectData, Task } from "@/lib/data";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
+import type { ProjectData } from "@/lib/data";
 import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn, radioArrows } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 
-const TASK = "application/x-omicron-task";
+
+/** What the Dev tab shows (#252): folders, sessions, or remote control keys. */
+export type DevSection = "folders" | "sessions" | "keys";
 
 /**
- * A Project's Dev view, for the owner of the computer serving the page
- * (ref/BRAINSTORM.md, "Two views of a Project"). Left: its folders and
- * sessions on this computer; right: sessions as terminal tabs. On a phone,
- * one at a time (#250). Tasks are handed over from the Tasks tab (a task's
- * Given to), or dragged onto a session from another window.
+ * A Project's Dev tab, for the owner of the computer serving the page
+ * (ref/BRAINSTORM.md, "Two views of a Project"). Three sections, each a
+ * compact table: this computer's folders in the Project, its sessions, and
+ * its remote control keys. A session opens as a page of its own
+ * (`SessionPage`), or beside any tab on a wide screen; up to three sessions
+ * can be pinned to the top bar (#252).
  */
 export function DevView({
   project,
   dev,
   onChanged,
+  section,
+  onSection,
+  pinned,
+  onPin,
+  onOpen,
+  onBeside,
 }: {
   project: ProjectData;
   dev: Dev;
   onChanged: () => void;
+  section: DevSection;
+  onSection: (s: DevSection) => void;
+  pinned: string[];
+  onPin: (name: string) => void;
+  onOpen: (name: string) => void;
+  /** Keep a session open beside every tab (wide screens). */
+  onBeside: (name: string) => void;
 }) {
   const { db, act } = useApp();
-  // A task being dragged: sessions here show they'll take it.
-  const carrying = false;
   const here = project.sessions.filter((s) => s.machine_id === dev.machine_id).sort((a, b) => a.name.localeCompare(b.name));
   const folders = project.folders.filter((f) => f.machine_id === dev.machine_id);
-  const [tabs, setTabs] = useState<string[]>([]);
-  const [active, setActive] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-  // On a phone, one pane at a time: the list, the terminal, or the tasks.
-  const [pane, setPane] = useState<"sessions" | "terminal">("sessions");
-  const open = (name: string) => {
-    setTabs((t) => (t.includes(name) ? t : [...t, name]));
-    setActive(name);
-    setPane("terminal");
-  };
-  const close = (name: string) => {
-    const rest = tabs.filter((t) => t !== name);
-    setTabs(rest);
-    if (active === name) setActive(rest[rest.length - 1] ?? null);
-  };
-  const give = (task: Task, sessionId: string) =>
-    act(async () => {
-      await devAction(db, "/give", { task_id: task.id, session_id: sessionId });
-      onChanged();
-    });
   const done = new Set(project.statuses.filter((s) => s.is_done).map((s) => s.id));
-  const [said, setSaid] = useState<string | null>(null);
-  const [ending, setEnding] = useState<string | null>(null);
   const openIn = (folderId: string) =>
     act(async () => {
       const r = await devAction(db, "/open", { folder_id: folderId });
       onChanged();
-      if (r?.session) open(r.session);
+      if (r?.session) onOpen(r.session);
     });
-  const end = (name: string) =>
-    act(async () => {
-      setEnding(null);
-      const r = await devAction(db, "/end", { session: name });
-      setSaid(r?.said ?? null);
-      close(name);
-      onChanged();
-    });
-  const handOff = (name: string) =>
+  type Session = (typeof here)[number];
+  const sessionColumns: ColumnDef<Session, any>[] = [
+    {
+      accessorKey: "name",
+      header: ({ column }) => <SortHeader column={column} label="Session" />,
+      cell: ({ row: { original: s } }) => (
+        <button type="button" className="grid min-w-0 text-left" onClick={() => onOpen(s.name)} title={`${s.folder}: open its terminal`}>
+          <span className="flex items-center gap-2 font-medium">
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--sys-green)" }} />
+            {s.name}
+          </span>
+          <span className="pl-3.5 text-xs text-muted-foreground" data-testid={`doing-${s.name}`}>
+            {sessionDoing(project, s, done)}
+          </span>
+        </button>
+      ),
+      meta: { phone: "main" },
+    },
+    {
+      id: "tasks",
+      accessorFn: (s) => project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id)).length,
+      header: ({ column }) => <SortHeader column={column} label="Tasks" />,
+      cell: ({ getValue }) => <span className="tabular-nums text-muted-foreground">{getValue() || "–"}</span>,
+      meta: { className: "hidden sm:table-cell w-20", phone: "hide" },
+    },
+    {
+      id: "pin",
+      header: () => <span className="sr-only">Pin</span>,
+      enableSorting: false,
+      cell: ({ row: { original: s } }) => {
+        const on = pinned.includes(s.name);
+        return (
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-pressed={on}
+              aria-label={on ? `Unpin ${s.name}` : `Pin ${s.name} to the top bar`}
+              title={on ? "Unpin" : pinned.length >= 3 ? "Up to 3 can be pinned" : "Pin to the top bar"}
+              disabled={!on && pinned.length >= 3}
+              className={on ? "text-[var(--sys-blue)]" : "text-muted-foreground"}
+              onClick={() => onPin(s.name)}
+            >
+              {on ? <PinOff /> : <Pin />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden text-muted-foreground lg:inline-flex"
+              aria-label={`Open ${s.name} beside the page`}
+              title="Open beside the page: it stays open on every tab"
+              onClick={() => onBeside(s.name)}
+            >
+              <PanelRight />
+            </Button>
+          </div>
+        );
+      },
+      meta: { className: "w-0", phone: "end" },
+    },
+  ];
+  type F = (typeof folders)[number];
+  const folderColumns: ColumnDef<F, any>[] = [
+    {
+      id: "name",
+      accessorFn: (f) => folderParts(f.path).name,
+      header: ({ column }) => <SortHeader column={column} label="Folder" />,
+      cell: ({ row: { original: f } }) => (
+        <span className="flex min-w-0 items-center gap-2" title={f.path}>
+          <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="min-w-0 break-all font-medium">{folderParts(f.path).name}</span>
+        </span>
+      ),
+      meta: { phone: "main" },
+    },
+    {
+      id: "running",
+      accessorFn: (f) => here.filter((s) => s.folder === f.path).length,
+      header: ({ column }) => <SortHeader column={column} label="Sessions" />,
+      cell: ({ getValue }) => <span className="tabular-nums text-muted-foreground">{getValue() || "–"}</span>,
+      meta: { className: "hidden sm:table-cell w-24", phone: "hide" },
+    },
+    {
+      id: "new",
+      header: () => <span className="sr-only">New session</span>,
+      enableSorting: false,
+      cell: ({ row: { original: f } }) => (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" className="gap-1 text-link" aria-label={`Open a new session in ${f.path}`} onClick={() => openIn(f.id)}>
+            <Plus className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">New Session</span>
+          </Button>
+        </div>
+      ),
+      meta: { className: "w-0 whitespace-nowrap", phone: "end" },
+    },
+  ];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
+        <div role="radiogroup" aria-label="Show" className="grid grid-cols-3 rounded-lg bg-muted p-0.5 max-sm:flex-1 sm:w-96">
+          {(
+            [
+              ["folders", "Folders"],
+              ["sessions", "Sessions"],
+              ["keys", "Keys"],
+            ] as const
+          ).map(([p, label]) => (
+            <button
+              key={p}
+              type="button"
+              role="radio"
+              aria-checked={section === p}
+              tabIndex={section === p ? 0 : -1}
+              onKeyDown={radioArrows}
+              onClick={() => onSection(p)}
+              className={cn(
+                "min-h-9 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                section === p ? "bg-background font-medium shadow-sm" : "text-foreground/75",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="sm:ml-auto">
+          <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-[max(1rem,env(safe-area-inset-left))]">
+        {section === "folders" && (
+          <div className="grid gap-2">
+            <DataTable
+              label="Folders"
+              columns={folderColumns}
+              data={folders}
+              initialSort={[{ id: "name", desc: false }]}
+              empty={<p className="py-6 text-center text-sm text-muted-foreground">No folders on this computer yet.</p>}
+            />
+            <AddFolder />
+          </div>
+        )}
+        {section === "sessions" && (
+          <DataTable
+            label="Sessions"
+            columns={sessionColumns}
+            data={here}
+            initialSort={[{ id: "name", desc: false }]}
+            rowLabel={(s) => s.name}
+            onRowTap={(s) => onOpen(s.name)}
+            empty={<p className="py-6 text-center text-sm text-muted-foreground">No sessions running here. Open one from a folder.</p>}
+          />
+        )}
+        {section === "keys" && <RemoteKeys local={dev.local} />}
+      </div>
+    </div>
+  );
+}
+
+/** One session, as a page (#252): its terminal, Hand off and End. */
+export function SessionPage({
+  project,
+  name,
+  onChanged,
+  onClose,
+  onBeside,
+  compact = false,
+}: {
+  project: ProjectData;
+  name: string;
+  onChanged: () => void;
+  onClose: () => void;
+  /** Move it beside the page instead (wide screens). */
+  onBeside?: () => void;
+  compact?: boolean;
+}) {
+  const { db, act } = useApp();
+  const [said, setSaid] = useState<string | null>(null);
+  const [ending, setEnding] = useState(false);
+  const session = project.sessions.find((s) => s.name === name);
+  const handOff = () =>
     act(async () => {
       const r = await devAction(db, "/handoff", { session: name });
       setSaid(r?.said ?? null);
     });
-
+  const end = () =>
+    act(async () => {
+      setEnding(false);
+      const r = await devAction(db, "/end", { session: name });
+      // Stays, saying what happened; it shows the session has gone once it has.
+      setSaid(r?.said ?? null);
+      onChanged();
+    });
   return (
-    <>
-    <div role="radiogroup" aria-label="Show" className="mx-[max(1rem,env(safe-area-inset-left))] mb-2 grid grid-cols-2 rounded-lg bg-muted p-0.5 lg:hidden">
-      {(
-        [
-          ["sessions", "Sessions"],
-          ["terminal", "Terminal"],
-        ] as const
-      ).map(([p, label]) => (
-        <button
-          key={p}
-          type="button"
-          role="radio"
-          aria-checked={pane === p}
-          tabIndex={pane === p ? 0 : -1}
-          onKeyDown={radioArrows}
-          onClick={() => setPane(p)}
-          className={cn(
-            "min-h-9 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            pane === p ? "bg-background font-medium shadow-sm" : "text-foreground/75",
-          )}
-        >
-          {label}
-          {p === "terminal" && tabs.length > 0 && <span className="ml-1 tabular-nums text-muted-foreground">{tabs.length}</span>}
-        </button>
-      ))}
-    </div>
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-px border-t bg-border lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-1">
-      <aside aria-label="Folders and sessions" className={cn("flex flex-col overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
-        {/* This computer first: the folders below are on it (#232). */}
-        <div className="-mt-2 mb-2 border-b pb-2">
-          <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
-        </div>
-        <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Folders
-        </h2>
-        {folders.length === 0 ? (
-          <p className="px-1 pb-1 text-muted-foreground">No folders yet.</p>
-        ) : (
-          <ul className="pb-3">
-            {folders.map((f) => (
-              <li key={f.id} className="group flex items-center gap-2 rounded px-1 py-1" title={f.path}>
-                <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                {/* Its name first; the rest of the path dimmed, cut from the start (like VS Code's Recent). */}
-                <span className="flex min-w-0 flex-1 items-baseline gap-1.5" title={f.path}>
-                  {/* The name, whole; where it is shows on hover (#233). */}
-                  <span className="min-w-0 break-all font-medium">{folderParts(f.path).name}</span>
-                </span>
-                <button
-                  type="button"
-                  // An icon, so the folder's name has the room (#233).
-                  className="flex size-11 shrink-0 items-center justify-center rounded text-link hover:bg-muted lg:size-7"
-                  aria-label={`Open a new session in ${f.path}`}
-                  title="New session here"
-                  onClick={() => openIn(f.id)}
-                >
-                  <Plus className="h-4 w-4" aria-hidden />
-                </button>
-              </li>
-            ))}
-          </ul>
+    <section aria-label={`Session ${name}`} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1 text-sm">
+        <TerminalIcon className="ml-1 h-4 w-4 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+        {session && (
+          <>
+            <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={handOff} title="Ask it for its handoff note, then clear: a fresh conversation picks up from the note">
+              <Undo2 className="h-3.5 w-3.5" aria-hidden /> <span className={cn(compact && "sr-only")}>Hand Off</span>
+            </Button>
+            <Button variant="ghost" size="sm" className="gap-1 text-destructive hover:text-destructive" onClick={() => setEnding(true)} title="Quit Claude, which ends the session">
+              <LogOut className="h-3.5 w-3.5" aria-hidden /> <span className={cn(compact && "sr-only")}>End</span>
+            </Button>
+          </>
         )}
-        <AddFolder />
-        <h2 className="px-1 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Sessions</h2>
-        {here.length === 0 ? (
-          <p className="px-1 text-muted-foreground">No sessions running here.</p>
-        ) : (
-          <ul aria-label="Sessions">
-            {here.map((s) => (
-              <li
-                key={s.id}
-                onDragOver={(e) => {
-                  if (e.dataTransfer.types.includes(TASK)) {
-                    e.preventDefault();
-                    setOver(s.id);
-                  }
-                }}
-                // Only when it's really left the row, not passed over a child (no flicker).
-                onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setOver(null)}
-                onDrop={(e) => {
-                  setOver(null);
-                  const task = project.tasks.find((t) => t.id === e.dataTransfer.getData(TASK));
-                  if (task) give(task, s.id);
-                }}
-              >
-                <button
-                  type="button"
-                  className={cn(
-                    "flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted lg:min-h-9",
-                    active === s.name && "bg-secondary",
-                    over === s.id && "ring-2 ring-[var(--sys-blue)]",
-                    carrying && over !== s.id && "ring-1 ring-dashed ring-[var(--sys-blue)]",
-                  )}
-                  onClick={() => open(s.name)}
-                  title={`${s.folder}: open its terminal`}
-                >
-                  <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--sys-green)" }} />
-                  {/* Its name, then where and what it's doing. */}
-                  <span className="grid min-w-0">
-                    <span className="truncate font-medium">{s.name}</span>
-                    <span className="text-xs text-muted-foreground" data-testid={`doing-${s.name}`}>
-                      {sessionDoing(project, s, done)}
-                    </span>
-                  </span>
-                  <span className="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">
-                    {project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id)).length || ""}
-                  </span>
-                </button>
-                <Notes notes={project.handoffs.filter((h) => h.session_id === s.id)} />
-              </li>
-            ))}
-          </ul>
+        {onBeside && (
+          <Button variant="ghost" size="icon" className="hidden text-muted-foreground lg:inline-flex" aria-label="Open beside the page" title="Open beside the page: it stays open on every tab" onClick={onBeside}>
+            <PanelRight />
+          </Button>
         )}
-      </aside>
-
-      <section aria-label="Terminals" className={cn("flex min-h-0 min-w-0 flex-col bg-background", pane !== "terminal" && "max-lg:hidden")}>
-        <div role="tablist" aria-label="Open sessions" className="flex shrink-0 overflow-x-auto border-b bg-muted">
-          {tabs.map((name) => (
-            <div key={name} className={cn("flex items-center", active === name ? "bg-background text-foreground" : "text-muted-foreground")}>
-              <button role="tab" type="button" aria-selected={active === name} className="flex h-9 items-center gap-1.5 pl-3 pr-1 text-sm" onClick={() => setActive(name)}>
-                <TerminalIcon className="h-3.5 w-3.5" aria-hidden />
-                {name}
-              </button>
-              <button type="button" className="relative mr-1 rounded p-1 hover:bg-accent after:absolute after:-inset-2.5 after:content-[''] lg:after:inset-0" aria-label={`Close ${name}'s tab (it keeps running)`} onClick={() => close(name)}>
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-          <NewTab
-            sessions={here.map((s) => s.name).filter((n) => !tabs.includes(n))}
-            folders={folders}
-            onOpen={open}
-            onNew={openIn}
-          />
-        </div>
-        {active && (
-          <div className="flex shrink-0 items-center gap-1 border-b bg-background px-2 py-1 text-xs text-muted-foreground">
-            <button
-              type="button"
-              className="flex min-h-11 items-center gap-1 rounded px-3 py-1 hover:bg-accent hover:text-foreground lg:min-h-0 lg:px-2"
-              onClick={() => handOff(active)}
-              title="Ask it for its handoff note, then clear: a fresh conversation picks up from the note"
-            >
-              <Undo2 className="h-3.5 w-3.5" aria-hidden /> Hand off
-            </button>
-            <button
-              type="button"
-              className="ml-4 flex min-h-11 items-center gap-1 rounded px-3 py-1 text-destructive hover:bg-destructive/10 lg:ml-2 lg:min-h-0 lg:px-2"
-              onClick={() => setEnding(active)}
-              title="Quit Claude, which ends the session"
-            >
-              <LogOut className="h-3.5 w-3.5" aria-hidden /> End
-            </button>
-          </div>
-        )}
-        {said && (
-          <p role="status" className="shrink-0 truncate border-b bg-background px-3 py-1 text-xs text-muted-foreground">
-            {said}
-          </p>
-        )}
-        {tabs.length === 0 && (
-          <p className="m-auto max-w-xs p-6 text-center text-sm text-muted-foreground">Pick a session to open its terminal here. Closing a tab leaves it running.</p>
-        )}
-        {tabs.map((name) => (
-          <Terminal key={name} session={name} active={active === name} />
-        ))}
-        <Confirm
-          open={ending !== null}
-          onOpenChange={(o) => !o && setEnding(null)}
-          title={`End ${ending ?? ""}?`}
-          sentence="Claude quits in it, which ends the session."
-          action="End Session"
-          onConfirm={() => ending && end(ending)}
-        />
-      </section>
-
-    </div>
-    </>
+        <Button variant="ghost" size="icon" aria-label={compact ? `Close ${name} beside the page` : `Back to sessions`} title="Close (it keeps running)" onClick={onClose}>
+          <X />
+        </Button>
+      </div>
+      {said && (
+        <p role="status" className="shrink-0 truncate border-b px-3 py-1 text-xs text-muted-foreground">
+          {said}
+        </p>
+      )}
+      {session && <Notes notes={project.handoffs.filter((h) => h.session_id === session.id)} />}
+      {session ? (
+        <Terminal key={name} session={name} active />
+      ) : (
+        <p className="m-auto p-6 text-center text-sm text-muted-foreground">{name} isn't running.</p>
+      )}
+      <Confirm
+        open={ending}
+        onOpenChange={setEnding}
+        title={`End ${name}?`}
+        sentence="Claude quits in it, which ends the session."
+        action="End Session"
+        onConfirm={end}
+      />
+    </section>
   );
 }
 
-/** A session's past handoff notes, newest first, to read back. */
+/** A session's past handoff notes, folded: each opens to its text. */
 function Notes({ notes }: { notes: ProjectData["handoffs"] }) {
   if (notes.length === 0) return null;
   return (
-    <details className="pb-1 pl-5 text-xs text-muted-foreground">
+    <details className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground">
       <summary className="cursor-pointer py-0.5">
         {notes.length} handoff {notes.length === 1 ? "note" : "notes"}
       </summary>
-      <ul>
+      <ul aria-label="Handoff notes" className="max-h-64 overflow-y-auto">
         {notes.map((n) => (
           <li key={n.id}>
             <details>
@@ -282,7 +320,88 @@ function Notes({ notes }: { notes: ProjectData["handoffs"] }) {
   );
 }
 
-/** A session's folder (short name) and what it's on: "omicron · on #8". */
+/** This computer's remote control keys: listed, taken back, or a new one made (on the computer itself). */
+function RemoteKeys({ local }: { local: boolean }) {
+  const { db, act } = useApp();
+  type Key = { id: string; made: string; until: string; good: boolean };
+  const [keys, setKeys] = useState<Key[] | null>(null);
+  const [made, setMade] = useState<string | null>(null);
+  const [taking, setTaking] = useState<Key | null>(null);
+  const call = (body: Record<string, string>) =>
+    act(async () => {
+      const r = await devAction(db, "/keys", body);
+      setKeys(r?.keys ?? []);
+      if (r?.made) setMade(r.made);
+    });
+  useEffect(() => {
+    call({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const when = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const columns: ColumnDef<Key, any>[] = [
+    { accessorKey: "id", header: ({ column }) => <SortHeader column={column} label="Key" />, cell: ({ getValue }) => <span className="font-medium">{getValue()}</span>, meta: { phone: "main" } },
+    { accessorKey: "made", header: ({ column }) => <SortHeader column={column} label="Made" />, cell: ({ getValue }) => <span className="text-muted-foreground">{when(getValue())}</span>, meta: { className: "hidden sm:table-cell", phone: "hide" } },
+    {
+      accessorKey: "until",
+      header: ({ column }) => <SortHeader column={column} label="Works until" />,
+      cell: ({ row: { original: k } }) => <span className={k.good ? "" : "text-muted-foreground"}>{k.good ? when(k.until) : "Ran out"}</span>,
+      meta: { phone: "below" },
+    },
+    {
+      id: "take",
+      header: () => <span className="sr-only">Take back</span>,
+      enableSorting: false,
+      cell: ({ row: { original: k } }) => (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setTaking(k)}>
+            Take Back
+          </Button>
+        </div>
+      ),
+      meta: { className: "w-0 whitespace-nowrap", phone: "end" },
+    },
+  ];
+  return (
+    <div className="grid gap-2">
+      {made && (
+        <div role="status" className="grid gap-1.5 rounded-lg border p-3 text-sm">
+          <span>Copy it now: it isn't shown again. Paste it in Settings, in the browser that should control this computer.</span>
+          <span className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1">
+            <code className="min-w-0 flex-1 break-all font-mono text-xs">{made}</code>
+            <CopyButton text={made} className="h-8" />
+          </span>
+        </div>
+      )}
+      {keys === null ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <DataTable
+          label="Remote control keys"
+          columns={columns}
+          data={keys}
+          initialSort={[{ id: "made", desc: true }]}
+          empty={<p className="py-6 text-center text-sm text-muted-foreground">No keys. A key lets another browser control this computer.</p>}
+        />
+      )}
+      {local && (
+        <div>
+          <Button variant="ghost" size="sm" className="gap-1 text-link" onClick={() => call({ make: "8h" })}>
+            <Plus className="h-4 w-4" aria-hidden /> New Key
+          </Button>
+        </div>
+      )}
+      <Confirm
+        open={taking !== null}
+        onOpenChange={(o) => !o && setTaking(null)}
+        title={`Take back key ${taking?.id ?? ""}?`}
+        sentence="A browser using it can't control this computer any more."
+        action="Take Back"
+        onConfirm={() => taking && (call({ revoke: taking.id }), setTaking(null))}
+      />
+    </div>
+  );
+}
+
 function sessionDoing(project: ProjectData, s: ProjectData["sessions"][number], done: Set<string>): string {
   const folder = s.folder ? s.folder.replace(/\/+$/, "").split("/").pop() : null;
   const mine = project.tasks.filter((t) => t.assignee_session_id === s.id && !done.has(t.status_id));
@@ -321,31 +440,3 @@ function AddFolder() {
 }
 
 /** + at the end of the tabs: a session running here that isn't open yet, or a new one in a folder. */
-function NewTab({ sessions, folders, onOpen, onNew }: { sessions: string[]; folders: Folder[]; onOpen: (name: string) => void; onNew: (folderId: string) => void }) {
-  if (sessions.length === 0 && folders.length === 0) return null;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" className="mx-1 flex h-9 w-9 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Open a terminal">
-          <Plus className="h-4 w-4" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {sessions.length > 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Running here</div>}
-        {sessions.map((n) => (
-          <DropdownMenuItem key={n} onSelect={() => onOpen(n)}>
-            <TerminalIcon /> {n}
-          </DropdownMenuItem>
-        ))}
-        {sessions.length > 0 && folders.length > 0 && <DropdownMenuSeparator />}
-        {folders.length > 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">New session in</div>}
-        {folders.map((f) => (
-          <DropdownMenuItem key={f.id} onSelect={() => onNew(f.id)}>
-            <FolderIcon /> {folderParts(f.path).name}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-

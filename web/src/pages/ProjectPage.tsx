@@ -1,6 +1,6 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, Plus, Search, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -54,7 +54,7 @@ import { UndoSteps, type Step } from "@/lib/undo";
 import { rememberTask } from "@/lib/recent";
 import { ProjectTabs, TAB_BAR_SPACE, type ProjectTab } from "@/components/ProjectTabs";
 import { RunsTab } from "@/components/RunsTab";
-import { DevView } from "@/components/DevView";
+import { DevView, SessionPage, type DevSection } from "@/components/DevView";
 import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
@@ -93,6 +93,18 @@ export function ProjectPage({ id }: { id: string }) {
   // The Project's sections, as a tab bar (#248): Tasks (?view absent), Dev, Runs, Settings.
   const tab: ProjectTab = viewInAddress === "dev" || viewInAddress === "runs" || viewInAddress === "settings" ? viewInAddress : "tasks";
   const setTab = (t: ProjectTab) => setViewInAddress(t === "tasks" ? null : t);
+  // The Dev tab's section and an open session, in the address (#252).
+  const [paneInAddress, setPaneInAddress] = useAddressValue("pane");
+  const devSection: DevSection = paneInAddress === "folders" || paneInAddress === "keys" ? paneInAddress : "sessions";
+  const [sessionInAddress, setSessionInAddress] = useAddressValue("session");
+  const openSession = (name: string) => {
+    setViewInAddress("dev");
+    setSessionInAddress(name);
+  };
+  // Up to three sessions pinned to the top bar, and one kept beside every
+  // tab on a wide screen; kept in this browser.
+  const [pinned, setPinned] = useStored<string[]>(`omicron.pinned.${id}`, []);
+  const [beside, setBeside] = useStored<string | null>(`omicron.beside.${id}`, null);
   // A task opened from anywhere (a link, ⌘K) opens on the Tasks tab, where its sheet is.
   useEffect(() => {
     if (openTask !== null && tab !== "tasks") setViewInAddress(null);
@@ -524,7 +536,25 @@ export function ProjectPage({ id }: { id: string }) {
         </Button>
       }
       right={
-        tab === "dev" ? (
+        <>
+        {dev &&
+          pinned
+            .filter((n) => project.sessions.some((s) => s.name === n))
+            .map((n) => (
+              <Button
+                key={n}
+                variant="ghost"
+                size="sm"
+                className="max-w-[7rem] gap-1 px-2 text-muted-foreground max-sm:max-w-[5.5rem]"
+                aria-label={`Open ${n} (pinned)`}
+                title={n}
+                onClick={() => openSession(n)}
+              >
+                <TerminalSquare className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="truncate">{n}</span>
+              </Button>
+            ))}
+        {tab === "dev" ? (
           // Remote control acts on this computer: the Dev tab's own control.
           dev && <GateButton />
         ) : tab === "tasks" && (
@@ -536,22 +566,47 @@ export function ProjectPage({ id }: { id: string }) {
               <Plus className="h-4 w-4" aria-hidden /> New Task
             </Button>
           </>
-        )
+        )}
+        </>
       }
     />
   );
   // One tab bar, the same element whichever tab is showing, so focus stays
   // on the tab just chosen (it's always the root fragment's second child).
   const tabs = <ProjectTabs tab={tab} onTab={setTab} />;
+  // A session kept open beside every tab, on a wide screen (#252): the
+  // board and a session at the same time.
+  const besideOpen = !!dev && !!beside && project.sessions.some((s) => s.name === beside);
+  const besidePane = besideOpen ? (
+    <aside aria-label="Beside the page" data-beside className="fixed inset-y-0 right-0 z-30 hidden w-[32rem] flex-col border-l bg-background pt-[env(safe-area-inset-top)] lg:flex">
+      <SessionPage project={project} name={beside!} onChanged={reload} onClose={() => setBeside(null)} compact />
+    </aside>
+  ) : null;
   if (tab === "dev") {
     return (
       <>
-      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE)}>
+      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
         {nav}
-        {dev ? (
-          <>
-            <DevView project={project} dev={dev} onChanged={reload} />
-          </>
+        {dev && sessionInAddress ? (
+          <SessionPage
+            project={project}
+            name={sessionInAddress}
+            onChanged={reload}
+            onClose={() => setSessionInAddress(null)}
+            onBeside={() => (setBeside(sessionInAddress), setSessionInAddress(null))}
+          />
+        ) : dev ? (
+          <DevView
+            project={project}
+            dev={dev}
+            onChanged={reload}
+            section={devSection}
+            onSection={(p) => setPaneInAddress(p === "sessions" ? null : p)}
+            pinned={pinned.filter((n) => project.sessions.some((s) => s.name === n))}
+            onPin={(n) => setPinned(pinned.includes(n) ? pinned.filter((x) => x !== n) : [...pinned, n].slice(-3))}
+            onOpen={openSession}
+            onBeside={setBeside}
+          />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             {project.sessions.length === 0 ? (
@@ -568,26 +623,28 @@ export function ProjectPage({ id }: { id: string }) {
         )}
       </main>
       {tabs}
+      {besidePane}
       </>
     );
   }
   if (tab === "runs" || tab === "settings") {
     return (
       <>
-      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE)}>
+      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
         {nav}
         <div className="min-h-0 flex-1 overflow-y-auto pt-2">
           {tab === "runs" ? <RunsTab project={project} dev={dev} onChanged={reload} /> : <ProjectSettings project={project} onChanged={reload} />}
         </div>
       </main>
       {tabs}
+      {besidePane}
       </>
     );
   }
   return (
     // The board fills the screen and each column scrolls on its own.
     <>
-    <main className={cn("flex h-dvh min-h-0 flex-none flex-col", TAB_BAR_SPACE)}>
+    <main className={cn("flex h-dvh min-h-0 flex-none flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
       {nav}
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
@@ -862,6 +919,7 @@ export function ProjectPage({ id }: { id: string }) {
       />
     </main>
     {tabs}
+    {besidePane}
     </>
   );
 }

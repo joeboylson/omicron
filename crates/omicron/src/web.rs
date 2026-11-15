@@ -430,6 +430,7 @@ impl WebMachine {
         let reply = match what {
             "" => None,
             "gate" => self.dev_gate(&visit, &input, what)?,
+            "keys" => self.dev_keys(&visit, &input)?,
             "computer" => self.dev_computer(&visit, &input, what)?,
             "run" => self.dev_run(&visit, &input, what)?,
             "open" => self.dev_open(&visit, &input, what)?,
@@ -507,6 +508,36 @@ impl WebMachine {
             out.flush()
         };
         let _ = pass();
+    }
+
+    /// This computer's remote control keys (tokens): listed, one taken back
+    /// (`{"revoke": id}`), or a new one made (`{"make": "8h"}`, only on the
+    /// computer itself, like turning remote control on). A new key is in the
+    /// answer once, as `made`; only a hash of it is kept.
+    fn dev_keys(&self, visit: &OwnerVisit, input: &serde_json::Value) -> Result<Option<Reply>> {
+        if let Some(id) = input["revoke"].as_str() {
+            if let Err(e) = crate::remote::revoke(Some(id)) {
+                return Ok(Some(json_reply(404, json!({ "error": format!("{e:#}") }))));
+            }
+        }
+        let mut made = serde_json::Value::Null;
+        if let Some(lasts) = input["make"].as_str() {
+            if !visit.local {
+                return Ok(Some(json_reply(403, json!({ "error": "a key is made only on the computer itself" }))));
+            }
+            let (ok, out, err) = run_omicron(&["remote", "token", "--for", lasts]);
+            if !ok {
+                let why = err.trim().trim_start_matches("omicron: ").to_string();
+                return Ok(Some(json_reply(400, json!({ "error": why }))));
+            }
+            made = json!(out.trim());
+        }
+        let now = chrono::Utc::now();
+        let keys: Vec<serde_json::Value> = crate::remote::all()?
+            .into_iter()
+            .map(|t| json!({ "id": t.id, "made": t.made.to_rfc3339(), "until": t.until.to_rfc3339(), "good": t.until > now }))
+            .collect();
+        Ok(Some(json_reply(200, json!({ "keys": keys, "made": made }))))
     }
 
     /// Open or close this computer's gate: only from the computer itself. `None`: answer with the Dev status.

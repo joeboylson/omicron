@@ -385,12 +385,14 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     await page.reload();
     await tab(page, "Dev");
     await expect(page).toHaveURL(/view=dev/);
-    const sessions = page.getByRole("list", { name: "Sessions" });
+    // Sessions is a table; a session opens as a page of its own (#252).
+    const sessions = page.getByRole("table", { name: "Sessions" });
     await expect(sessions).toContainText("parser");
 
     // Its terminal: keys go in, and what it shows comes back.
-    await sessions.getByRole("button", { name: /parser/ }).click();
-    await expect(page.getByRole("tab", { name: "parser" })).toHaveAttribute("aria-selected", "true");
+    await sessions.getByRole("button", { name: /parser/ }).first().click();
+    await expect(page.getByRole("region", { name: "Session parser" })).toBeVisible();
+    await expect(page).toHaveURL(/session=parser/);
     const term = page.getByTestId("terminal-parser");
     await expect(term.getByRole("status")).toHaveCount(0);
     await term.locator(".xterm").click();
@@ -416,12 +418,26 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     await escape(page);
     // The session says it has one waiting (#177).
     await tab(page, "Dev");
-    await expect(page.getByTestId("doing-parser")).toContainText(/1 task to start|working on #1/);
-    await page.getByRole("list", { name: "Sessions" }).getByRole("button", { name: /parser/ }).click();
+    await page.getByRole("button", { name: "Back to sessions" }).click();
+    await expect(page.getByTestId("doing-parser").first()).toContainText(/1 task to start|working on #1/);
 
-    // Closing the tab leaves the session running.
-    await page.getByRole("button", { name: "Close parser's tab (it keeps running)" }).click();
-    await expect(page.getByRole("tab")).toHaveCount(0);
+    // Pinned (#252): it's in the top bar, from any tab, and opens there.
+    await page.getByRole("button", { name: "Pin parser to the top bar" }).click();
+    await tab(page, "Tasks");
+    await page.getByRole("button", { name: "Open parser (pinned)" }).click();
+    await expect(page.getByRole("region", { name: "Session parser" })).toBeVisible();
+
+    // Beside the page, on a wide screen: open on every tab, with the board.
+    await page.getByRole("button", { name: "Open beside the page" }).click();
+    const beside = page.getByRole("complementary", { name: "Beside the page" });
+    await expect(beside.getByRole("region", { name: "Session parser" })).toBeVisible();
+    await tab(page, "Tasks");
+    await expect(beside).toBeVisible();
+    await expect(page.getByRole("button", { name: "#1 Write the parser" })).toBeVisible();
+    await beside.getByRole("button", { name: "Close parser beside the page" }).click();
+    await expect(beside).toHaveCount(0);
+
+    // Closing it leaves the session running.
     expect(omicron.cli("sessions", "hosted")).toContain("parser");
   } finally {
     win.kill();
@@ -438,15 +454,15 @@ test("the Dev view's session buttons: open in a folder, hand off, end", async ({
   omicron.cli("machines", "owner", robin.login);
   await page.goto(`${page.url().split("?")[0]}?view=dev`);
 
-  // Open: a new session in the folder, named after it, in a new tab.
-  // The folder by its name, the rest dimmed; New session says what it does (#178).
-  await expect(page.getByRole("complementary", { name: "Folders and sessions" })).toContainText(dir.replace(/\/+$/, "").split("/").pop());
+  // Open: a new session in the folder, named after it, on its own page.
+  // Folders are a table (#252), each by its name.
+  await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name: "Folders" }).click();
+  await expect(page.getByRole("table", { name: "Folders" })).toContainText(dir.replace(/\/+$/, "").split("/").pop());
   await page.getByRole("button", { name: "Add Folder" }).click();
   await expect(page.getByText("omicron folders add", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: `Open a new session in ${dir}` }).click();
-  await expect(page.getByRole("tab", { name: folderName })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("list", { name: "Sessions" })).toContainText(folderName);
+  await expect(page.getByRole("region", { name: `Session ${folderName}` })).toBeVisible();
   const pid = Number(require("node:fs").readFileSync(require("node:path").join(omicron.home, `pid-${folderName}`), "utf8").trim());
   const term = page.getByTestId(`terminal-${folderName}`);
   // The stand-in claude runs no hooks: say it started, as Claude Code would.
@@ -454,14 +470,14 @@ test("the Dev view's session buttons: open in a folder, hand off, end", async ({
   omicron.hook(pid, "session-start", { session_id: row.claude_session_id, cwd: dir, source: "startup" });
   try {
     // Hand off: it's asked for its note; once the note is saved, /clear.
-    await page.getByRole("button", { name: "Hand off" }).click();
+    await page.getByRole("button", { name: "Hand Off" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Asked" })).toContainText(`Asked ${folderName} for its handoff note`);
     await expect(term.locator(".xterm-rows")).toContainText("Omicron: write your handoff note now");
     omicron.cliIn(pid, "handoff", "write", "# Where I stopped\nParser half done.");
     await expect(term.locator(".xterm-rows")).toContainText("/clear", { timeout: 15_000 });
     // Its past notes are under it.
     await page.getByText("1 handoff note").click();
-    await expect(page.getByRole("list", { name: "Sessions" })).toContainText("#1");
+    await expect(page.getByRole("list", { name: "Handoff notes" })).toContainText("#1");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-buttons.png` });
 
     // End: asks once more, then quits Claude.
@@ -542,21 +558,15 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
   try {
     omicron.cli("machines", "owner", robin.login);
     await page.goto(`${page.url().split("?")[0]}?view=dev`);
-    // One pane at a time, all of it on screen (#149): the sessions and This
-    // computer first, and nothing says "on the left".
-    const sessions = page.getByRole("list", { name: "Sessions" });
+    // Sessions, Folders and Keys, one at a time (#252), with This computer
+    // on screen; a session opens as its own page with its terminal.
     const panes = page.getByRole("radiogroup", { name: "Show" });
     await expect(panes.getByRole("radio", { name: "Sessions" })).toHaveAttribute("aria-checked", "true");
+    await expect(panes.getByRole("radio")).toHaveCount(3);
     await expect(page.getByRole("button", { name: "This computer" })).toBeInViewport();
-    await expect(page.getByRole("region", { name: "Terminals" })).toBeHidden();
-    await panes.getByRole("radio", { name: /^Terminal/ }).click();
-    await expect(page.getByText("Pick a session to open its terminal here.")).toBeVisible();
-    // Two panes only: the board is the Tasks tab (#250).
-    await expect(panes.getByRole("radio")).toHaveCount(2);
-    await panes.getByRole("radio", { name: "Sessions" }).click();
-    // Opening a session shows its terminal.
-    await sessions.getByRole("button", { name: /parser/ }).click();
-    await expect(panes.getByRole("radio", { name: /^Terminal/ })).toHaveAttribute("aria-checked", "true");
+    // On a phone the table is a list (DataTable): the row's button that shows.
+    await page.getByRole("button", { name: /^parser/ }).filter({ visible: true }).first().tap();
+    await expect(page.getByRole("region", { name: "Session parser" })).toBeVisible();
     const term = page.getByTestId("terminal-parser");
     await expect(term.getByRole("status")).toHaveCount(0);
     // The terminal fits the screen: nothing scrolls sideways.
@@ -2274,4 +2284,23 @@ test("someone added to a Project is told who added them, and can open it", async
   await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
   await page.waitForTimeout(1500);
   await expect(page.getByRole("status").filter({ hasText: "added you to" })).toHaveCount(0);
+});
+
+test("the Dev tab's Keys: this computer's remote control keys, listed and taken back", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  await startProjectIn(page, unique("Code"));
+  omicron.cli("machines", "owner", robin.login);
+  omicron.cli("remote", "revoke", "--all");
+  const token = omicron.cli("remote", "token", "--for", "2h").trim();
+  const id = omicron.cli("remote", "list").split("\t")[0];
+  // (#252)
+  await page.goto(`${page.url().split("?")[0]}?view=dev&pane=keys`);
+  const keys = page.getByRole("table", { name: "Remote control keys" });
+  await expect(keys).toContainText(id);
+  await expect(keys).not.toContainText(token);
+  await keys.getByRole("button", { name: "Take Back" }).click();
+  await page.getByRole("alertdialog", { name: `Take back key ${id}?` }).getByRole("button", { name: "Take Back" }).click();
+  await expect(keys).toHaveCount(0);
+  await expect(page.getByText("No keys.", { exact: false })).toBeVisible();
+  expect(omicron.cli("remote", "list")).not.toContain(id);
 });

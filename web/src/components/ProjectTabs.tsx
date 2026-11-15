@@ -24,6 +24,8 @@ export function ProjectTabs({ tab, onTab, badges = {} }: { tab: ProjectTab; onTa
         "fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/75",
         // Wider screens: floating, rounded, a little above the bottom.
         "sm:inset-x-auto sm:bottom-4 sm:left-1/2 sm:-translate-x-1/2 sm:rounded-2xl sm:border sm:p-1 sm:pb-1 sm:shadow-lg",
+        // A session open beside the page: centred on what's left.
+        "lg:[body:has([data-beside])_&]:left-[calc(50%-16rem)]",
       )}
     >
       <ul className="flex sm:gap-1">
