@@ -1409,25 +1409,29 @@ test("the People page: everyone, their Projects, and adding or taking them out",
   await expect(adding).toHaveCount(0);
   await page.getByLabel("Search people").fill(sam);
   const row = page.getByRole("table", { name: "People" }).getByRole("row", { name: sam });
-  const projects = row.getByRole("combobox", { name: `${sam}'s Projects` });
-  await expect(projects).toHaveText("—");
+  // Their Projects as text; changed in a sheet from their ⋯ menu (#236).
+  const projects = row.getByTestId("person-projects");
+  await expect(projects).toHaveText("None");
+  const toggle = async () => {
+    await row.getByRole("button", { name: `More for ${sam}` }).click();
+    await page.getByRole("menuitem", { name: "Projects…" }).click();
+    const sheet = page.getByRole("dialog", { name: `${sam}'s Projects` });
+    await sheet.getByLabel(garden, { exact: true }).click();
+    await sheet.getByRole("button", { name: "Done" }).click();
+    await expect(sheet).toHaveCount(0);
+  };
 
   // Added to a Project: it shows at once.
-  await projects.click();
-  await page.getByRole("option", { name: garden }).click();
-  await page.keyboard.press("Escape");
+  await toggle();
   await expect(projects).toHaveText(garden);
 
   // Taken out again.
-  await projects.click();
-  await page.getByRole("option", { name: garden }).click();
-  await page.keyboard.press("Escape");
-  await expect(projects).toHaveText("—");
+  await toggle();
+  await expect(projects).toHaveText("None");
 
   // Only the people in one Project (#73).
-  await projects.click();
-  await page.getByRole("option", { name: garden }).click();
-  await page.keyboard.press("Escape");
+  await toggle();
+  await expect(projects).toHaveText(garden);
   await page.getByLabel("Search people").fill("");
   await page.getByLabel("Only people in").selectOption({ label: `In ${house}` });
   await expect(page.getByRole("table", { name: "People" }).getByRole("row", { name: sam })).toHaveCount(0);
@@ -1437,15 +1441,20 @@ test("the People page: everyone, their Projects, and adding or taking them out",
 
   // Filtered to a Project, the first thing offered is taking them out of
   // just that one: they stay, in no Project of yours (#145).
-  await expect(page.getByRole("button", { name: "More for Robin Example" })).toHaveCount(0);
+  // Your own row's menu only changes your Projects (#236).
+  const mine = page.getByRole("button", { name: "More for Robin Example" });
+  await mine.click();
+  await expect(page.getByRole("menuitem", { name: "Projects…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /^Delete|^Remove from/ })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Projects…" }).click();
+  await page.getByRole("dialog", { name: "Robin Example's Projects" }).getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await row.getByRole("button", { name: `More for ${sam}` }).click();
   await page.getByRole("menuitem", { name: `Remove from ${garden}` }).click();
   await expect(row).toHaveCount(0);
   await page.getByLabel("Only people in").selectOption({ label: "Everyone" });
-  await expect(projects).toHaveText("—");
-  await projects.click();
-  await page.getByRole("option", { name: garden }).click();
-  await page.keyboard.press("Escape");
+  await expect(projects).toHaveText("None");
+  await toggle();
   await page.getByLabel("Only people in").selectOption({ label: `In ${garden}` });
 
   // Deleted, after asking once more and naming what they leave: gone for good.

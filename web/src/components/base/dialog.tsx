@@ -54,6 +54,11 @@ export const DialogContent = React.forwardRef<
   // If the page redrew that control while this was open, the one with the
   // same name takes focus instead of focus being lost.
   const giveBack = (e: Event) => {
+    // Opened from a menu item: Radix can leave the page unclickable
+    // (pointer-events: none on the body) once both have closed.
+    setTimeout(() => {
+      if (!document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"]')) document.body.style.pointerEvents = "";
+    }, 300);
     onCloseAutoFocus?.(e);
     const before = lastOutside;
     if (e.defaultPrevented || !before) return;

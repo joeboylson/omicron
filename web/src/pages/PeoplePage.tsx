@@ -3,7 +3,7 @@
 // take them out. Mirrors `omicron people`.
 
 import { useCallback, useEffect, useState } from "react";
-import { MoreHorizontal, Trash2, UserMinus, UserPlus } from "lucide-react";
+import { FolderKanban, MoreHorizontal, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -13,7 +13,10 @@ import { Button } from "@/components/base/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/base/dialog";
 import { TopBar } from "@/components/TopBar";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
-import { MultiSelect } from "@/components/MultiSelect";
+import { chosenText } from "@/components/MultiSelect";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/components/Skeleton";
 
 function initials(name: string): string {
@@ -52,6 +55,8 @@ export function PeoplePage() {
 
   const change = (work: () => Promise<unknown>) => act(work).then((ok) => ok && reload());
   // Only the Projects you're in show (the rest aren't yours to see).
+  // Whose Projects are being changed, in a sheet (#236).
+  const [editing, setEditing] = useState<PersonRow | null>(null);
   const visible = (p: PersonRow) => p.projectIds.filter((id) => projects.some((pr) => pr.id === id));
   const choices = projects.map((pr) => ({ id: pr.id, name: pr.name }));
   const columns: ColumnDef<PersonRow, any>[] = [
@@ -84,14 +89,11 @@ export function PeoplePage() {
       id: "projects",
       accessorFn: (p) => visible(p).length,
       header: ({ column }) => <SortHeader column={column} label="Projects" />,
+      // Text: changed from the person's ⋯ menu (#236).
       cell: ({ row: { original: p } }) => (
-        <MultiSelect
-          label={`${p.display_name}'s Projects`}
-          none="—"
-          choices={choices}
-          picked={new Set(visible(p))}
-          toggle={(id, on) => change(() => (on ? addMember(db, id, p.id) : removeMember(db, id, p.id)))}
-        />
+        <span className={cn("text-sm", visible(p).length === 0 && "text-muted-foreground")} data-testid="person-projects">
+          {chosenText(choices, new Set(visible(p)), "None")}
+        </span>
       ),
       meta: { className: "w-[45%]" },
     },
@@ -100,12 +102,11 @@ export function PeoplePage() {
       header: () => <span className="sr-only">Delete</span>,
       enableSorting: false,
       cell: ({ row: { original: p } }) => {
-        if (p.id === me.personId) return null;
         // Taken out of the Project the list is showing, when it's filtered to one.
         const here = inProject && p.projectIds.includes(inProject) ? projects.find((pr) => pr.id === inProject) : undefined;
         // Deleted only if all their Projects are yours (the Web Machine checks too).
         const yours = p.projectIds.every((id) => projects.some((pr) => pr.id === id));
-        if (!here && !yours) return null;
+        const self = p.id === me.personId;
         return (
           <div className="flex justify-end">
             <DropdownMenu>
@@ -115,13 +116,17 @@ export function PeoplePage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {here && (
+                <DropdownMenuItem onSelect={() => setEditing(p)}>
+                  <FolderKanban /> Projects…
+                </DropdownMenuItem>
+                {!self && (here || yours) && <DropdownMenuSeparator />}
+                {!self && here && (
                   <DropdownMenuItem onSelect={() => change(() => removeMember(db, here.id, p.id))}>
                     <UserMinus /> Remove from {here.name}
                   </DropdownMenuItem>
                 )}
-                {here && yours && <DropdownMenuSeparator />}
-                {yours && (
+                {!self && here && yours && <DropdownMenuSeparator />}
+                {!self && yours && (
                   <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleting(p)}>
                     <Trash2 /> Delete {p.display_name}…
                   </DropdownMenuItem>
@@ -178,6 +183,37 @@ export function PeoplePage() {
           />
         )}
       </main>
+      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent noClose className="gap-4 sm:max-w-md">
+          <DialogHeader className="text-left">
+            <DialogTitle>{editing ? `${editing.display_name}'s Projects` : "Projects"}</DialogTitle>
+            <DialogDescription className="sr-only">Tick the Projects they're in.</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <ul aria-label="Projects" className="grid">
+              {projects.map((pr) => {
+                const now = (people ?? []).find((x) => x.id === editing.id) ?? editing;
+                const on = now.projectIds.includes(pr.id);
+                return (
+                  <li key={pr.id} className="flex min-h-11 items-center gap-3">
+                    <Checkbox
+                      id={`pp-${pr.id}`}
+                      checked={on}
+                      onCheckedChange={(v) => change(() => (v ? addMember(db, pr.id, editing.id) : removeMember(db, pr.id, editing.id)))}
+                    />
+                    <Label htmlFor={`pp-${pr.id}`} className="flex-1 font-normal">
+                      {pr.name}
+                    </Label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setEditing(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Confirm
         open={deleting !== null}
         onOpenChange={(o) => !o && setDeleting(null)}
