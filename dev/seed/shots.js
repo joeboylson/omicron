@@ -178,12 +178,14 @@ async function escape(page) {
     await page.getByRole("listbox").waitFor({ state: "detached" });
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    // Settings is a tab (#248): who's in it at the top, then the rest.
+    // Settings is a tab (#248): a list, each row a page of its own (#257).
     await tab("Settings");
-    await page.getByRole("region", { name: "Labels" }).waitFor();
+    await page.getByRole("region", { name: "Project settings" }).waitFor();
     await shot("3b-settings");
-    await page.getByLabel("Delete Project").scrollIntoViewIfNeeded();
-    await shot("3d-settings-lower");
+    await page.getByRole("button", { name: /^Statuses/ }).click();
+    await page.getByRole("heading", { level: 2, name: "Statuses" }).waitFor();
+    await shot("3d-settings-statuses");
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
     await tab("Loops");
     await shot("3f-runs-empty");
     await tab("Tasks");
@@ -354,12 +356,14 @@ async function escape(page) {
       await page.locator("tr, li").filter({ hasText: /Stopped/, visible: true }).first().waitFor();
       await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name: "Templates" }).click();
       await shot("4n-templates");
-      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
-      await page.getByRole("button", { name: "This computer" }).click();
-      await page.getByRole("dialog").getByRole("region", { name: "Setup checks" }).waitFor();
-      await page.waitForTimeout(1500);
+      // This computer: in Settings, on the computer itself (#256).
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("button", { name: /^This Computer/ }).click();
+      await page.getByRole("region", { name: "Setup checks" }).waitFor();
+      await page.getByText("Checking…").waitFor({ state: "detached", timeout: 20_000 });
+      await page.waitForTimeout(500);
       await shot("7d-this-computer");
-      await escape(page);
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Settings", exact: true }).click();
       await page.context().close();
     }
   } finally {

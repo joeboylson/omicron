@@ -1,10 +1,8 @@
 import { CopyButton } from "@/components/CopyButton";
 import { useEffect, useState } from "react";
-import { Computer } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
 import { listProjectJobs, sayEvery, type JobLink, type ProjectData } from "@/lib/data";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
 import { Group, Row } from "@/components/Grouped";
@@ -18,9 +16,8 @@ type Info = { setup: string[]; accounts: string[]; teams: string[] };
  * Claude accounts and its teams. Each change is something this computer
  * does, so it's only here, for its owner.
  */
-export function ComputerPanel({ project, dev, onChanged }: { project: ProjectData; dev: Dev; onChanged: () => void }) {
+export function ThisComputer({ project, dev, onChanged }: { project: ProjectData; dev: Dev; onChanged: () => void }) {
   const { db, act } = useApp();
-  const [open, setOpen] = useState(false);
   const [info, setInfo] = useState<Info | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobLink[]>([]);
@@ -31,9 +28,9 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
       setJobs(j);
     });
   useEffect(() => {
-    if (open) load();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, []);
   const run = (body: Record<string, string>) =>
     act(async () => {
       const r = await devAction(db, "/run", body);
@@ -44,15 +41,12 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
 
   return (
     <>
-      <Button variant="ghost" size="sm" className="mt-2 w-full justify-start gap-2 text-muted-foreground" onClick={() => setOpen(true)}>
-        <Computer className="h-4 w-4" aria-hidden /> This computer
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
-          <DialogHeader>
-            <DialogTitle className="tabular-nums">{dev.machine}</DialogTitle>
-            <DialogDescription className="sr-only">This computer</DialogDescription>
-          </DialogHeader>
+          <Group>
+            <Row>
+              <span className="flex-1">Name</span>
+              <span className="text-muted-foreground">{dev.machine}</span>
+            </Row>
+          </Group>
           {said && (
             <p role="status" className="rounded-md bg-secondary px-3 py-2 text-sm">
               {said}
@@ -146,8 +140,6 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
                 );
               })}
           </Group>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

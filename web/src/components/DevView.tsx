@@ -8,7 +8,6 @@ import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
 import type { ProjectData } from "@/lib/data";
 import { Terminal } from "@/components/Terminal";
-import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn, radioArrows } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 
@@ -180,9 +179,6 @@ export function DevView({
               {label}
             </button>
           ))}
-        </div>
-        <div className="sm:ml-auto">
-          <ComputerPanel project={project} dev={dev} onChanged={onChanged} />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-[max(1rem,env(safe-area-inset-left))]">

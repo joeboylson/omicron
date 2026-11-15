@@ -93,7 +93,12 @@ export function ProjectPage({ id }: { id: string }) {
   // (?view=runs, from before runs and loops were one thing, opens Loops.)
   const tab: ProjectTab =
     viewInAddress === "dev" || viewInAddress === "loops" || viewInAddress === "settings" ? viewInAddress : viewInAddress === "runs" ? "loops" : "tasks";
-  const setTab = (t: ProjectTab) => setViewInAddress(t === "tasks" ? null : t);
+  // A Settings page open (#257): tapping a tab, Settings too, goes back to its top.
+  const [, setSettingInAddress] = useAddressValue("setting");
+  const setTab = (t: ProjectTab) => {
+    setViewInAddress(t === "tasks" ? null : t);
+    setSettingInAddress(null);
+  };
   // The Dev tab's section and an open session, in the address (#252).
   const [paneInAddress, setPaneInAddress] = useAddressValue("pane");
   const devSection: DevSection = paneInAddress === "folders" || paneInAddress === "keys" ? paneInAddress : "sessions";
@@ -179,7 +184,7 @@ export function ProjectPage({ id }: { id: string }) {
           { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => newTask.current() },
           { id: "search", label: "Search tasks", group: ready.name, shortcut: "/", keywords: "find filter", run: () => searchBox.current?.focus() },
           { id: "settings", label: "Project settings", group: ready.name, run: () => setTab("settings") },
-          { id: "share", label: "Share", group: ready.name, keywords: "members people add invite link", run: () => setTab("settings") },
+          { id: "share", label: "Share", group: ready.name, keywords: "members people add invite link", run: () => (setTab("settings"), setSettingInAddress("people", true)) },
           { id: "group-status", label: "Columns by status", group: ready.name, keywords: "group", run: () => setGroupBy("status") },
           { id: "group-topic", label: "Columns by topic", group: ready.name, keywords: "group", run: () => setGroupBy("topic") },
           { id: "group-person", label: "Columns by person", group: ready.name, keywords: "group given to who", run: () => setGroupBy("person") },
@@ -641,7 +646,7 @@ export function ProjectPage({ id }: { id: string }) {
       <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
         {nav}
         <div className="min-h-0 flex-1 overflow-y-auto pt-2">
-          {tab === "loops" ? <LoopsTab project={project} dev={dev} onChanged={reload} /> : <ProjectSettings project={project} onChanged={reload} />}
+          {tab === "loops" ? <LoopsTab project={project} dev={dev} onChanged={reload} /> : <ProjectSettings project={project} dev={dev} onChanged={reload} />}
         </div>
       </main>
       {tabs}
@@ -808,7 +813,7 @@ export function ProjectPage({ id }: { id: string }) {
       {groupBy === "topic" && project.topics.length === 0 && (
         <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
           No topics yet. Topics are another way to sort tasks, like “Joe's to-do”.{" "}
-          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setTab("settings")}>
+          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => (setTab("settings"), setSettingInAddress("topics", true))}>
             Add topics in Project settings
           </Button>
         </p>

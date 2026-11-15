@@ -36,13 +36,20 @@ export function usePath(): string {
  * link keeps it. `push` adds a step to the back button (opening a task:
  * Back closes it); otherwise the address is just updated.
  */
+const ADDRESS_CHANGED = "omicron:address";
+
 export function useAddressValue(name: string): [string | null, (value: string | null, push?: boolean) => void] {
   const read = () => new URLSearchParams(window.location.search).get(name);
   const [value, setValue] = useState<string | null>(read);
   useEffect(() => {
     const update = () => setValue(read());
     window.addEventListener("popstate", update);
-    return () => window.removeEventListener("popstate", update);
+    // Another part of the page changed the same value: follow it.
+    window.addEventListener(ADDRESS_CHANGED, update);
+    return () => {
+      window.removeEventListener("popstate", update);
+      window.removeEventListener(ADDRESS_CHANGED, update);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
   const set = (next: string | null, push = false) => {
@@ -55,6 +62,7 @@ export function useAddressValue(name: string): [string | null, (value: string | 
     if (push) window.history.pushState(null, "", url);
     else window.history.replaceState(null, "", url);
     setValue(next === "" ? null : next);
+    window.dispatchEvent(new Event(ADDRESS_CHANGED));
   };
   return [value, set];
 }
