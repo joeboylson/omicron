@@ -270,14 +270,18 @@ for (const [kind, device] of [
         await expect(sheet).toHaveCount(0);
       }
 
-      // Project settings.
-      await page.getByRole("button", { name: "Project settings" }).tap();
-      await expect(page.getByRole("dialog")).toBeVisible();
+      // Project settings, a tab (#248), and every other tab.
+      const tabs = page.getByRole("navigation", { name: "Project" });
+      await tabs.getByRole("button", { name: "Settings", exact: true }).tap();
+      await expect(page.getByRole("region", { name: "Project settings" })).toBeVisible();
       await settled(page);
-      await onScreen(page, page.getByRole("dialog"), "Project settings");
       await tappable(page, "Project settings");
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("dialog")).toHaveCount(0);
+      for (const t of ["Dev", "Runs"]) {
+        await tabs.getByRole("button", { name: t, exact: true }).tap();
+        await settled(page);
+        await tappable(page, `${t} tab`);
+      }
+      await tabs.getByRole("button", { name: "Tasks", exact: true }).tap();
 
       // People, Settings and Machines.
       for (const [path, heading] of [

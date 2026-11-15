@@ -9,41 +9,36 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { cn, radioArrows } from "@/lib/utils";
-import { GripVertical } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
-import { formatDate, initials, LabelBadge, NeedsReview } from "@/components/TaskCard";
-import type { Color } from "@/lib/colors";
 
 const TASK = "application/x-omicron-task";
 
 /**
  * A Project's Dev view, for the owner of the computer serving the page
  * (ref/BRAINSTORM.md, "Two views of a Project"). Left: its folders and
- * sessions on this computer. Middle: sessions as terminal tabs. Right: the
- * board as a list, by column; drag a task onto a session to hand it over
- * here (or pick the session in the task's row).
+ * sessions on this computer; right: sessions as terminal tabs. On a phone,
+ * one at a time (#250). Tasks are handed over from the Tasks tab (a task's
+ * Given to), or dragged onto a session from another window.
  */
 export function DevView({
   project,
   dev,
   onChanged,
-  onOpenTask,
 }: {
   project: ProjectData;
   dev: Dev;
   onChanged: () => void;
-  onOpenTask?: (number: number) => void;
 }) {
   const { db, act } = useApp();
   // A task being dragged: sessions here show they'll take it.
-  const [carrying, setCarrying] = useState(false);
+  const carrying = false;
   const here = project.sessions.filter((s) => s.machine_id === dev.machine_id).sort((a, b) => a.name.localeCompare(b.name));
   const folders = project.folders.filter((f) => f.machine_id === dev.machine_id);
   const [tabs, setTabs] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   // On a phone, one pane at a time: the list, the terminal, or the tasks.
-  const [pane, setPane] = useState<"sessions" | "terminal" | "tasks">("sessions");
+  const [pane, setPane] = useState<"sessions" | "terminal">("sessions");
   const open = (name: string) => {
     setTabs((t) => (t.includes(name) ? t : [...t, name]));
     setActive(name);
@@ -84,13 +79,11 @@ export function DevView({
 
   return (
     <>
-    <div role="radiogroup" aria-label="Show" className="mx-[max(1rem,env(safe-area-inset-left))] mb-2 grid grid-cols-3 rounded-lg bg-muted p-0.5 lg:hidden">
+    <div role="radiogroup" aria-label="Show" className="mx-[max(1rem,env(safe-area-inset-left))] mb-2 grid grid-cols-2 rounded-lg bg-muted p-0.5 lg:hidden">
       {(
         [
           ["sessions", "Sessions"],
           ["terminal", "Terminal"],
-          // Not "Tasks": the header's switch already means the Tasks view (#232).
-          ["tasks", "Board"],
         ] as const
       ).map(([p, label]) => (
         <button
@@ -111,7 +104,7 @@ export function DevView({
         </button>
       ))}
     </div>
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-px border-t bg-border lg:grid-cols-[15rem_minmax(0,1fr)_19rem] lg:grid-rows-1">
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-px border-t bg-border lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-1">
       <aside aria-label="Folders and sessions" className={cn("flex flex-col overflow-y-auto bg-background p-3 text-sm", pane !== "sessions" && "max-lg:hidden")}>
         {/* This computer first: the folders below are on it (#232). */}
         <div className="-mt-2 mb-2 border-b pb-2">
@@ -260,91 +253,6 @@ export function DevView({
         />
       </section>
 
-      <aside aria-label="Tasks by column" className={cn("overflow-y-auto bg-background p-3 text-sm", pane !== "tasks" && "max-lg:hidden")}>
-        {project.statuses.map((st) => {
-          const tasks = project.tasks.filter((t) => t.status_id === st.id).sort((a, b) => a.position - b.position);
-          return (
-            <section key={st.id} aria-label={st.name} className="pb-3">
-              {/* A status's name as it was typed, not uppercased (#239). */}
-              <h2 className="flex items-center gap-2 px-1 pb-1 text-xs font-semibold text-muted-foreground">
-                {st.name} <span className="tabular-nums">{tasks.length}</span>
-              </h2>
-              <ul>
-                {tasks.map((t) => {
-                  const isDone = done.has(t.status_id);
-                  const person = project.members.find((m) => m.id === t.assignee_person_id);
-                  const session = project.sessions.find((x) => x.id === t.assignee_session_id);
-                  const labels = project.labels.filter((l) => t.labelIds.includes(l.id));
-                  return (
-                    <li
-                      key={t.id}
-                      draggable={here.length > 0 && !isDone}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData(TASK, t.id);
-                        e.dataTransfer.effectAllowed = "link";
-                        setCarrying(true);
-                      }}
-                      onDragEnd={() => setCarrying(false)}
-                      className="group flex items-start gap-1.5 rounded px-1 py-1 hover:bg-muted"
-                    >
-                      {/* A grip: it can be dragged onto a session. */}
-                      {here.length > 0 && !isDone ? (
-                        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/60 [@media(pointer:coarse)]:hidden" aria-hidden />
-                      ) : (
-                        <span className="w-4 shrink-0" />
-                      )}
-                      <button
-                        type="button"
-                        className="grid min-w-0 flex-1 gap-1 text-left"
-                        onClick={() => onOpenTask?.(t.number)}
-                        aria-label={`#${t.number} ${t.title}`}
-                      >
-                        <span className={cn("break-words", isDone && "text-muted-foreground line-through")}>
-                          <span className="mr-1 tabular-nums text-xs text-muted-foreground">#{t.number}</span>
-                          {t.title}
-                        </span>
-                        {(t.needs_review || labels.length > 0 || t.due_on) && (
-                          <span className="flex flex-wrap items-center gap-1 text-xs">
-                            {t.needs_review && <NeedsReview />}
-                            {labels.map((l) => (
-                              <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />
-                            ))}
-                            {t.due_on && <span className="text-muted-foreground">{formatDate(t.due_on)}</span>}
-                          </span>
-                        )}
-                      </button>
-                      {/* Who has it, as a chip; or, if nobody here, Give to… (not on Done). */}
-                      {session && here.some((h) => h.id === session.id) ? (
-                        <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-secondary px-2 py-0.5 tabular-nums text-xs">
-                          <TerminalIcon className="h-3 w-3" aria-hidden /> {session.name}
-                        </span>
-                      ) : !isDone && here.length > 0 ? (
-                        <select
-                          aria-label={`Give #${t.number} to a session here`}
-                          className="mt-0.5 min-h-11 min-w-0 max-w-[45%] shrink truncate rounded-md border bg-transparent px-1 text-base lg:min-h-0 lg:text-xs"
-                          value=""
-                          onChange={(e) => e.target.value && give(t, e.target.value)}
-                        >
-                          <option value="">{session ? session.name : person ? person.display_name : "Give To…"}</option>
-                          {here.map((x) => (
-                            <option key={x.id} value={x.id}>
-                              {x.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : person ? (
-                        <span className="mt-0.5 shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs" title={person.display_name}>
-                          {initials(person.display_name)}
-                        </span>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          );
-        })}
-      </aside>
     </div>
     </>
   );

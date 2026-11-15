@@ -41,7 +41,6 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
       onChanged();
       load();
     });
-  const here = project.sessions.filter((s) => s.machine_id === dev.machine_id);
 
   return (
     <>
@@ -67,26 +66,6 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
             ))}
           </Group>
 
-          <Group title="Loops here" label="Loops here">
-            {here.length === 0 && <Row className="text-sm text-muted-foreground">No sessions running here.</Row>}
-            {[...here]
-              .sort((a, b) => Number(!!project.loops.find((l) => l.session_id === b.id)) - Number(!!project.loops.find((l) => l.session_id === a.id)))
-              .map((s) => {
-              const loop = project.loops.find((l) => l.session_id === s.id);
-              return loop ? (
-                <Row key={s.id} className="py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{s.name}</span>: “{loop.prompt}” every {sayEvery(loop.every_seconds)}
-                  </span>
-                  <Button size="sm" variant="outline" onClick={() => run({ action: "loops-stop", session: s.name, project: project.name })}>
-                    Stop
-                  </Button>
-                </Row>
-              ) : (
-                <LoopForm key={s.id} session={s.name} onStart={(prompt, every) => run({ action: "loops-start", session: s.name, project: project.name, prompt, every })} />
-              );
-            })}
-          </Group>
 
           <Group title="Claude accounts" label="Claude accounts">
             {!info && <Row className="py-2 text-sm text-muted-foreground">Loading…</Row>}
@@ -169,6 +148,49 @@ export function ComputerPanel({ project, dev, onChanged }: { project: ProjectDat
           </Group>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/** Loops of this computer's sessions in this Project: each one's prompt and
+ *  how often, with Stop; a session without one can start one (#251). */
+export function LoopsHere({ project, dev, onChanged }: { project: ProjectData; dev: Dev; onChanged: () => void }) {
+  const { db, act } = useApp();
+  const [said, setSaid] = useState<string | null>(null);
+  const run = (body: Record<string, string>) =>
+    act(async () => {
+      const r = await devAction(db, "/run", body);
+      setSaid(r?.said || "Done.");
+      onChanged();
+    });
+  const here = project.sessions.filter((s) => s.machine_id === dev.machine_id);
+  return (
+    <>
+      {said && (
+        <p role="status" className="mx-4 rounded-md bg-secondary px-3 py-2 text-sm">
+          {said}
+        </p>
+      )}
+      <Group title="Loops" label="Loops">
+        {here.length === 0 && <Row className="text-sm text-muted-foreground">No sessions running here.</Row>}
+        {[...here]
+          .sort((a, b) => Number(!!project.loops.find((l) => l.session_id === b.id)) - Number(!!project.loops.find((l) => l.session_id === a.id)))
+          .map((s) => {
+          const loop = project.loops.find((l) => l.session_id === s.id);
+          return loop ? (
+            <Row key={s.id} className="py-2 text-sm">
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{s.name}</span>: “{loop.prompt}” every {sayEvery(loop.every_seconds)}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => run({ action: "loops-stop", session: s.name, project: project.name })}>
+                Stop
+              </Button>
+            </Row>
+          ) : (
+            <LoopForm key={s.id} session={s.name} onStart={(prompt, every) => run({ action: "loops-start", session: s.name, project: project.name, prompt, every })} />
+          );
+        })}
+      </Group>
     </>
   );
 }

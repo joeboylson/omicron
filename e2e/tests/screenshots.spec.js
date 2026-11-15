@@ -116,12 +116,12 @@ test("screenshots", async ({ browser, request }) => {
       await expect(page.getByRole("dialog")).toBeVisible();
       await shoot(page, `${kind}-${scheme}-3-task`);
       await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: "Project settings" }).click();
-      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Project settings" })).toBeVisible();
       await shoot(page, `${kind}-${scheme}-4-settings`);
-      await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Back to Projects" }).click();
       await page.getByRole("link", { name: /^Omicron\s*\d+ tasks?$/ }).click();
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
       await expect(page.getByRole("region", { name: "Claude sessions" })).toContainText("handoff");
       await shoot(page, `${kind}-${scheme}-5-sessions`);
       await page.getByRole("button", { name: /^#2 Sessions on the web page/ }).click();

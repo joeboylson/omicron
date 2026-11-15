@@ -258,7 +258,7 @@ function inAbout(iso: string, now: number): string {
 }
 
 /** A session's running loop: what it types in, how often, until when, and Stop. */
-function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => void }) {
+export function LoopGroup({ loop, onChanged, title = "Loop" }: { loop: SessionLoop; onChanged: () => void; title?: string }) {
   const { db, act } = useApp();
   // Stopping is for good (the page can't start one), so it asks first.
   const [asking, setAsking] = useState(false);
@@ -270,7 +270,7 @@ function LoopGroup({ loop, onChanged }: { loop: SessionLoop; onChanged: () => vo
         ? `until ${new Date(loop.until).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${loop.runs} run${loop.runs === 1 ? "" : "s"} so far`
         : `until stopped · ${loop.runs} run${loop.runs === 1 ? "" : "s"} so far`;
   return (
-    <Group title="Loop">
+    <Group title={title}>
       <div className="grid gap-1.5 px-4 py-3" data-testid="loop">
         <p className="flex flex-wrap items-center gap-x-2 text-[0.9375rem] sm:text-sm">
           <Repeat className="h-4 w-4 shrink-0 text-[var(--sys-blue)]" aria-hidden />

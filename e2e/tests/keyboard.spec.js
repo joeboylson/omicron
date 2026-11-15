@@ -112,14 +112,15 @@ test("everything can be reached and seen with the keyboard, and a whole flow nee
   await expect(sheet).toHaveCount(0);
   await expect(card).toBeFocused();
 
-  // Project settings and the command menu give focus back too.
-  await page.getByRole("button", { name: "Project settings" }).focus();
+  // The tab bar works by keyboard (#248): Settings, then back to Tasks.
+  const tabs = page.getByRole("navigation", { name: "Project" });
+  await tabs.getByRole("button", { name: "Settings", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
-  expect((await focused(page))?.inDialog).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Project settings" })).toBeFocused();
+  await expect(page.getByRole("region", { name: "Project settings" })).toBeVisible();
+  await expect(tabs.getByRole("button", { name: "Settings", exact: true })).toHaveAttribute("aria-current", "page");
+  await tabs.getByRole("button", { name: "Tasks", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(card).toBeVisible();
 
   await page.keyboard.press("Control+k");
   await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();

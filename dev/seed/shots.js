@@ -42,6 +42,8 @@ async function escape(page) {
       await page.screenshot({ path: path.join(out, `${kind}-${name}.png`), fullPage });
     };
     // Board or List, Status or Topic: switches on wide screens, the View menu on a phone.
+    // A Project's tab (#248).
+    const tab = (name) => page.getByRole("navigation", { name: "Project" }).getByRole("button", { name, exact: true }).click();
     const view = async (name) => {
       const radio = page.getByRole("radio", { name, exact: true });
       if (await radio.isVisible()) return radio.click();
@@ -175,45 +177,38 @@ async function escape(page) {
     await page.getByRole("listbox").waitFor({ state: "detached" });
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Project settings" }).click();
+    // Settings is a tab (#248): who's in it at the top, then the rest.
+    await tab("Settings");
     await page.getByRole("region", { name: "Labels" }).waitFor();
     await shot("3b-settings");
-    // The rest of the sheet: Claude sessions (folded here), delete.
-    await page.getByRole("dialog").getByLabel("Delete Project").scrollIntoViewIfNeeded();
+    await page.getByLabel("Delete Project").scrollIntoViewIfNeeded();
     await shot("3d-settings-lower");
-    await escape(page);
-    await page.getByRole("dialog").waitFor({ state: "detached" });
-    // Who's in it, from the header (#209).
-    await page.getByRole("button", { name: /^Share, / }).click();
-    await page.getByRole("list", { name: "Members" }).waitFor();
-    await shot("3e-share");
-    await escape(page);
+    await tab("Runs");
+    await shot("3f-runs-empty");
+    await tab("Tasks");
     await page.getByRole("button", { name: "Back to Projects" }).click();
     await page.getByRole("link", { name: /^Lumen/ }).click();
     await page.getByRole("button", { name: /Parse the change list/ }).waitFor();
     await shot("4-lumen");
-    // The Claude sessions: a strip on wide screens, a sheet from the top bar on a phone.
+    // The Claude sessions: on the Dev tab (#248).
     const sessions = async () => {
-      if (kind === "phone") {
-        await page.getByRole("button", { name: /^Claude sessions: / }).click();
-        await page.getByRole("dialog", { name: "Claude sessions" }).waitFor();
-      }
+      await tab("Dev");
       return page.getByRole("region", { name: "Claude sessions" }).last();
     };
     await (await sessions()).getByRole("button", { name: /web-page/ }).click();
     await page.getByTestId("loop").waitFor();
     await shot("4g-session-loop");
     await escape(page);
-    // On a phone, the sessions sheet it came from is still open.
-    if (kind === "phone") await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
     await (await sessions()).getByRole("button", { name: /parser/ }).click();
     await page.getByRole("dialog", { name: /parser/ }).waitFor();
     await shot("4h-parser-session");
     await escape(page);
-    // On a phone, the sessions sheet it came from is still open.
-    if (kind === "phone") await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
+    await shot("4n-dev-tab");
+    await tab("Runs");
+    await shot("4o-runs-tab");
+    await tab("Tasks");
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();
     await page.getByTestId("dispatch").waitFor();
@@ -292,17 +287,21 @@ async function escape(page) {
       };
       await page.goto(url);
       await page.getByRole("link", { name: /^Lumen/ }).click();
+      // Remote control is on the Dev tab (#248).
+      const projectTab = (name) => page.getByRole("navigation", { name: "Project" }).getByRole("button", { name, exact: true }).click();
+      await projectTab("Dev");
       await page.getByTestId("gate").waitFor();
       await page.getByTestId("gate").click();
       await page.getByText(/You can always use/).waitFor();
       await shot("7-gate");
       await page.keyboard.press("Escape");
+      await projectTab("Tasks");
       // A team's question, waiting on Joe (#153).
       await page.getByRole("button", { name: /Should deleting a task also delete/ }).click();
       await page.getByTestId("asked-by").waitFor();
       await shot("7f-team-question");
       await escape(page);
-      await page.getByRole("radio", { name: "Dev" }).click();
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
       await page.getByRole("list", { name: "Sessions" }).waitFor();
       await shot("7b-dev-view");
       await page.getByRole("list", { name: "Sessions" }).getByRole("button", { name: /docs-site/ }).click();
@@ -310,7 +309,8 @@ async function escape(page) {
       await page.getByTestId("terminal-docs-site").locator(".xterm").click();
       await page.keyboard.type("hello from the Dev view");
       await shot("7c-dev-terminal");
-      // A run, on the Dev side (#192): starting one, the bar while it goes, the night so far; then stopped.
+      // A run, on the Runs tab (#251): starting one, the bar while it goes, the night so far; then stopped.
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Runs", exact: true }).click();
       await page.getByRole("button", { name: "Start Run" }).click();
       await page.getByRole("heading", { name: "Start Run" }).waitFor();
       await shot("4i-start-run");
@@ -326,14 +326,12 @@ async function escape(page) {
       await shot("4l-run-stop");
       await page.getByRole("alertdialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop Now" }).click();
       await page.getByTestId("run").getByText("Last run").waitFor();
-      // On a phone, one pane at a time.
+      await shot("4m-runs-tab");
+      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
+      // On a phone, one pane at a time: back to Sessions.
       const panes = page.getByRole("radiogroup", { name: "Show" });
-      const pane = panes.getByRole("radio", { name: "Board", exact: true });
-      if (await pane.isVisible()) {
-        await pane.click();
-        await shot("7e-dev-tasks");
-        await panes.getByRole("radio", { name: "Sessions", exact: true }).click();
-      }
+      const pane = panes.getByRole("radio", { name: "Sessions", exact: true });
+      if (await pane.isVisible()) await pane.click();
       await page.getByRole("button", { name: "This computer" }).click();
       await page.getByRole("dialog").getByRole("region", { name: "Setup checks" }).waitFor();
       await page.waitForTimeout(1500);

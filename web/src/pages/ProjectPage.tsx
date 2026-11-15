@@ -1,6 +1,6 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ChevronDown, User } from "lucide-react";
-import { ArrowUpDown, X, CheckCircle2, ChevronLeft, TerminalSquare, MoreHorizontal, Plus, Search, Settings, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, Plus, Search, SlidersHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -25,9 +25,8 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { cn, radioArrows, scrollMotion } from "@/lib/utils";
+import { cn, scrollMotion } from "@/lib/utils";
 import { Button } from "@/components/base/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Input } from "@/components/base/input";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
@@ -52,10 +51,10 @@ import {
 } from "@/components/base/dropdown-menu";
 import { GateButton } from "@/components/GateButton";
 import { UndoSteps, type Step } from "@/lib/undo";
-import { openCommands, rememberTask } from "@/lib/recent";
-import { ShareButton, ShareSheet } from "@/components/ShareSheet";
+import { rememberTask } from "@/lib/recent";
+import { ProjectTabs, TAB_BAR_SPACE, type ProjectTab } from "@/components/ProjectTabs";
+import { RunsTab } from "@/components/RunsTab";
 import { DevView } from "@/components/DevView";
-import { RunBar } from "@/components/RunBar";
 import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
 import { statusColor } from "@/lib/colors";
@@ -84,15 +83,21 @@ export function ProjectPage({ id }: { id: string }) {
     },
     [setTaskInAddress],
   );
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
+
   // On a phone: the Project's Claude sessions, in a sheet.
-  const [sessionsOpen, setSessionsOpen] = useState(false);
+
   const [notesFor, setNotesFor] = useState<number | null>(null);
   // The Dev view, for the owner of the computer serving the page (?view=dev).
   const [dev] = useDev(db);
   const [viewInAddress, setViewInAddress] = useAddressValue("view");
-  const view = dev && viewInAddress === "dev" ? "dev" : "tasks";
+  // The Project's sections, as a tab bar (#248): Tasks (?view absent), Dev, Runs, Settings.
+  const tab: ProjectTab = viewInAddress === "dev" || viewInAddress === "runs" || viewInAddress === "settings" ? viewInAddress : "tasks";
+  const setTab = (t: ProjectTab) => setViewInAddress(t === "tasks" ? null : t);
+  // A task opened from anywhere (a link, ⌘K) opens on the Tasks tab, where its sheet is.
+  useEffect(() => {
+    if (openTask !== null && tab !== "tasks") setViewInAddress(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTask]);
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
   const [layout, setLayout] = useStored<"board" | "list">(`omicron.layout.${id}`, "board");
   const [dragging, setDragging] = useState<Task | null>(null);
@@ -161,8 +166,8 @@ export function ProjectPage({ id }: { id: string }) {
       ? [
           { id: "new-task", label: "New task", group: ready.name, shortcut: "c", keywords: "add", run: () => newTask.current() },
           { id: "search", label: "Search tasks", group: ready.name, shortcut: "/", keywords: "find filter", run: () => searchBox.current?.focus() },
-          { id: "settings", label: "Project settings", group: ready.name, run: () => setSettingsOpen(true) },
-          { id: "share", label: "Share", group: ready.name, keywords: "members people add invite link", run: () => setShareOpen(true) },
+          { id: "settings", label: "Project settings", group: ready.name, run: () => setTab("settings") },
+          { id: "share", label: "Share", group: ready.name, keywords: "members people add invite link", run: () => setTab("settings") },
           { id: "group-status", label: "Columns by status", group: ready.name, keywords: "group", run: () => setGroupBy("status") },
           { id: "group-topic", label: "Columns by topic", group: ready.name, keywords: "group", run: () => setGroupBy("topic") },
           { id: "group-person", label: "Columns by person", group: ready.name, keywords: "group given to who", run: () => setGroupBy("person") },
@@ -508,89 +513,82 @@ export function ProjectPage({ id }: { id: string }) {
     });
   };
   const nav = (
+    // Back and the Project's name in one row; the page's one action at the
+    // end; everything else is in the tabs below (#249).
     <NavBar
+      inline
       title={project.name}
-      titleClassName="text-2xl sm:text-3xl"
       left={
-        <Button variant="ghost" className="gap-0.5 px-2 [&_svg]:size-5" aria-label="Back to Projects" onClick={() => go("/")}>
-          <ChevronLeft /> Projects
+        <Button variant="ghost" size="icon" className="[&_svg]:size-6" aria-label="Back to Projects" title="Back to Projects" onClick={() => go("/")}>
+          <ChevronLeft />
         </Button>
       }
       right={
-        <>
-          {dev && (
-            <div role="radiogroup" aria-label="View" className="mr-1 flex rounded-lg bg-muted p-0.5 text-sm">
-              {(
-                [
-                  ["tasks", "Tasks"],
-                  ["dev", "Dev"],
-                ] as const
-              ).map(([v, label]) => (
-                <button
-                  key={v}
-                  type="button"
-                  role="radio"
-                  aria-checked={view === v}
-                  tabIndex={view === v ? 0 : -1}
-                  onKeyDown={radioArrows}
-                  className={cn("rounded-md px-2.5 py-1", view === v ? "bg-background font-medium shadow-sm" : "text-foreground/75")}
-                  onClick={() => setViewInAddress(v === "dev" ? "dev" : null)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          <GateButton />
-          {/* ⌘K on a phone: find a task in any Project (#234). */}
-          <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search everything" title="Search everything" onClick={openCommands}>
-            <Search />
-          </Button>
-          {view !== "dev" && project.sessions.length > 0 && (
-            <Button variant="ghost" size="sm" className="gap-1 px-2 text-muted-foreground sm:hidden" aria-label={`Claude sessions: ${project.sessions.length}`} onClick={() => setSessionsOpen(true)}>
-              <TerminalSquare className="h-5 w-5" aria-hidden />
-              <span className="tabular-nums">{project.sessions.length}</span>
+        tab === "dev" ? (
+          // Remote control acts on this computer: the Dev tab's own control.
+          dev && <GateButton />
+        ) : tab === "tasks" && (
+          <>
+            <Button variant="ghost" size="icon" className="sm:hidden" aria-label="New Task" onClick={() => newTask.current()}>
+              <Plus />
             </Button>
-          )}
-          {view !== "dev" && (
             <Button size="sm" className="hidden gap-1 sm:inline-flex" onClick={() => newTask.current()}>
               <Plus className="h-4 w-4" aria-hidden /> New Task
             </Button>
-          )}
-          <ShareButton project={project} onClick={() => setShareOpen(true)} />
-          <Button variant="ghost" size="icon" aria-label="Project settings" title="Project settings" onClick={() => setSettingsOpen(true)}>
-            <Settings />
-          </Button>
-        </>
+          </>
+        )
       }
     />
   );
-  if (view === "dev" && dev) {
+  // One tab bar, the same element whichever tab is showing, so focus stays
+  // on the tab just chosen (it's always the root fragment's second child).
+  const tabs = <ProjectTabs tab={tab} onTab={setTab} />;
+  if (tab === "dev") {
     return (
-      <main className="flex h-dvh min-h-0 flex-col">
+      <>
+      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE)}>
         {nav}
-        <RunBar project={project} onChanged={reload} machineId={dev.machine_id} />
-        <DevView
-          project={project}
-          dev={dev}
-          onChanged={reload}
-          onOpenTask={(n) => {
-            // Opened on the Tasks view, where its sheet is.
-            setViewInAddress(null);
-            setOpenTask(n);
-          }}
-        />
+        {dev ? (
+          <>
+            <DevView project={project} dev={dev} onChanged={reload} />
+          </>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {project.sessions.length === 0 ? (
+              // A tab is never hidden (HIG tab bars #5): an empty one says why.
+              <p className="px-[max(1rem,env(safe-area-inset-left))] py-8 text-center text-sm text-muted-foreground">
+                No Claude sessions in this Project.
+              </p>
+            ) : (
+              <div className="px-[max(1rem,env(safe-area-inset-left))] py-2">
+                <Sessions project={project} onChanged={reload} onOpenTask={(n) => (setTab("tasks"), setOpenTask(n))} inSheet />
+              </div>
+            )}
+          </div>
+        )}
       </main>
+      {tabs}
+      </>
+    );
+  }
+  if (tab === "runs" || tab === "settings") {
+    return (
+      <>
+      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE)}>
+        {nav}
+        <div className="min-h-0 flex-1 overflow-y-auto pt-2">
+          {tab === "runs" ? <RunsTab project={project} dev={dev} onChanged={reload} /> : <ProjectSettings project={project} onChanged={reload} />}
+        </div>
+      </main>
+      {tabs}
+      </>
     );
   }
   return (
     // The board fills the screen and each column scrolls on its own.
-    <main className="flex h-dvh min-h-0 flex-none flex-col">
+    <>
+    <main className={cn("flex h-dvh min-h-0 flex-none flex-col", TAB_BAR_SPACE)}>
       {nav}
-      {/* Runs live on the Dev side (#192). On a phone, sessions are behind a button in the bar above. */}
-      <div className="max-sm:hidden">
-        <Sessions project={project} onChanged={reload} onOpenTask={(n) => setOpenTask(n)} />
-      </div>
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -731,7 +729,7 @@ export function ProjectPage({ id }: { id: string }) {
       {groupBy === "topic" && project.topics.length === 0 && (
         <p className="px-[max(1rem,env(safe-area-inset-left))] pb-2 text-sm text-muted-foreground">
           No topics yet. Topics are another way to sort tasks, like “Joe's to-do”.{" "}
-          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setSettingsOpen(true)}>
+          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setTab("settings")}>
             Add topics in Project settings
           </Button>
         </p>
@@ -862,18 +860,9 @@ export function ProjectPage({ id }: { id: string }) {
           return done;
         }}
       />
-      <ProjectSettings project={project} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={reload} />
-      <ShareSheet project={project} open={shareOpen} onOpenChange={setShareOpen} onChanged={reload} />
-      <Dialog open={sessionsOpen} onOpenChange={setSessionsOpen}>
-        <DialogContent className="max-h-[92dvh] gap-4 overflow-y-auto" onOpenAutoFocus={focusSheet}>
-          <DialogHeader className="text-left">
-            <DialogTitle>Claude sessions</DialogTitle>
-            <DialogDescription className="sr-only">This Project's Claude sessions.</DialogDescription>
-          </DialogHeader>
-          <Sessions project={project} onChanged={reload} onOpenTask={(n) => (setSessionsOpen(false), setOpenTask(n))} inSheet />
-        </DialogContent>
-      </Dialog>
     </main>
+    {tabs}
+    </>
   );
 }
 

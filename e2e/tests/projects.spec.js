@@ -57,6 +57,9 @@ async function admin(request, method, path, data) {
 }
 
 const column = (page, status) => page.getByRole("region", { name: status, exact: true });
+// A Project's sections: the tab bar at the bottom (#248).
+const tab = (page, name) => page.getByRole("navigation", { name: "Project" }).getByRole("button", { name, exact: true }).click();
+const settingsTab = (page) => page.getByRole("region", { name: "Project settings" });
 // Board or List, Status, Topic or Person: from the View menu (#229).
 const viewAs = async (page, name) => {
   await page.getByRole("button", { name: /^View and filters/ }).click();
@@ -232,12 +235,11 @@ test("statuses are set in Project settings, members from Share", async ({ page, 
   await sessionFor(request, omicron, `${friend}@example.com`, friend);
   await startProjectIn(page, unique("Garden"));
 
-  // The columns can't be seen behind the settings dialog, so check them
-  // after closing it.
+  // Settings is a tab (#248): the columns show again on Tasks.
   const settings = async (work) => {
-    await page.getByRole("button", { name: "Project settings" }).click();
-    await work(page.getByRole("dialog"));
-    await escape(page);
+    await tab(page, "Settings");
+    await work(settingsTab(page));
+    await tab(page, "Tasks");
   };
   const addStatus = async (dialog, name) => {
     await dialog.getByLabel("New status").fill(name);
@@ -263,11 +265,9 @@ test("statuses are set in Project settings, members from Share", async ({ page, 
   });
   await expect(page.getByRole("region")).toHaveText([/^To do/, /^Doing/, /^Finished0Tasks here count as done/]);
 
-  // Who's in it: from the header's Share button, its faces (#209).
-  await expect(page.getByRole("button", { name: "Share, 1 member" })).toBeVisible();
-  await page.getByRole("button", { name: "Share, 1 member" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: /^Share / })).toBeVisible();
+  // Who's in it: at the top of the Settings tab (#209, #248).
+  await tab(page, "Settings");
+  const dialog = settingsTab(page);
   // The page here is on this computer's own address: no link to copy.
   await expect(dialog.getByRole("region", { name: "Link" })).toContainText("another device");
   // Add a member, who can then be given tasks.
@@ -284,8 +284,7 @@ test("statuses are set in Project settings, members from Share", async ({ page, 
   await dialog.getByRole("button", { name: "Add member" }).click();
   await page.getByRole("option", { name: friend }).click();
   await expect(members).toContainText(friend);
-  await escape(page);
-  await expect(page.getByRole("button", { name: "Share, 2 members" })).toBeVisible();
+  await tab(page, "Tasks");
   await addTaskIn(page, "To do", "Plant bulbs");
   await page.getByRole("button", { name: "#1 Plant bulbs" }).click();
   await pick(page, "Given to", friend);
@@ -296,10 +295,10 @@ test("a Project's folders are listed in its settings, added only on their comput
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await tab(page, "Settings");
   // On a Project with no Claude sessions yet, their parts are folded away (#160).
-  await page.getByRole("dialog").getByText("Claude sessions", { exact: true }).click();
-  const folders = page.getByRole("dialog").getByRole("region", { name: "Folders" });
+  await settingsTab(page).getByText("Claude sessions", { exact: true }).click();
+  const folders = settingsTab(page).getByRole("region", { name: "Folders" });
   await expect(folders).toContainText("No folders yet.");
   await expect(folders).not.toContainText("omicron folders add");
 
@@ -384,7 +383,7 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     omicron.cli("machines", "owner", robin.login);
     omicron.cli("gate", "close"); // the old name still works
     await page.reload();
-    await page.getByRole("radio", { name: "Dev" }).click();
+    await tab(page, "Dev");
     await expect(page).toHaveURL(/view=dev/);
     const sessions = page.getByRole("list", { name: "Sessions" });
     await expect(sessions).toContainText("parser");
@@ -408,16 +407,17 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-view-dark.png` });
     await page.evaluate(() => delete document.documentElement.dataset.theme);
 
-    // Handed over here, with the gate closed: the session takes it as its own.
-    await page.getByLabel("Give #1 to a session here").selectOption({ label: "parser" });
+    // Handed over from the Tasks tab (the Dev side has no board now, #250),
+    // with the gate closed: the computer's owner gave it, so the session takes it.
+    await tab(page, "Tasks");
+    await page.getByRole("button", { name: "#1 Write the parser" }).click();
+    await pick(page, "Given to", "parser");
     await expect.poll(() => omicron.cliIn(win.pid, "tasks", "show", name, "1", "--as-machine")).toContain("sent to session parser");
-    expect(omicron.cliIn(win.pid, "tasks", "mine", "--as-machine")).toContain(`#1 in ${name}: Write the parser (new)`);
-    // Once it has it: a chip saying so instead of Give to…, and the session
-    // says it has one waiting (#177).
-    const tasksPane = page.getByRole("complementary", { name: "Tasks by column" });
-    await expect(tasksPane.getByLabel("Give #1 to a session here")).toHaveCount(0);
-    await expect(tasksPane).toContainText("parser");
-    await expect(page.getByTestId("doing-parser")).toContainText(/1 waiting|on #1/);
+    await escape(page);
+    // The session says it has one waiting (#177).
+    await tab(page, "Dev");
+    await expect(page.getByTestId("doing-parser")).toContainText(/1 task to start|working on #1/);
+    await page.getByRole("list", { name: "Sessions" }).getByRole("button", { name: /parser/ }).click();
 
     // Closing the tab leaves the session running.
     await page.getByRole("button", { name: "Close parser's tab (it keeps running)" }).click();
@@ -511,11 +511,14 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await expect(accounts.getByRole("button", { name: "Couldn't Copy" })).toBeVisible();
     await expect(sheet.getByRole("region", { name: "Teams" })).toBeVisible();
 
-    // A loop for a session here: started and stopped from the page.
-    await sheet.getByLabel("What to type into parser").fill("Keep going with the next task");
-    await sheet.getByLabel("How often, for parser").selectOption({ label: "15 minutes" });
-    await sheet.getByRole("button", { name: "Start loop" }).click();
-    const loops = sheet.getByRole("region", { name: "Loops here" });
+    // A loop for a session here: started and stopped from the Runs tab (#251).
+    await escape(page);
+    await tab(page, "Runs");
+    const runs = page.getByRole("region", { name: "Runs and loops" });
+    await runs.getByLabel("What to type into parser").fill("Keep going with the next task");
+    await runs.getByLabel("How often, for parser").selectOption({ label: "15 minutes" });
+    await runs.getByRole("button", { name: "Start loop" }).click();
+    const loops = runs.getByRole("region", { name: "Loops" });
     await expect(loops).toContainText("“Keep going with the next task” every 15m");
     expect(omicron.cli("loops", "list", "--as-machine")).toContain("Keep going with the next task");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/this-computer.png` });
@@ -548,8 +551,8 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
     await expect(page.getByRole("region", { name: "Terminals" })).toBeHidden();
     await panes.getByRole("radio", { name: /^Terminal/ }).click();
     await expect(page.getByText("Pick a session to open its terminal here.")).toBeVisible();
-    await panes.getByRole("radio", { name: "Board" }).click();
-    await expect(page.getByRole("complementary", { name: "Tasks by column" })).toContainText("Write the parser");
+    // Two panes only: the board is the Tasks tab (#250).
+    await expect(panes.getByRole("radio")).toHaveCount(2);
     await panes.getByRole("radio", { name: "Sessions" }).click();
     // Opening a session shows its terminal.
     await sessions.getByRole("button", { name: /parser/ }).click();
@@ -591,17 +594,15 @@ test("run rules are set in Project settings", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await tab(page, "Settings");
   const rules = page.getByLabel("Run rules");
   // Folded on a new Project (#160).
   await expect(rules).toBeHidden();
-  await page.getByRole("dialog").getByText("Claude sessions", { exact: true }).click();
+  await settingsTab(page).getByText("Claude sessions", { exact: true }).click();
   await rules.fill("Run the tests.\nCommit and push.");
   await rules.blur();
   await expect.poll(() => omicron.cli("projects", "rules", name, "--as-machine")).toContain("Run the tests.\nCommit and push.");
-  await escape(page);
   await page.reload();
-  await page.getByRole("button", { name: "Project settings" }).click();
   await expect(page.getByLabel("Run rules")).toHaveValue("Run the tests.\nCommit and push.");
 });
 
@@ -617,10 +618,11 @@ test("a run: started from the page, followed, paused after its task", async ({ p
   try {
     omicron.cli("machines", "owner", robin.login);
     daemon = await omicron.daemon();
-    // Runs are on the Dev side (#192), not the Tasks view.
+    // Runs have their own tab (#251), not the Tasks view.
     await page.reload();
     await expect(page.getByRole("button", { name: "Start Run" })).toHaveCount(0);
-    await page.goto(`${page.url().split("?")[0]}?view=dev`);
+    await tab(page, "Runs");
+    await expect(page).toHaveURL(/view=runs/);
     await page.getByRole("button", { name: "Start Run" }).click();
     // On its own computer a run needs no gate, so nothing about one (#152).
     await expect(page.getByRole("dialog").getByRole("button", { name: "Start", exact: true })).toBeVisible();
@@ -842,7 +844,10 @@ test("a Project's Claude sessions show, and follow the session live", async ({ p
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
+  // Sessions are on the Dev tab (#248).
+  await tab(page, "Dev");
   await expect(page.getByRole("region", { name: "Claude sessions" })).toHaveCount(0);
+  await expect(page.getByText("No Claude sessions in this Project.")).toBeVisible();
 
   // A Claude Code window on the machine starts, and adds itself.
   const claude = crypto.randomUUID();
@@ -883,6 +888,7 @@ test("a session's tasks can be given away one at a time or all at once (#171)", 
   try {
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
     for (const n of ["1", "2", "3"]) omicron.cliIn(win.pid, "tasks", "send", name, n, "parser", "--as-machine");
+    await tab(page, "Dev");
     const sessions = page.getByRole("region", { name: "Claude sessions" });
     await sessions.getByRole("button", { name: /parser/ }).click();
     const sheet = page.getByRole("dialog");
@@ -900,6 +906,7 @@ test("a session's tasks can be given away one at a time or all at once (#171)", 
     await expect(page.getByRole("dialog")).toContainText("Write the tests");
     await expect(page.getByLabel("Given to", { exact: true })).toHaveText("parser");
     await escape(page);
+    await tab(page, "Dev");
     await sessions.getByRole("button", { name: /parser/ }).click();
     await sheet.getByRole("combobox", { name: "Give parser's open tasks to" }).click();
     await page.getByRole("option", { name: "Robin Example" }).click();
@@ -919,7 +926,9 @@ test("a task sent to a Claude session from the page is picked up by it", async (
   const win = await omicron.open("parser", name, claude);
   try {
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work/code", source: "startup" });
+    await tab(page, "Dev");
     await expect(page.getByRole("region", { name: "Claude sessions" })).toContainText("parser");
+    await tab(page, "Tasks");
 
     const card = page.getByRole("button", { name: "#1 Write the parser" });
     await card.click();
@@ -1027,9 +1036,10 @@ test("Dispatch hands a task to its session on its machine, and says how it went"
 test("a sheet opened and closed doesn't stop the Project page's live updates", async ({ page, request }) => {
   const me = await newPerson(page, request);
   const projectId = await startProjectIn(page, unique("Code"));
-  await page.getByRole("button", { name: "Project settings" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await escape(page);
+  // Another tab opened and left (#248), then back on Tasks.
+  await tab(page, "Settings");
+  await expect(settingsTab(page)).toBeVisible();
+  await tab(page, "Tasks");
 
   const [todo] = await rest(request, me.session, "GET", `/rest/v1/statuses?project_id=eq.${projectId}&name=eq.To%20do&select=id`);
   await rest(request, me.session, "POST", "/rest/v1/tasks", { project_id: projectId, status_id: todo.id, title: "Added while the page is open" });
@@ -1058,7 +1068,8 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
     await page.getByLabel("New topic").press("Enter");
     await expect(page.getByRole("list", { name: "Topics" }).getByLabel(`Topic name: ${topic}`)).toHaveValue(topic);
   }
-  await escape(page);
+  // Settings is a tab (#248): back to Tasks.
+  await tab(page, "Tasks");
 
   // A column per topic, in order, then the tasks without one; no rows.
   const cols = page.locator("main section[aria-label]");
@@ -1338,6 +1349,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   ).json();
   const [session] = await rest(request, login, "POST", "/rest/v1/sessions", { project_id: projectId, name: "parser", folder: "/work" });
   await rest(request, login, "PATCH", `/rest/v1/tasks?project_id=eq.${projectId}`, { assignee_session_id: session.id });
+  await tab(page, "Dev");
   const sessions = page.getByRole("region", { name: "Claude sessions" });
   await expect(sessions).toContainText(`parser${box}`);
 
@@ -1345,6 +1357,7 @@ test("a session taken out with its machine ends, and its tasks are flagged until
   // the page, live, and its tasks say whose they were.
   await rest(request, robin.session, "DELETE", `/rest/v1/project_machines?project_id=eq.${projectId}&machine_id=eq.${uuid}`);
   await expect(sessions).toHaveCount(0);
+  await tab(page, "Tasks");
   const card = page.getByRole("button", { name: "#1 Write the parser" });
   await expect(card).toContainText(/parser\s*has ended/);
   await card.click();
@@ -1371,6 +1384,7 @@ test("a session's loop shows on the page, live, and can be stopped there", async
   const win = await omicron.open("parser", name, claude);
   try {
     omicron.hook(win.pid, "session-start", { session_id: claude, cwd: "/work", source: "startup" });
+    await tab(page, "Dev");
     const sessions = page.getByRole("region", { name: "Claude sessions" });
     await expect(sessions).toContainText("parser");
     await expect(sessions.getByLabel("looping")).toHaveCount(0);
@@ -1384,6 +1398,12 @@ test("a session's loop shows on the page, live, and can be stopped there", async
     await expect(loop).toContainText("0 of 5 runs done");
     await expect(loop).toContainText("Keep going with the next task");
     await expect(loop).toContainText(/Next run in (9|10) min/);
+    // The Runs tab lists it too (#251).
+    await escape(page);
+    await tab(page, "Runs");
+    await expect(page.getByRole("region", { name: "Runs and loops" })).toContainText("Keep going with the next task");
+    await tab(page, "Dev");
+    await sessions.getByRole("button", { name: /parser/ }).click();
 
     // Stopped from the page: gone from the sheet and the strip, and the command agrees.
     await page.getByRole("button", { name: "Stop loop" }).click();
@@ -1579,15 +1599,15 @@ test("labels are renamed and removed in Project settings", async ({ page, reques
   const card = page.getByRole("button", { name: /#1 Buy milk/ });
   await expect(card).toContainText("shop");
 
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await tab(page, "Settings");
   const box = page.getByLabel("Label name: shop");
   await box.fill("groceries");
   await box.press("Enter");
   await expect(page.getByLabel("Label name: groceries")).toBeVisible();
-  await escape(page);
+  await tab(page, "Tasks");
   await expect(card).toContainText("groceries");
 
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await tab(page, "Settings");
   await page.getByRole("button", { name: "Remove label groceries" }).click();
   // On a task, so it asks first; Cancel keeps it (#196).
   const ask = page.getByRole("alertdialog", { name: "Delete “groceries”?" });
@@ -1597,7 +1617,7 @@ test("labels are renamed and removed in Project settings", async ({ page, reques
   await page.getByRole("button", { name: "Remove label groceries" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete Label" }).click();
   await expect(page.getByRole("list", { name: "Labels" })).toHaveCount(0);
-  await escape(page);
+  await tab(page, "Tasks");
   await expect(card).not.toContainText("groceries");
 });
 
@@ -1649,12 +1669,10 @@ test("a new Project can start with people and machines, its machines change in s
   await dialog.getByRole("button", { name: "Create Project" }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
-  // It started with them: the people in Share (#209), the machines in settings.
-  await page.getByRole("button", { name: /^Share, / }).click();
+  // It started with them, both in the Settings tab (#248).
+  await tab(page, "Settings");
   await expect(page.getByRole("list", { name: "Members" })).toContainText(sam);
-  await escape(page);
-  await page.getByRole("button", { name: "Project settings" }).click();
-  const settings = page.getByRole("dialog", { name: "Project settings" });
+  const settings = settingsTab(page);
   const machines = settings.getByRole("combobox", { name: "Machines" });
   await expect(machines).toHaveText(box);
 

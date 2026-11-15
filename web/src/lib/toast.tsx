@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] [body:has([data-error-bar])_&]:bottom-16">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] [body:has([data-error-bar])_&]:bottom-16 [body:has([data-tab-bar])_&]:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] sm:[body:has([data-tab-bar])_&]:bottom-20">
         {toast && (
           <div
             role="status"

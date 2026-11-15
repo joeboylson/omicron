@@ -52,9 +52,9 @@ for (const scheme of ["light", "dark"]) {
     await page.getByRole("button", { name: /#1 Fix the gate/ }).click();
     await check(page, "Task");
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Project settings" }).click();
+    await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Settings", exact: true }).click();
     await check(page, "Project settings");
-    await page.keyboard.press("Escape");
+    await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Tasks", exact: true }).click();
     await page.getByRole("button", { name: /^View and filters/ }).click();
     await page.getByRole("menuitemradio", { name: "Topic", exact: true }).click();
     await check(page, "Board by topic");
