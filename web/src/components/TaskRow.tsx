@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { AlertCircle, CalendarDays, Terminal } from "lucide-react";
+import { AlertCircle, CalendarDays, Terminal, ChevronRight } from "lucide-react";
 import type { ProjectData, Task } from "@/lib/data";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ export function TaskRow({
       onClick={onOpen}
       aria-label={`#${task.number} ${task.title}`}
       aria-describedby={summary ? summaryId : undefined}
-      className="relative flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent sm:text-sm"
+      className="relative flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 max-sm:pr-9 text-left text-[0.9375rem] transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent sm:text-sm"
     >
       {summary && (
         <span id={summaryId} className="sr-only">
@@ -88,6 +88,8 @@ export function TaskRow({
           )}
         </span>
       )}
+      {/* A row that opens something shows it (HIG lists-and-tables #9). */}
+      <ChevronRight aria-hidden className="h-4 w-4 shrink-0 self-center text-muted-foreground/60 max-sm:absolute max-sm:right-3 max-sm:top-1/2 max-sm:-translate-y-1/2" />
     </button>
   );
 }

@@ -137,7 +137,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
       <Dialog open={starting} onOpenChange={setStarting}>
         <DialogContent noClose className="gap-5 bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           <DialogHeader>
-            <DialogTitle>Start a run</DialogTitle>
+            <DialogTitle>Start Run</DialogTitle>
             <DialogDescription className="sr-only">A session works down To do on its own.</DialogDescription>
           </DialogHeader>
           <StartForm

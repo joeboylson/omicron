@@ -160,7 +160,8 @@ export function DevView({
                     setOver(s.id);
                   }
                 }}
-                onDragLeave={() => setOver(null)}
+                // Only when it's really left the row, not passed over a child (no flicker).
+                onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setOver(null)}
                 onDrop={(e) => {
                   setOver(null);
                   const task = project.tasks.find((t) => t.id === e.dataTransfer.getData(TASK));
@@ -287,7 +288,7 @@ export function DevView({
                     >
                       {/* A grip: it can be dragged onto a session. */}
                       {here.length > 0 && !isDone ? (
-                        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />
+                        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/60 [@media(pointer:coarse)]:hidden" aria-hidden />
                       ) : (
                         <span className="w-4 shrink-0" />
                       )}

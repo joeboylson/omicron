@@ -53,7 +53,13 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
         </DialogDescription>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label="More for this task">
+            <Button
+              variant="ghost"
+              size="icon"
+              // On a phone, in the same row as the sheet's × (#242).
+              className="h-11 w-11 shrink-0 max-sm:absolute max-sm:right-[3.75rem] max-sm:top-3 sm:h-8 sm:w-8"
+              aria-label="More for this task"
+            >
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
