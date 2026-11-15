@@ -276,7 +276,7 @@ for (const [kind, device] of [
       await expect(page.getByRole("region", { name: "Project settings" })).toBeVisible();
       await settled(page);
       await tappable(page, "Project settings");
-      for (const t of ["Dev", "Runs"]) {
+      for (const t of ["Dev", "Loops"]) {
         await tabs.getByRole("button", { name: t, exact: true }).tap();
         await settled(page);
         await tappable(page, `${t} tab`);

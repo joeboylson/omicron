@@ -1,9 +1,9 @@
 import { scrollMotion } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useToast } from "@/lib/toast";
-import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2, Repeat, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
-import { renumberTasks, type Task } from "@/lib/data";
+import { addPlan, addTaskToPlan, renumberTasks, type Task } from "@/lib/data";
 import { reorder } from "@/lib/board-rules";
 import { useApp } from "@/lib/app";
 import { DialogDescription, DialogHeader, DialogTitle } from "@/components/base/dialog";
@@ -96,6 +96,34 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             )}
+            {/* Into a draft loop, to start later (#253). */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Repeat /> Add to Loop
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {project.plans
+                  .filter((p) => !p.template && p.kind === "tasks")
+                  .map((p) => (
+                    <DropdownMenuItem
+                      key={p.id}
+                      disabled={p.task_ids.includes(task.id)}
+                      onSelect={() => change(() => addTaskToPlan(db, p, task.id)).then(() => toast({ message: `Added #${task.number} to the draft loop`, seconds: 3 }))}
+                    >
+                      {p.name || `${p.task_ids.length} ${p.task_ids.length === 1 ? "task" : "tasks"}`}
+                    </DropdownMenuItem>
+                  ))}
+                <DropdownMenuItem
+                  onSelect={() =>
+                    change(() => addPlan(db, project, { kind: "tasks", task_ids: [task.id] })).then(() =>
+                      toast({ message: `Added #${task.number} to a new draft loop`, seconds: 3 }),
+                    )
+                  }
+                >
+                  <Plus /> New Draft Loop
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuItem
               onSelect={() => {
                 // This page's address, with the task open (?task=n).

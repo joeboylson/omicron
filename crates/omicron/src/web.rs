@@ -602,6 +602,9 @@ impl WebMachine {
                 if !s("label").is_empty() {
                     a.extend(["--label".into(), s("label")]);
                 }
+                if !s("tasks").is_empty() {
+                    a.extend(["--tasks".into(), s("tasks")]);
+                }
                 a
             }
             "loops-stop" => vec!["loops".into(), "stop".into(), "--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()],

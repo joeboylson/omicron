@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computerHeaders } from "../remote";
 import { must } from "../omicron";
-import type { Task, ClaudeSession, ProjectData, Run, SessionLoop } from "./types";
+import type { Task, ClaudeSession, LoopPlan, ProjectData, Run, SessionLoop } from "./types";
 
 export async function removeSession(db: SupabaseClient, session: ClaudeSession) {
   must(await db.from("sessions").delete().eq("id", session.id));
@@ -71,4 +71,54 @@ export function sayEvery(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return [h && `${h}h`, m && `${m}m`, s && `${s}s`].filter(Boolean).join("");
+}
+
+// Loops (#253): drafts and templates, and starting a loop of either kind.
+
+/** What a draft or template holds (a template never keeps tasks or a session). */
+export type PlanFields = {
+  name?: string;
+  kind: "command" | "tasks";
+  prompt?: string;
+  every_seconds?: number | null;
+  times?: number | null;
+  task_ids?: string[];
+  session_id?: string | null;
+  template?: boolean;
+};
+
+export async function addPlan(db: SupabaseClient, project: ProjectData, fields: PlanFields): Promise<LoopPlan> {
+  const [row] = must(await db.from("loop_plans").insert({ project_id: project.id, ...fields }).select()) as LoopPlan[];
+  return row;
+}
+
+export async function changePlan(db: SupabaseClient, plan: LoopPlan, fields: Partial<PlanFields>) {
+  must(await db.from("loop_plans").update(fields).eq("id", plan.id));
+}
+
+export async function deletePlan(db: SupabaseClient, plan: LoopPlan) {
+  must(await db.from("loop_plans").delete().eq("id", plan.id));
+}
+
+/** Put a task in a draft (at its end), once. */
+export async function addTaskToPlan(db: SupabaseClient, plan: LoopPlan, taskId: string) {
+  if (plan.task_ids.includes(taskId)) return;
+  await changePlan(db, plan, { task_ids: [...plan.task_ids, taskId] });
+}
+
+/** Start a loop in a session: one command typed in again and again, or a
+ *  set of tasks worked down one at a time (a run). */
+export async function startLoop(
+  db: SupabaseClient,
+  project: ProjectData,
+  session: ClaudeSession,
+  what: { kind: "command"; prompt: string; every_seconds: number; times: number | null } | { kind: "tasks"; task_ids: string[] },
+) {
+  if (what.kind === "command") {
+    must(await db.from("loops").insert({ session_id: session.id, prompt: what.prompt, every_seconds: what.every_seconds, times: what.times }));
+  } else {
+    must(
+      await db.from("runs").insert({ project_id: project.id, machine_id: session.machine_id, session_id: session.id, label_id: null, task_ids: what.task_ids }),
+    );
+  }
 }

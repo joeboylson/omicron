@@ -6,12 +6,12 @@
 import { ListTodo, Repeat, Settings, TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ProjectTab = "tasks" | "dev" | "runs" | "settings";
+export type ProjectTab = "tasks" | "dev" | "loops" | "settings";
 
 export const PROJECT_TABS: { tab: ProjectTab; label: string; Icon: typeof ListTodo }[] = [
   { tab: "tasks", label: "Tasks", Icon: ListTodo },
   { tab: "dev", label: "Dev", Icon: TerminalSquare },
-  { tab: "runs", label: "Runs", Icon: Repeat },
+  { tab: "loops", label: "Loops", Icon: Repeat },
   { tab: "settings", label: "Settings", Icon: Settings },
 ];
 

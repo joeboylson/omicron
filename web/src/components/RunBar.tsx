@@ -247,7 +247,7 @@ function StartForm({
 }
 
 /** The night so far: what it's on, its diary, and what's waiting on Joe. */
-function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
+export function RunSheet({ project, run }: { project: ProjectData; run: Run }) {
   const session = project.sessions.find((s) => s.id === run.session_id);
   const diary = project.handoffs.filter((h) => h.session_id === run.session_id && h.written_at >= run.started_at);
   const waiting = project.statuses.find((s) => s.name.toLowerCase().startsWith("waiting"));

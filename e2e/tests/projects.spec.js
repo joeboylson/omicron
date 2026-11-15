@@ -527,19 +527,26 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await expect(accounts.getByRole("button", { name: "Couldn't Copy" })).toBeVisible();
     await expect(sheet.getByRole("region", { name: "Teams" })).toBeVisible();
 
-    // A loop for a session here: started and stopped from the Runs tab (#251).
+    // A loop for a session here: set up step by step on the Loops tab (#253).
     await escape(page);
-    await tab(page, "Runs");
-    const runs = page.getByRole("region", { name: "Runs and loops" });
-    await runs.getByLabel("What to type into parser").fill("Keep going with the next task");
-    await runs.getByLabel("How often, for parser").selectOption({ label: "15 minutes" });
-    await runs.getByRole("button", { name: "Start loop" }).click();
-    const loops = runs.getByRole("region", { name: "Loops" });
-    await expect(loops).toContainText("“Keep going with the next task” every 15m");
+    await tab(page, "Loops");
+    await page.getByRole("button", { name: "New Loop" }).click();
+    const wizard = page.getByRole("dialog");
+    await wizard.getByRole("button", { name: /^Repeat a Command/ }).click();
+    await wizard.getByLabel("Message").fill("Keep going with the next task");
+    await wizard.getByLabel("Every").selectOption({ label: "15 minutes" });
+    await wizard.getByRole("button", { name: "Next" }).click();
+    await wizard.getByRole("radio", { name: /^parser/ }).click();
+    await wizard.getByRole("button", { name: "Start", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    const loops = page.getByRole("table", { name: "Loops" });
+    await expect(loops).toContainText("Keep going with the next task");
+    await expect(loops).toContainText("every 15m");
     expect(omicron.cli("loops", "list", "--as-machine")).toContain("Keep going with the next task");
-    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/this-computer.png` });
-    await loops.getByRole("button", { name: "Stop" }).click();
-    await expect(loops.getByRole("button", { name: "Start loop" })).toBeVisible();
+    if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/loops.png` });
+    await loops.getByRole("button", { name: "More for Keep going with the next task" }).click();
+    await page.getByRole("menuitem", { name: "Stop", exact: true }).click();
+    await expect(loops).toContainText("Stopped");
   } finally {
     win.kill();
   }
@@ -628,46 +635,51 @@ test("a run: started from the page, followed, paused after its task", async ({ p
   try {
     omicron.cli("machines", "owner", robin.login);
     daemon = await omicron.daemon();
-    // Runs have their own tab (#251), not the Tasks view.
+    // A loop over chosen tasks (#253): drafted from a task's menu first.
     await page.reload();
-    await expect(page.getByRole("button", { name: "Start Run" })).toHaveCount(0);
-    await tab(page, "Runs");
-    await expect(page).toHaveURL(/view=runs/);
-    await page.getByRole("button", { name: "Start Run" }).click();
-    // On its own computer a run needs no gate, so nothing about one (#152).
-    await expect(page.getByRole("dialog").getByRole("button", { name: "Start", exact: true })).toBeVisible();
-    await expect(page.getByTestId("start-gate")).toHaveCount(0);
-    // What it'll do, said before it starts (#169).
-    await expect(page.getByTestId("start-summary")).toContainText("2 tasks to do, starting with #1 Write the parser.");
-    await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
-    const bar = page.getByTestId("run");
-    await expect(bar).toContainText("Run in parser");
-    await expect(bar).toContainText("Working on #1 Write the parser");
-    await expect(bar).toContainText("0 of 2 done");
-    // Its sheet: what's next, and when it ends.
-    await bar.click();
-    const sheet = page.getByRole("dialog");
-    await expect(sheet).not.toContainText("It stops when To do is empty.");
-    await expect(sheet.getByRole("region", { name: "Up next" })).toContainText("#2 Write the tests");
+    await page.getByRole("button", { name: "#2 Write the tests" }).click();
+    await page.getByRole("button", { name: "More for this task" }).click();
+    await page.getByRole("menuitem", { name: "Add to Loop" }).click();
+    await page.getByRole("menuitem", { name: "New Draft Loop" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Added #2 to a new draft loop" })).toBeVisible();
     await escape(page);
-    // Stop now asks first, as an alert: no ×, and Cancel keeps it (#223).
-    await page.getByRole("button", { name: "Stop now" }).click();
-    const stop = page.getByRole("alertdialog", { name: "Stop the run now?" });
-    await expect(stop.getByRole("button", { name: "Close" })).toHaveCount(0);
-    await stop.getByRole("button", { name: "Cancel" }).click();
-    await expect(bar).toContainText("Run in parser");
-    await expect(page.getByTestId("run-gate")).toHaveCount(0);
+    await tab(page, "Loops");
+    await expect(page).toHaveURL(/view=loops/);
+    const loops = page.getByRole("table", { name: "Loops" });
+    await expect(loops).toContainText("Draft");
+    // Opened, it picks up where the draft is: choosing the session.
+    await loops.getByRole("button", { name: /^1 task/ }).click();
+    const wizard = page.getByRole("dialog");
+    await expect(wizard.getByRole("heading", { name: "The Session" })).toBeVisible();
+    await wizard.getByRole("radio", { name: /^parser/ }).click();
+    await wizard.getByRole("button", { name: "Start", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    // Running: the draft became the run, working down #2.
+    await expect(loops).not.toContainText("Draft");
+    await expect(loops).toContainText("Running");
+    await expect(loops).toContainText("0 of 1 done");
+    await expect.poll(() => omicron.cli("tasks", "show", name, "2", "--as-machine")).toContain("sent to session parser");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/run-bar.png` });
 
     // Paused: it stops once the task it's on is finished.
-    await page.getByRole("button", { name: "Pause after this task" }).click();
-    await expect(bar).toContainText("Run, pausing");
-    omicron.cli("tasks", "done", name, "1", "--as-machine");
-    await expect(bar).toContainText("Last run in parser: paused after #1");
-    await expect(bar).toContainText("1 done");
-    await bar.click();
-    await expect(page.getByRole("dialog")).toContainText("The last run");
-    await expect(page.getByRole("dialog").getByRole("region", { name: "Notes after each task" })).toContainText("No notes yet.");
+    await loops.getByRole("button", { name: "More for 1 task" }).click();
+    await page.getByRole("menuitem", { name: "Pause After This Task" }).click();
+    await expect(loops).toContainText("Pausing");
+    omicron.cli("tasks", "done", name, "2", "--as-machine");
+    await expect(loops).toContainText("Stopped");
+    await expect(loops).toContainText("1 of 1 done");
+
+    // Kept as a template (no tasks or session), and used for a new one.
+    await loops.getByRole("button", { name: "More for 1 task" }).click();
+    await page.getByRole("menuitem", { name: "Make Template…" }).click();
+    await page.getByLabel("Name").fill("Nightly tasks");
+    await page.getByRole("button", { name: "Make Template", exact: true }).click();
+    const templates = page.getByRole("table", { name: "Templates" });
+    await expect(templates).toContainText("Nightly tasks");
+    await templates.getByRole("button", { name: "Use" }).click();
+    await expect(wizard.getByRole("heading", { name: "The Tasks" })).toBeVisible();
+    await expect(wizard.getByRole("checkbox", { checked: true })).toHaveCount(0);
+    await wizard.getByRole("button", { name: "Cancel" }).click();
   } finally {
     daemon?.stop();
     win.kill();
@@ -1410,8 +1422,8 @@ test("a session's loop shows on the page, live, and can be stopped there", async
     await expect(loop).toContainText(/Next run in (9|10) min/);
     // The Runs tab lists it too (#251).
     await escape(page);
-    await tab(page, "Runs");
-    await expect(page.getByRole("region", { name: "Runs and loops" })).toContainText("Keep going with the next task");
+    await tab(page, "Loops");
+    await expect(page.getByRole("table", { name: "Loops" })).toContainText("Keep going with the next task");
     await tab(page, "Dev");
     await sessions.getByRole("button", { name: /parser/ }).click();
 

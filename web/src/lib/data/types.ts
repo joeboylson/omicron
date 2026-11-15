@@ -128,6 +128,24 @@ export type ProjectData = {
   folders: Folder[];
   /** Its runs, newest first (the last few). */
   runs: Run[];
+  /** Loops that have ended (stopped or finished), newest first, the last few. */
+  pastLoops: SessionLoop[];
+  /** Loops not started yet, and templates for new ones (#253). */
+  plans: LoopPlan[];
+};
+
+/** A loop not started yet (a draft), or a template to start new ones from. */
+export type LoopPlan = {
+  id: string;
+  name: string;
+  kind: "command" | "tasks";
+  prompt: string;
+  every_seconds: number | null;
+  times: number | null;
+  task_ids: string[];
+  session_id: string | null;
+  template: boolean;
+  created_at: string;
 };
 
 /** A session working down To do on its own (see `omicron runs`). */
@@ -140,6 +158,8 @@ export type Run = {
   started_by: string;
   state: "running" | "pausing" | "stopped" | "finished";
   task_id: string | null;
+  /** The tasks it works down, in order; null: the top status. */
+  task_ids: string[] | null;
   done: number;
   note: string | null;
   started_at: string;
@@ -152,6 +172,8 @@ export type Folder = { id: string; path: string; machine_id: string; machine: st
 export type SessionLoop = {
   id: string;
   session_id: string;
+  state?: "running" | "stopped" | "finished";
+  started_at?: string;
   prompt: string;
   every_seconds: number;
   until: string | null;

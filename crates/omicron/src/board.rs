@@ -254,6 +254,9 @@ pub struct Run {
     pub machine_id: String,
     pub session_id: Option<String>,
     pub label_id: Option<String>,
+    /// The tasks it works down, in order (#253); none: the top status.
+    #[serde(default)]
+    pub task_ids: Option<Vec<String>>,
     /// running, pausing, stopped or finished.
     pub state: String,
     pub task_id: Option<String>,
@@ -1083,6 +1086,11 @@ impl Board {
 
     /// Start a run in a session, optionally only tasks with a label.
     pub fn start_run(&self, project: &Project, session: &SessionRecord, label: Option<&str>) -> Result<Run> {
+        self.start_run_with(project, session, label, None)
+    }
+
+    /// A run over chosen tasks (their ids, in order), or the top status (`None`).
+    pub fn start_run_with(&self, project: &Project, session: &SessionRecord, label: Option<&str>, task_ids: Option<Vec<String>>) -> Result<Run> {
         let label_id = match label {
             Some(name) => {
                 let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&name=ilike.{}&select=id", project.id, crate::supa::enc(name)))?;
@@ -1093,7 +1101,7 @@ impl Board {
         let rows = self.send(
             "POST",
             "/rest/v1/runs",
-            json!({ "project_id": project.id, "machine_id": session.machine_id, "session_id": session.id, "label_id": label_id }),
+            json!({ "project_id": project.id, "machine_id": session.machine_id, "session_id": session.id, "label_id": label_id, "task_ids": task_ids }),
         );
         let rows = match rows {
             Err(e) if format!("{e:#}").contains("runs_one_per_session") => bail!("{} is already on a run", session.name),
@@ -1150,6 +1158,19 @@ impl Board {
     }
 
     /// A Project's tasks in a status, in their order (see `task_row`).
+    /// These tasks of a Project, in the order given (ones gone are left out).
+    pub fn task_rows_by_ids(&self, project_id: &str, ids: &[String]) -> Result<Vec<TaskRow>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<&str> = ids.iter().map(String::as_str).filter(|i| uuid::Uuid::parse_str(i).is_ok()).collect();
+        let rows: Vec<TaskRow> = serde_json::from_value(self.get(&format!(
+            "/rest/v1/tasks?project_id=eq.{project_id}&id=in.({})&select={TASK_ROW}",
+            ids.join(",")
+        ))?)?;
+        Ok(ids.iter().filter_map(|id| rows.iter().find(|r| r.id == *id).cloned()).collect())
+    }
+
     pub fn task_rows_in(&self, project_id: &str, status_id: &str) -> Result<Vec<TaskRow>> {
         let rows = self.get(&format!("/rest/v1/tasks?project_id=eq.{project_id}&status_id=eq.{status_id}&select={TASK_ROW}&order=position,number"))?;
         Ok(serde_json::from_value(rows)?)

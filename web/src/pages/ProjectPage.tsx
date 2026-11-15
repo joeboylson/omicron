@@ -53,7 +53,7 @@ import { GateButton } from "@/components/GateButton";
 import { UndoSteps, type Step } from "@/lib/undo";
 import { rememberTask } from "@/lib/recent";
 import { ProjectTabs, TAB_BAR_SPACE, type ProjectTab } from "@/components/ProjectTabs";
-import { RunsTab } from "@/components/RunsTab";
+import { LoopsTab } from "@/components/LoopsTab";
 import { DevView, SessionPage, type DevSection } from "@/components/DevView";
 import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
@@ -91,7 +91,9 @@ export function ProjectPage({ id }: { id: string }) {
   const [dev] = useDev(db);
   const [viewInAddress, setViewInAddress] = useAddressValue("view");
   // The Project's sections, as a tab bar (#248): Tasks (?view absent), Dev, Runs, Settings.
-  const tab: ProjectTab = viewInAddress === "dev" || viewInAddress === "runs" || viewInAddress === "settings" ? viewInAddress : "tasks";
+  // (?view=runs, from before runs and loops were one thing, opens Loops.)
+  const tab: ProjectTab =
+    viewInAddress === "dev" || viewInAddress === "loops" || viewInAddress === "settings" ? viewInAddress : viewInAddress === "runs" ? "loops" : "tasks";
   const setTab = (t: ProjectTab) => setViewInAddress(t === "tasks" ? null : t);
   // The Dev tab's section and an open session, in the address (#252).
   const [paneInAddress, setPaneInAddress] = useAddressValue("pane");
@@ -627,13 +629,13 @@ export function ProjectPage({ id }: { id: string }) {
       </>
     );
   }
-  if (tab === "runs" || tab === "settings") {
+  if (tab === "loops" || tab === "settings") {
     return (
       <>
       <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
         {nav}
         <div className="min-h-0 flex-1 overflow-y-auto pt-2">
-          {tab === "runs" ? <RunsTab project={project} dev={dev} onChanged={reload} /> : <ProjectSettings project={project} onChanged={reload} />}
+          {tab === "loops" ? <LoopsTab project={project} dev={dev} onChanged={reload} /> : <ProjectSettings project={project} onChanged={reload} />}
         </div>
       </main>
       {tabs}

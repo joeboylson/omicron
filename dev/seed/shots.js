@@ -183,7 +183,7 @@ async function escape(page) {
     await shot("3b-settings");
     await page.getByLabel("Delete Project").scrollIntoViewIfNeeded();
     await shot("3d-settings-lower");
-    await tab("Runs");
+    await tab("Loops");
     await shot("3f-runs-empty");
     await tab("Tasks");
     await page.getByRole("button", { name: "Back to Projects" }).click();
@@ -206,7 +206,7 @@ async function escape(page) {
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
     await shot("4n-dev-tab");
-    await tab("Runs");
+    await tab("Loops");
     await shot("4o-runs-tab");
     await tab("Tasks");
     // Dispatch: one that worked, one the machine never picked up.
@@ -331,24 +331,28 @@ async function escape(page) {
       } else {
         await page.getByRole("button", { name: "Back to sessions" }).click();
       }
-      // A run, on the Runs tab (#251): starting one, the bar while it goes, the night so far; then stopped.
-      await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Runs", exact: true }).click();
-      await page.getByRole("button", { name: "Start Run" }).click();
-      await page.getByRole("heading", { name: "Start Run" }).waitFor();
-      await shot("4i-start-run");
+      // A loop, on the Loops tab (#253): New Loop step by step, the table, templates.
+      const loopsTab = () => page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Loops", exact: true }).click();
+      await loopsTab();
+      await page.getByRole("button", { name: "New Loop" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: /^Work Through Tasks/ }).waitFor();
+      await shot("4i-new-loop");
+      await page.getByRole("dialog").getByRole("button", { name: /^Work Through Tasks/ }).click();
+      for (const box of (await page.getByRole("dialog").getByRole("checkbox").all()).slice(0, 2)) await box.click();
+      await shot("4j-new-loop-tasks");
+      await page.getByRole("dialog").getByRole("button", { name: "Next" }).click();
+      await page.getByRole("dialog").getByRole("radio", { name: /^docs-site/ }).click();
+      await shot("4k-new-loop-session");
       await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
-      await page.getByTestId("run").getByText(/^Run/).waitFor();
-      await shot("4j-run");
-      await page.getByTestId("run").click();
-      await page.getByRole("dialog").getByRole("region", { name: "Notes after each task" }).waitFor();
-      await shot("4k-run-sheet");
-      await escape(page);
       await page.getByRole("dialog").waitFor({ state: "detached" });
-      await page.getByRole("button", { name: "Stop now" }).click();
-      await shot("4l-run-stop");
-      await page.getByRole("alertdialog", { name: "Stop the run now?" }).getByRole("button", { name: "Stop Now" }).click();
-      await page.getByTestId("run").getByText("Last run").waitFor();
-      await shot("4m-runs-tab");
+      await page.locator("tr, li").filter({ hasText: "Running", visible: true }).first().waitFor();
+      await shot("4m-loops-tab");
+      // Stop it, so the next pass can start one in docs-site again.
+      await page.locator("tr, li").filter({ hasText: "Running", visible: true }).getByRole("button", { name: /^More for/ }).first().click();
+      await page.getByRole("menuitem", { name: "Stop Now" }).click();
+      await page.locator("tr, li").filter({ hasText: /Stopped/, visible: true }).first().waitFor();
+      await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name: "Templates" }).click();
+      await shot("4n-templates");
       await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
       await page.getByRole("button", { name: "This computer" }).click();
       await page.getByRole("dialog").getByRole("region", { name: "Setup checks" }).waitFor();

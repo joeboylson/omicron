@@ -34,6 +34,9 @@ pub enum RunsCmd {
         /// Only tasks with this label
         #[arg(long)]
         label: Option<String>,
+        /// These tasks, by number, in this order (like 4,7,2), instead of the top status
+        #[arg(long, value_delimiter = ',')]
+        tasks: Vec<i64>,
     },
     /// A Project's runs, newest first
     List { project: String },
@@ -54,7 +57,7 @@ pub enum RunsCmd {
 
 pub fn runs(cmd: RunsCmd, as_machine: bool) -> Result<()> {
     match cmd {
-        RunsCmd::Start { project, session, label } => {
+        RunsCmd::Start { project, session, label, tasks } => {
             // Started here, by this machine: its own order.
             let board = sign_in(true)?;
             let p = board.project(&project)?;
@@ -62,7 +65,29 @@ pub fn runs(cmd: RunsCmd, as_machine: bool) -> Result<()> {
             if s.machine_id != board.me() {
                 bail!("{} runs on {}: start the run there", s.name, s.machine);
             }
-            board.start_run(&p, &s, label.as_deref())?;
+            // Chosen tasks (#253): their ids, in the order given.
+            let task_ids = if tasks.is_empty() {
+                None
+            } else {
+                let mut ids = Vec::new();
+                for n in &tasks {
+                    ids.push(board.task(&p, *n)?.id);
+                }
+                Some(ids)
+            };
+            let chosen = task_ids.as_ref().map(|ids| ids.len());
+            board.start_run_with(&p, &s, label.as_deref(), task_ids)?;
+            if let Some(n) = chosen {
+                println!(
+                    "Started a run in {} on {} chosen {} of {}. It works down them one at a time; `omicron runs pause '{}'` stops it after the current task.",
+                    s.name,
+                    n,
+                    if n == 1 { "task" } else { "tasks" },
+                    p.name,
+                    p.name
+                );
+                return Ok(());
+            }
             println!(
                 "Started a run in {} on {}'s To do column{}. It works down it one task at a time until it's empty; `omicron runs pause '{}'` stops it after the current task.",
                 s.name,
@@ -335,7 +360,17 @@ fn step(supabase: &Supabase, key: &MachineKey, board: &Board, id: &str) -> Resul
             Some(n) if team.is_some() => Some(board.label_id(&project, &n)?),
             _ => None,
         };
-        (board.team_tasks_here(&run.project_id)?, board.task_rows_in(&run.project_id, &first.id)?, team, label)
+        // A run over chosen tasks (#253) works down those not done yet, in
+        // its order; otherwise the top status, as before.
+        let rows = match &run.task_ids {
+            Some(ids) => board
+                .task_rows_by_ids(&run.project_id, ids)?
+                .into_iter()
+                .filter(|t| statuses.iter().any(|s| s.id == t.status_id && !s.is_done))
+                .collect(),
+            None => board.task_rows_in(&run.project_id, &first.id)?,
+        };
+        (board.team_tasks_here(&run.project_id)?, rows, team, label)
     };
     let seen = Seen {
         run: &run,

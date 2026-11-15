@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { must } from "../omicron";
-import type { ProjectSummary, Status, Label, Topic, Person, Comment, ChecklistItem, TeamQuestion, Dispatch, HandoffNote, ProjectData, Run, SessionLoop } from "./types";
+import type { ProjectSummary, Status, Label, Topic, Person, Comment, ChecklistItem, TeamQuestion, Dispatch, HandoffNote, ProjectData, Run, SessionLoop, LoopPlan } from "./types";
 import { all, after } from "./shared";
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
@@ -27,7 +27,7 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders, runs] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders, runs, plans] = await Promise.all([
     db.from("projects").select("id,name,run_rules").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -56,16 +56,18 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db.from("topics").select("id,name,position").eq("project_id", id).order("position").order("name"),
     db
       .from("loops")
-      .select("id,session_id,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at")
+      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at")
       .eq("project_id", id)
-      .eq("state", "running"),
+      .order("started_at", { ascending: false })
+      .limit(30),
     db.from("folders").select("id,path,machine_id,machines(name)").eq("project_id", id).order("path"),
     db
       .from("runs")
-      .select("id,machine_id,session_id,label_id,started_by,state,task_id,done,note,started_at,updated_at")
+      .select("id,machine_id,session_id,label_id,started_by,state,task_id,task_ids,done,note,started_at,updated_at")
       .eq("project_id", id)
       .order("started_at", { ascending: false })
-      .limit(5),
+      .limit(20),
+    db.from("loop_plans").select("id,name,kind,prompt,every_seconds,times,task_ids,session_id,template,created_at").eq("project_id", id).order("created_at"),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -124,8 +126,10 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       gone_why: r.gone_why,
     })),
     handoffs: must(handoffs) as HandoffNote[],
-    loops: must(loops) as SessionLoop[],
+    loops: (must(loops) as SessionLoop[]).filter((l) => l.state === "running"),
+    pastLoops: (must(loops) as SessionLoop[]).filter((l) => l.state !== "running"),
     runs: must(runs) as Run[],
+    plans: must(plans) as LoopPlan[],
     folders: (must(folders) as any[])
       .map((f) => ({ id: f.id, path: f.path, machine_id: f.machine_id, machine: f.machines?.name ?? "" }))
       .sort((a, b) => a.machine.localeCompare(b.machine) || a.path.localeCompare(b.path)),

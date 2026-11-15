@@ -51,7 +51,7 @@ export function SortHeader<T>({ column, label }: { column: Column<T, unknown>; l
     <button
       type="button"
       onClick={() => column.toggleSorting(dir === "asc")}
-      className={cn("-ml-2 inline-flex h-8 items-center gap-1 rounded-md px-2 hover:bg-accent", dir && "text-foreground")}
+      className={cn("-ml-2 inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md px-2 hover:bg-accent", dir && "text-foreground")}
     >
       {label}
       <Icon className={cn("h-3.5 w-3.5", !dir && "opacity-40")} aria-hidden />

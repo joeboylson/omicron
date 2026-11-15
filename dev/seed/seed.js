@@ -358,6 +358,16 @@ async function seed(omicron) {
 
     // Dispatch: the parser task typed into its session on studio; the docs
     // one never picked up (build-box's daemon wasn't running).
+    // Loops (#253): a template, and a draft gathering tasks.
+    await joe.call("POST", "/rest/v1/loop_plans", {
+      project_id: code.id,
+      name: "Keep going overnight",
+      kind: "command",
+      prompt: "Keep going with the next task in To do. Report on each one when it's done.",
+      every_seconds: 900,
+      template: true,
+    });
+    await joe.call("POST", "/rest/v1/loop_plans", { project_id: code.id, kind: "tasks", task_ids: [docsTask.id, stripTask.id] });
     const [typed] = await joe.call("POST", "/rest/v1/dispatches", { task_id: parserTask.id });
     const studioCall = await asMachine(studio);
     await studioCall("POST", "/rest/v1/rpc/claim_dispatch", { dispatch: typed.id });
