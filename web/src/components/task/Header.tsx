@@ -1,3 +1,4 @@
+import { scrollMotion } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useToast } from "@/lib/toast";
 import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
@@ -33,7 +34,7 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
   // Scroll the sheet to a section of it, and put focus there for the keyboard.
   const jump = (id: string) => {
     const el = document.getElementById(id);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    el?.scrollIntoView({ behavior: scrollMotion(), block: "start" });
     el?.querySelector<HTMLElement>("input, button, textarea")?.focus({ preventScroll: true });
   };
   const [title, setTitle] = useState(task.title);

@@ -7,7 +7,7 @@ import type { Folder, ProjectData, Task } from "@/lib/data";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Terminal } from "@/components/Terminal";
 import { ComputerPanel } from "@/components/ComputerPanel";
-import { cn } from "@/lib/utils";
+import { cn, radioArrows } from "@/lib/utils";
 import { GripVertical } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/base/popover";
 import { formatDate, initials, LabelBadge, NeedsReview } from "@/components/TaskCard";
@@ -97,6 +97,8 @@ export function DevView({
           type="button"
           role="radio"
           aria-checked={pane === p}
+          tabIndex={pane === p ? 0 : -1}
+          onKeyDown={radioArrows}
           onClick={() => setPane(p)}
           className={cn(
             "min-h-9 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

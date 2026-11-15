@@ -5,8 +5,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, fo
 import { useCommands } from "@/lib/commands";
 import { go } from "@/lib/app";
 
+// Keys as the computer names them: ⌘ and ⇧ on a Mac, Ctrl+ and Shift+
+// elsewhere, always in the same order (HIG keyboards #9).
+const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = MAC ? "⌘" : "Ctrl+";
+const SHIFT = MAC ? "⇧" : "Shift+";
+
 export const SHORTCUTS: [string, string][] = [
-  ["⌘K or Ctrl-K", "Commands: go anywhere, open or move a task, change the theme"],
+  [`${MOD}K`, "Commands: find a task, go anywhere, change the theme"],
   ["?", "These shortcuts"],
   ["c", "New task, in the column you're in"],
   ["/", "Search tasks"],
@@ -14,10 +20,10 @@ export const SHORTCUTS: [string, string][] = [
   ["Space, then arrows", "Move a task on the board; Space drops it, Escape puts it back"],
   ["Enter", "Open the task that has focus"],
   ["Enter (adding a task)", "Add it and start the next"],
-  ["Shift+Enter (adding a task)", "Add it and open it"],
+  [`${SHIFT}Enter (adding a task)`, "Add it and open it"],
   ["Enter (a task's title)", "Save the title"],
-  ["⌘Z or Ctrl-Z", "Undo the last change"],
-  ["⌘, or Ctrl-,", "Settings"],
+  [`${MOD}Z`, "Undo the last change"],
+  [`${MOD},`, "Settings"],
   ["Arrows (in a menu)", "Go up and down it; Enter picks"],
   ["Escape", "Close what's open, or stop adding"],
 ];

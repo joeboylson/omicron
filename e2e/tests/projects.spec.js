@@ -711,24 +711,24 @@ test("a column's ⋯ menu organizes it, and finishing a task doesn't scroll the 
   await page.reload();
   const titles = () => column(page, "To do").getByRole("button", { name: /^#\d+ / }).allTextContents();
 
-  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "To do").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Sort by" }).click();
   await page.getByRole("menuitem", { name: "Name", exact: true }).click();
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Apple crumble", "Banana bread", "Cherry pie"]);
-  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "To do").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Sort by" }).click();
   await page.getByRole("menuitem", { name: "Number", exact: true }).click();
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Cherry pie", "Apple crumble", "Banana bread"]);
   // Sorting reorders for good, so it says so, with Undo (#182).
   await expect(page.getByText("To do sorted by number")).toBeVisible();
-  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "To do").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Sort by" }).click();
   await page.getByRole("menuitem", { name: "Name", exact: true }).click();
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Apple crumble", "Banana bread", "Cherry pie"]);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect.poll(async () => (await titles()).map((t) => t.replace(/#\d+$/, ""))).toEqual(["Cherry pie", "Apple crumble", "Banana bread"]);
   // Add a task here, from the same menu.
-  await column(page, "To do").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "To do").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Add a task here" }).click();
   await expect(page.getByLabel("New task in To do")).toBeFocused();
   await page.keyboard.press("Escape");
@@ -810,7 +810,7 @@ test("a card dropped between tied cards lands there, and Organize while filtered
 
   // Organize while a search hides some: the whole column is put in order.
   await page.getByLabel("Search tasks").fill("b");
-  await todo.getByRole("button", { name: "More for this column" }).click();
+  await todo.getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Sort by" }).hover();
   await page.getByRole("menuitem", { name: "Name", exact: true }).click();
   await page.getByLabel("Search tasks").fill("");
@@ -1863,13 +1863,12 @@ test("deleting a task can be undone, and it's gone for good after", async ({ pag
     .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&number=eq.1&select=statuses(name)`))[0].statuses.name)
     .toBe("To do");
 
-  // A message with Undo stays until it's closed (#211). Not undone:
-  // deleted in the database 10 seconds after it goes.
+  // Not undone: deleted in the database after 10 seconds, so others see it
+  // go, and the message then says so, without Undo (#211, #237).
   await del();
-  await page.waitForTimeout(11000);
-  await expect(toast).toBeVisible();
-  await toast.getByRole("button", { name: "Close message" }).click();
-  await expect(toast).toHaveCount(0);
+  const gone = page.getByRole("status").filter({ hasText: "Deleted #1 Fix the gate for good" });
+  await expect(gone).toBeVisible({ timeout: 15000 });
+  await expect(gone.getByRole("button", { name: "Undo" })).toHaveCount(0);
   await expect
     .poll(async () => (await rest(request, me.session, "GET", `/rest/v1/tasks?project_id=eq.${id}&select=title`)).map((t) => t.title), { timeout: 10000 })
     .toEqual(["Paint the fence"]);
@@ -1930,7 +1929,7 @@ test("keyboard: c adds where you are, Escape keeps your place, ? lists every sho
 
   await page.keyboard.press("?");
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
-  await expect(sheet).toContainText("Shift+Enter (adding a task)");
+  await expect(sheet).toContainText(/(⇧|Shift\+)Enter \(adding a task\)/);
   await expect(sheet).toContainText("Escape");
   // Escape closes it. Under load, the first press now and then doesn't
   // (seen only in full runs; see the #112 report), so it's pressed again
@@ -2190,16 +2189,16 @@ test("columns are added, renamed and deleted from the board itself", async ({ pa
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByRole("region")).toHaveText([/^To do/, /^Waiting/, /^Done/]);
   // Renamed from its ⋯ menu, in place.
-  await column(page, "Waiting").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "Waiting").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Rename Column" }).click();
   await page.getByLabel("Column name").fill("Waiting on someone");
   await page.keyboard.press("Enter");
   await expect(column(page, "Waiting on someone")).toBeVisible();
   // Deleted while empty; a column with tasks, or Done, can't be.
-  await column(page, "Done").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "Done").getByRole("button", { name: /^More for / }).click();
   await expect(page.getByRole("menuitem", { name: "Delete Column" })).toBeDisabled();
   await page.keyboard.press("Escape");
-  await column(page, "Waiting on someone").getByRole("button", { name: "More for this column" }).click();
+  await column(page, "Waiting on someone").getByRole("button", { name: /^More for / }).click();
   await page.getByRole("menuitem", { name: "Delete Column" }).click();
   await expect(page.getByRole("region")).toHaveText([/^To do/, /^Done/]);
 });

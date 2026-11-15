@@ -141,7 +141,7 @@ async function escape(page) {
     await page.getByLabel("New task in To do").waitFor();
     await shot("2e-add-task");
     await todo.getByRole("button", { name: "Cancel" }).click();
-    await todo.getByRole("button", { name: "More for this column" }).click();
+    await todo.getByRole("button", { name: /^More for / }).click();
     await page.getByRole("menuitem", { name: "Sort by" }).hover();
     await page.getByRole("menuitem", { name: "Name", exact: true }).waitFor();
     await shot("2f-column-menu");

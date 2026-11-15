@@ -25,7 +25,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { cn } from "@/lib/utils";
+import { cn, radioArrows, scrollMotion } from "@/lib/utils";
 import { Button } from "@/components/base/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { Input } from "@/components/base/input";
@@ -234,6 +234,7 @@ export function ProjectPage({ id }: { id: string }) {
   // place: Cmd+Z still reaches it meanwhile), or when the page is closed or
   // hidden.
   const { hidden, deletes } = useUndoableDelete<Task>((t) => act(() => deleteTask(db, t)).then(reload));
+  const deleteTimers = useRef(new Map<string, symbol>());
   const removeTask = (t: Task) => {
     // Focus goes to the card after it in its column (or before it), not
     // to the page, once the sheet has closed.
@@ -242,9 +243,21 @@ export function ProjectPage({ id }: { id: string }) {
     closedTask.current = (group?.tasks[i + 1] ?? group?.tasks[i - 1])?.number ?? null;
     setOpenTask(null);
     deletes.delete(t);
-    remember({ label: `Deleted #${t.number} ${t.title}`, undone: `Brought back #${t.number} ${t.title}`, task: t.number, undo: () => deletes.undo(t.id) }, () =>
-      setTimeout(() => deletes.finish(t.id), 10_000),
-    );
+    // Deleted for good after 10 seconds, so everyone else sees it go, even
+    // while its message stays up; the message then says so, without Undo.
+    let showing = true;
+    // This delete's own timer: one from an earlier delete of it, undone, mustn't finish this one.
+    const mine = Symbol();
+    deleteTimers.current.set(t.id, mine);
+    remember({ label: `Deleted #${t.number} ${t.title}`, undone: `Brought back #${t.number} ${t.title}`, task: t.number, undo: () => deletes.undo(t.id) }, () => {
+      showing = false;
+    });
+    setTimeout(() => {
+      if (deleteTimers.current.get(t.id) !== mine || !deletes.hidden.includes(t.id)) return;
+      deleteTimers.current.delete(t.id);
+      deletes.finish(t.id);
+      if (showing) toast({ message: `Deleted #${t.number} ${t.title} for good`, seconds: 6 });
+    }, 10_000);
   };
   useEffect(() => {
     const away = () => document.visibilityState === "hidden" && deletes.finishAll();
@@ -478,7 +491,7 @@ export function ProjectPage({ id }: { id: string }) {
     // Where it went, in view and focused.
     setTimeout(() => {
       const card = document.querySelector<HTMLElement>(`[aria-label^="#${moved.number} "]`);
-      card?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      card?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: scrollMotion() });
       card?.focus({ preventScroll: true });
     }, 50);
     movedTask(moved, { status_id: statusId, topic_id: topicId, position, ...(who && { assignee_person_id: who.person, assignee_session_id: who.session }) });
@@ -517,6 +530,8 @@ export function ProjectPage({ id }: { id: string }) {
                   type="button"
                   role="radio"
                   aria-checked={view === v}
+                  tabIndex={view === v ? 0 : -1}
+                  onKeyDown={radioArrows}
                   className={cn("rounded-md px-2.5 py-1", view === v ? "bg-background font-medium shadow-sm" : "text-foreground/75")}
                   onClick={() => setViewInAddress(v === "dev" ? "dev" : null)}
                 >
@@ -527,7 +542,7 @@ export function ProjectPage({ id }: { id: string }) {
           )}
           <GateButton />
           {/* ⌘K on a phone: find a task in any Project (#234). */}
-          <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search everything" onClick={openCommands}>
+          <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search everything" title="Search everything" onClick={openCommands}>
             <Search />
           </Button>
           {view !== "dev" && project.sessions.length > 0 && (
@@ -542,7 +557,7 @@ export function ProjectPage({ id }: { id: string }) {
             </Button>
           )}
           <ShareButton project={project} onClick={() => setShareOpen(true)} />
-          <Button variant="ghost" size="icon" aria-label="Project settings" onClick={() => setSettingsOpen(true)}>
+          <Button variant="ghost" size="icon" aria-label="Project settings" title="Project settings" onClick={() => setSettingsOpen(true)}>
             <Settings />
           </Button>
         </>
@@ -1026,7 +1041,7 @@ function Column({
       setJustAdded(number ?? null);
       onAdded(number, open);
       if (!open && number !== undefined) {
-        setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 400);
+        setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`)?.scrollIntoView({ block: "nearest", behavior: scrollMotion() }), 400);
       }
     }
   };
@@ -1082,7 +1097,7 @@ function Column({
         {(status || topic) && !renaming && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-8", !status?.is_done && "ml-auto")} aria-label="More for this column">
+            <Button variant="ghost" size="icon" className={cn("size-11 shrink-0 text-muted-foreground sm:size-8", !status?.is_done && "ml-auto")} aria-label={`More for ${status ? status.name : label}`}>
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
@@ -1230,7 +1245,7 @@ function Column({
           </div>
         </form>
       ) : (
-        <Button ref={addButton} variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" onClick={() => setAdding(true)}>
+        <Button ref={addButton} variant="ghost" size="sm" className="mt-2 justify-start text-muted-foreground" aria-label={`Add a task to ${status ? status.name : label}`} onClick={() => setAdding(true)}>
           <Plus /> Add a task
         </Button>
       )}
@@ -1464,7 +1479,7 @@ function ColumnJump({ groups, board }: { groups: Group[]; board: React.RefObject
           key={g.key}
           type="button"
           aria-current={i === first ? "true" : undefined}
-          onClick={() => (board.current?.children[i] as HTMLElement | undefined)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}
+          onClick={() => (board.current?.children[i] as HTMLElement | undefined)?.scrollIntoView({ behavior: scrollMotion(), inline: "start", block: "nearest" })}
           className={cn(
             "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[0.9375rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             i === first ? "bg-secondary font-medium" : "text-foreground/75",

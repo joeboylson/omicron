@@ -21,7 +21,7 @@ export function ShareButton({ project, onClick }: { project: ProjectData; onClic
   const shown = [...project.members].sort((a, b) => Number(a.id === me.personId) - Number(b.id === me.personId)).slice(0, 3);
   const n = project.members.length;
   return (
-    <Button variant="ghost" className="gap-1.5 px-2" aria-label={`Share, ${n} ${n === 1 ? "member" : "members"}`} onClick={onClick}>
+    <Button variant="ghost" className="gap-1.5 px-2" aria-label={`Share, ${n} ${n === 1 ? "member" : "members"}`} title="Share" onClick={onClick}>
       <span aria-hidden className="hidden -space-x-2 sm:flex">
         {shown.map((m) => (
           <span key={m.id} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-secondary text-[0.6875rem] font-medium">
