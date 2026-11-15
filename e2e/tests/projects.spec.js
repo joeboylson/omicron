@@ -2236,3 +2236,24 @@ test("⌘K finds tasks in every Project, and lists recently opened ones before y
   await page.keyboard.press("ControlOrMeta+k");
   await expect(page.getByRole("group", { name: "Recently opened" })).toContainText("Prune the roses");
 });
+
+test("someone added to a Project is told who added them, and can open it", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  await page.goto(omicron.url);
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  // Sam, elsewhere, adds Robin to Sam's Project (#244).
+  const sam = await sessionFor(request, omicron, `${unique("sam")}@example.com`, "Sam Example");
+  const garden = unique("Garden");
+  const project = await rest(request, sam, "POST", "/rest/v1/rpc/start_project", { name: garden });
+  await page.waitForTimeout(500);
+  await rest(request, sam, "POST", "/rest/v1/project_members", { project_id: project.id, person_id: robin.session.person_id });
+  const notice = page.getByRole("status").filter({ hasText: `Sam Example added you to ${garden}` });
+  await expect(notice).toBeVisible({ timeout: 15000 });
+  await notice.getByRole("button", { name: "Open" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: garden })).toBeVisible();
+  // Once: not again on the next visit.
+  await page.goto(omicron.url);
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  await page.waitForTimeout(1500);
+  await expect(page.getByRole("status").filter({ hasText: "added you to" })).toHaveCount(0);
+});

@@ -216,3 +216,23 @@ export async function deleteLabel(db: SupabaseClient, label: Label) {
 export async function setLabelColor(db: SupabaseClient, label: Label, color: string) {
   must(await db.from("labels").update({ color }).eq("id", label.id));
 }
+
+/** Projects someone else added you to since `since`, newest last, with
+ *  who did it: from the change lines, which the person added always sees (#244). */
+export async function addedToProjects(
+  db: SupabaseClient,
+  personId: string,
+  since: string,
+): Promise<{ at: string; projectId: string; by: string | null }[]> {
+  const rows = must(
+    await db
+      .from("changes")
+      .select("at,project_id,actor_id")
+      .eq("table_name", "project_members")
+      .eq("kind", "INSERT")
+      .eq("subject_id", personId)
+      .gt("at", since)
+      .order("at"),
+  ) as { at: string; project_id: string; actor_id: string | null }[];
+  return rows.filter((r) => r.actor_id !== personId).map((r) => ({ at: r.at, projectId: r.project_id, by: r.actor_id }));
+}
