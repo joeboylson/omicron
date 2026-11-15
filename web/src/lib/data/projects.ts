@@ -56,7 +56,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db.from("topics").select("id,name,position").eq("project_id", id).order("position").order("name"),
     db
       .from("loops")
-      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at")
+      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at,rules")
       .eq("project_id", id)
       .eq("kind", "command")
       .order("started_at", { ascending: false })
@@ -69,7 +69,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .eq("kind", "tasks")
       .order("started_at", { ascending: false })
       .limit(20),
-    db.from("loop_plans").select("id,name,kind,prompt,every_seconds,times,task_ids,session_id,template,created_at").eq("project_id", id).order("created_at"),
+    db.from("loop_plans").select("id,name,kind,prompt,every_seconds,times,task_ids,session_id,template,created_at,rules").eq("project_id", id).order("created_at"),
   ]);
   const p = must(project);
   if (!p) return null;

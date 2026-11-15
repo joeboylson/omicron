@@ -538,12 +538,19 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await wizard.getByLabel("Message").fill("Keep going with the next task");
     await wizard.getByLabel("Every").selectOption({ label: "15 minutes" });
     await wizard.getByRole("button", { name: "Next" }).click();
+    // Instructions (#261): what it does in each case; blank ones use the default shown.
+    await expect(wizard.getByRole("heading", { name: "Instructions" })).toBeVisible();
+    await expect(wizard.getByLabel("If it has a question")).toHaveAttribute("placeholder", /Don't ask it in the session/);
+    await wizard.getByLabel("If it has a question").fill("Put it in the Questions column.");
+    await wizard.getByRole("button", { name: "Next" }).click();
     await wizard.getByRole("radio", { name: /^parser/ }).click();
     // Run Now (#260): the first run at once, not in 15 minutes.
     await wizard.getByRole("switch", { name: "Run Now" }).click();
     await expect(wizard.getByRole("switch", { name: "Run Now" })).toBeChecked();
     await wizard.getByRole("button", { name: "Start", exact: true }).click();
     await expect(wizard).toHaveCount(0);
+    const [started] = await rest(request, robin.session, "GET", `/rest/v1/loops?prompt=eq.Keep%20going%20with%20the%20next%20task&state=eq.running&select=rules`);
+    expect(started.rules).toEqual({ question: "Put it in the Questions column." });
     // Its next run is now, not 15 minutes away.
     const [, hh, mm] = omicron.cli("loops", "list", "--project", name, "--as-machine").match(/next \w+ \d+ (\d+):(\d+)/);
     const next = new Date();

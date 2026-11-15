@@ -41,6 +41,25 @@ pub enum Loops {
         /// The first run straight away, instead of after one interval
         #[arg(long)]
         now: bool,
+        /// What the session does if it has a question (left out: comment on
+        /// the task, mark it for review, go on to the next thing)
+        #[arg(long, value_name = "TEXT")]
+        if_question: Option<String>,
+        /// If it needs more information (left out: look in the task, the
+        /// Project and the folder first, then treat it as a question)
+        #[arg(long, value_name = "TEXT")]
+        if_info: Option<String>,
+        /// When it finishes something (left out: comment what it did, mark it
+        /// for review, move the task on)
+        #[arg(long, value_name = "TEXT")]
+        if_done: Option<String>,
+        /// If it needs a person to do something (left out: say what's needed
+        /// on the task, mark it for review, go on)
+        #[arg(long, value_name = "TEXT")]
+        if_input: Option<String>,
+        /// If there's nothing left to do (left out: say so and end the turn)
+        #[arg(long, value_name = "TEXT")]
+        if_idle: Option<String>,
         /// The session (by name; needs --project)
         #[arg(long, requires = "project")]
         session: Option<String>,
@@ -63,7 +82,8 @@ pub enum Loops {
 
 pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
     match cmd {
-        Loops::Start { prompt, every, until, times, now, session, project } => {
+        Loops::Start { prompt, every, until, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
+            let rules = omicron::board::LoopRules { question: if_question, info: if_info, done: if_done, input: if_input, idle: if_idle };
             let every = parse_every(&every)?;
             let until = until.map(|u| parse_until(&u, Local::now())).transpose()?;
             if times == Some(0) {
@@ -71,7 +91,7 @@ pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
             }
             let (board, id, name) = target(session, project, as_machine)?;
             let one_line = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
-            let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times, now)?;
+            let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times, now, &rules)?;
             println!("Started a loop for {name}: every {}, {}.", say_every(every), say_end(&l));
             if now {
                 println!("First run now. Stop it with `omicron loops stop`.");
@@ -388,7 +408,8 @@ impl Runner {
             return Ok(());
         }
         omicron::windows::set_busy(&l.session_id, true)?;
-        omicron::tell::tell(&board, &session, &l.prompt)?;
+        // Said with each run: it's a loop, and what to do in each case (#261).
+        omicron::tell::tell(&board, &session, &l.message(&session.project))?;
         self.recorded(claimed, &l.id);
         Ok(())
     }

@@ -135,6 +135,9 @@ export type ProjectData = {
 };
 
 /** A loop not started yet (a draft), or a template to start new ones from. */
+/** What a loop's session does in each case (#261); a case left out uses the default. */
+export type LoopRules = { question?: string; info?: string; done?: string; input?: string; idle?: string };
+
 export type LoopPlan = {
   id: string;
   name: string;
@@ -146,6 +149,7 @@ export type LoopPlan = {
   session_id: string | null;
   template: boolean;
   created_at: string;
+  rules: LoopRules;
 };
 
 /** A session working down To do on its own (see `omicron runs`). */
@@ -182,6 +186,7 @@ export type SessionLoop = {
   note: string | null;
   next_run_at: string;
   last_run_at: string | null;
+  rules?: LoopRules;
 };
 
 /** Who a task is given to: a person, a Claude session, or (both null) nobody. */

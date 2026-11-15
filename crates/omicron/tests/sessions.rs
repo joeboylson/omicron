@@ -987,7 +987,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
 
     // Started from elsewhere: it only runs while the gate is open.
     open_gate(&mac, &pat);
-    let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--session", "parser", "--project", &project]);
+    let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--if-question", "Put it in the Questions column.", "--session", "parser", "--project", &project]);
     assert!(started.starts_with("Started a loop for parser: every 10m, 0 of 2 runs done."), "{started}");
     let o = run(&pat, None, &["loops", "start", "again", "--every", "10m", "--session", "parser", "--project", &project]);
     assert!(String::from_utf8_lossy(&o.stderr).contains("already on a loop"));
@@ -1011,7 +1011,11 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     };
     due_now();
     wait_for("the first run", || typed_lines(&mac).len() == 1);
-    assert_eq!(typed_lines(&mac), ["Keep going with the next task"]);
+    // The prompt, then that it's a loop and what to do in each case (#261).
+    let typed = typed_lines(&mac);
+    assert!(typed[0].starts_with("Keep going with the next task (This is an Omicron loop, run 1 of 2, every 10 minutes."), "{typed:?}");
+    assert!(typed[0].contains(&format!("`omicron tasks list \"{project}\"`")), "{typed:?}");
+    assert!(typed[0].contains("If you have a question: Put it in the Questions column."), "{typed:?}");
     wait_for("the run recorded", || ok(&pat, None, &["loops", "list", "--project", &project]).contains("1 of 2 runs done"));
 
     // Busy (a turn in progress): the due run waits, then goes in when the turn ends.

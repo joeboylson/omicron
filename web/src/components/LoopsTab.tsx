@@ -17,6 +17,7 @@ import {
   stopLoop,
   type ClaudeSession,
   type LoopPlan,
+  type LoopRules,
   type ProjectData,
   type Run,
   type SessionLoop,
@@ -68,7 +69,7 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
   // The New Loop sheet: fresh, from a draft, or from a template.
   const [wizard, setWizard] = useState<{ from?: LoopPlan } | null>(null);
   const [openRun, setOpenRun] = useState<Run | null>(null);
-  const [naming, setNaming] = useState<{ kind: "command" | "tasks"; prompt: string; every_seconds: number | null; times: number | null; name: string } | null>(null);
+  const [naming, setNaming] = useState<{ kind: "command" | "tasks"; prompt: string; every_seconds: number | null; times: number | null; rules: LoopRules; name: string } | null>(null);
   const [deleting, setDeleting] = useState<LoopPlan | null>(null);
   const change = async (work: () => Promise<unknown>) => {
     if (await act(work)) onChanged();
@@ -115,6 +116,7 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
       prompt,
       every_seconds: r.plan?.every_seconds ?? r.loop?.every_seconds ?? null,
       times: r.plan?.times ?? r.loop?.times ?? null,
+      rules: r.plan?.rules ?? r.loop?.rules ?? {},
       name: r.kind === "command" ? prompt.slice(0, 40) : "Work through tasks",
     });
   };
@@ -318,7 +320,17 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
   );
 }
 
-type Step = "kind" | "template" | "command" | "tasks" | "session";
+type Step = "kind" | "template" | "command" | "rules" | "tasks" | "session";
+
+/** A loop's cases (#261), with what the session does when one's left
+ *  blank (the same defaults as `LoopRules` in the Rust code). */
+const RULE_CASES: [keyof LoopRules, string, string][] = [
+  ["question", "If it has a question", "Don't ask it in the session. Write it as a comment on its task, mark the task for review, and go on to the next thing."],
+  ["info", "If it needs more information", "Look in the task's notes and comments, the Project's other tasks and its folder first; if it still isn't there, treat it as a question."],
+  ["done", "When it finishes something", "Comment on the task saying what it did, mark it for review, and move it to the status that fits."],
+  ["input", "If it needs a person", "Comment on the task saying exactly what's needed and from whom, mark it for review, and go on to the next thing."],
+  ["idle", "If there's nothing left to do", "Say so in one line and end the turn; the next run checks again."],
+];
 
 /**
  * New Loop, step by step: what kind (a command, a set of tasks, or a
@@ -327,6 +339,16 @@ type Step = "kind" | "template" | "command" | "tasks" | "session";
  * is; on a template, it starts from it (a template's tasks and session are
  * always chosen fresh).
  */
+/** Only the cases that were filled in (blank ones use the default). */
+function cleanRules(rules: LoopRules): LoopRules {
+  return Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v?.trim()]).filter(([, v]) => v)) as LoopRules;
+}
+
+/** The cases as `omicron loops start` options, for starting on this computer. */
+function ruleFlags(rules: LoopRules): Record<string, string> {
+  return Object.fromEntries(Object.entries(cleanRules(rules)).map(([k, v]) => [`if_${k}`, v as string]));
+}
+
 function NewLoop({
   project,
   dev,
@@ -346,6 +368,7 @@ function NewLoop({
   const [prompt, setPrompt] = useState(from?.prompt ?? "");
   const [every, setEvery] = useState(from?.every_seconds ?? 600);
   const [times, setTimes] = useState<number | null>(from?.times ?? null);
+  const [rules, setRules] = useState<LoopRules>(from?.rules ?? {});
   // The first run straight away, instead of after one interval (#260).
   const [runNow, setRunNow] = useState(false);
   const [picked, setPicked] = useState<string[]>(draft?.task_ids ?? []);
@@ -373,6 +396,7 @@ function NewLoop({
     times: kind === "command" ? times : null,
     task_ids: kind === "tasks" ? picked : [],
     session_id: sessionId,
+    rules: kind === "command" ? cleanRules(rules) : {},
   });
   const saveDraft = () =>
     act(async () => {
@@ -392,17 +416,17 @@ function NewLoop({
           db,
           "/run",
           kind === "command"
-            ? { action: "loops-start", session: session.name, project: project.name, prompt: prompt.trim(), every: sayEvery(every), times: times ? String(times) : "", now: runNow ? "true" : "" }
+            ? { action: "loops-start", session: session.name, project: project.name, prompt: prompt.trim(), every: sayEvery(every), times: times ? String(times) : "", now: runNow ? "true" : "", ...ruleFlags(rules) }
             : { action: "runs-start", session: session.name, project: project.name, tasks: numbers.join(",") },
         );
       } else {
-        await startLoop(db, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times, now: runNow } : { kind, task_ids: picked });
+        await startLoop(db, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times, now: runNow, rules: cleanRules(rules) } : { kind, task_ids: picked });
       }
       if (draft) await deletePlan(db, draft);
       onChanged();
       onClose();
     });
-  const title = { kind: "New Loop", template: "From a Template", command: "The Command", tasks: "The Tasks", session: "The Session" }[step];
+  const title = { kind: "New Loop", template: "From a Template", command: "The Command", rules: "Instructions", tasks: "The Tasks", session: "The Session" }[step];
   const canNext = step === "command" ? prompt.trim() !== "" : step === "tasks" ? picked.length > 0 : true;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -449,6 +473,7 @@ function NewLoop({
                     setPrompt(t.prompt);
                     setEvery(t.every_seconds ?? 600);
                     setTimes(t.times);
+                    setRules(t.rules ?? {});
                     go(t.kind);
                   }}
                 >
@@ -522,6 +547,25 @@ function NewLoop({
           </div>
         )}
 
+        {step === "rules" && (
+          <div className="grid gap-4">
+            {RULE_CASES.map(([key, label, fallback]) => (
+              <div key={key} className="grid gap-1.5">
+                <label htmlFor={`loop-rule-${key}`} className="text-sm font-medium">
+                  {label}
+                </label>
+                <Textarea
+                  id={`loop-rule-${key}`}
+                  rows={2}
+                  value={rules[key] ?? ""}
+                  onChange={(e) => setRules({ ...rules, [key]: e.target.value })}
+                  placeholder={fallback}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
         {step === "session" && (
           <div role="radiogroup" aria-label="Session" className="grid gap-2">
             {sessions.length === 0 && <p className="text-sm text-muted-foreground">No Claude sessions to run it in yet. Save it as a draft for now.</p>}
@@ -558,8 +602,8 @@ function NewLoop({
           <Button type="button" variant="ghost" onClick={() => (back.length ? (setStep(back[back.length - 1]), setBack((b) => b.slice(0, -1))) : onClose())}>
             {back.length ? "Back" : "Cancel"}
           </Button>
-          {(step === "command" || step === "tasks") && (
-            <Button type="button" disabled={!canNext} onClick={() => go("session")}>
+          {(step === "command" || step === "rules" || step === "tasks") && (
+            <Button type="button" disabled={!canNext} onClick={() => go(step === "command" ? "rules" : "session")}>
               Next
             </Button>
           )}

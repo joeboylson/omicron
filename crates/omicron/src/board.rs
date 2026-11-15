@@ -208,6 +208,78 @@ pub struct Loop {
     #[serde(default)]
     pub started_by: Option<String>,
     pub last_run_at: Option<String>,
+    /// What the session does in each case (#261); a case left out uses the default.
+    #[serde(default)]
+    pub rules: LoopRules,
+}
+
+impl LoopRules {
+    pub const QUESTION: &'static str = "don't ask it here. Write it as a comment on its task (`omicron tasks comment`), mark the task for review (`omicron tasks needs-review`), and go on to the next thing";
+    pub const INFO: &'static str = "look in the task's notes and comments, the Project's other tasks and this folder first; if it still isn't there, treat it as a question";
+    pub const DONE: &'static str = "comment on the task saying what you did, mark it for review, and move it to the status that fits";
+    pub const INPUT: &'static str = "comment on the task saying exactly what's needed and from whom, mark it for review, and go on to the next thing";
+    pub const IDLE: &'static str = "say so in one line and end your turn; the next run checks again";
+
+    /// The text for each case: what was set, or the default.
+    pub fn filled(&self) -> [(&'static str, String); 5] {
+        let pick = |v: &Option<String>, d: &str| v.as_deref().map(str::trim).filter(|t| !t.is_empty()).unwrap_or(d).trim_end_matches('.').to_string();
+        [
+            ("If you have a question", pick(&self.question, Self::QUESTION)),
+            ("If you need more information", pick(&self.info, Self::INFO)),
+            ("When you finish something", pick(&self.done, Self::DONE)),
+            ("If you need a person to do something", pick(&self.input, Self::INPUT)),
+            ("If there's nothing left to do", pick(&self.idle, Self::IDLE)),
+        ]
+    }
+}
+
+impl Loop {
+    /// What's typed into the session on a run (#261): the prompt, then that
+    /// it's an Omicron loop (which run, how often, nobody watching), where
+    /// its tasks are, and what to do in each case. One line, like a prompt.
+    pub fn message(&self, project: &str) -> String {
+        let run = self.runs + 1;
+        let which = match self.times {
+            Some(t) => format!("run {run} of {t}"),
+            None => format!("run {run}"),
+        };
+        let mut out = format!(
+            "{} (This is an Omicron loop, {which}, every {}. Nobody is watching this window, so don't stop to ask anything here. \
+             The tasks are the {project} Project's, on its Omicron board: `omicron tasks list \"{project}\"`.",
+            self.prompt.trim(),
+            every_words(self.every_seconds),
+        );
+        for (case, what) in self.rules.filled() {
+            out.push_str(&format!(" {case}: {what}."));
+        }
+        out.push(')');
+        out.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+}
+
+/// "15 minutes", "1 hour", "1 hour 30 minutes", "2 days".
+fn every_words(secs: i64) -> String {
+    let unit = |n: i64, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") };
+    let (d, h, m) = (secs / 86_400, secs % 86_400 / 3600, secs % 3600 / 60);
+    let parts: Vec<String> = [(d, "day"), (h, "hour"), (m, "minute")].iter().filter(|(n, _)| *n > 0).map(|(n, u)| unit(*n, u)).collect();
+    if parts.is_empty() { unit(secs, "second") } else { parts.join(" ") }
+}
+
+/// What a loop's session does if it has a question, needs more
+/// information, finishes something, needs a person, or runs out of work
+/// (#261). Each is optional: `None` (or blank) uses the default.
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct LoopRules {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub info: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle: Option<String>,
 }
 
 /// A team (see `teams_cmd`), as Supabase keeps it.
@@ -1575,12 +1647,13 @@ impl Board {
 
     /// Start a loop for a session (one running loop per session).
     /// `now`: the first run straight away instead of after one interval (#260).
-    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: i64, until: Option<&str>, times: Option<i64>, now: bool) -> Result<Loop> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: i64, until: Option<&str>, times: Option<i64>, now: bool, rules: &LoopRules) -> Result<Loop> {
         let rows = self
             .send(
                 "POST",
                 "/rest/v1/loops",
-                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times, "next_run_at": if now { Some("now") } else { None } }),
+                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times, "next_run_at": if now { Some("now") } else { None }, "rules": rules }),
             )
             .map_err(|e| {
                 if crate::supa::said(&e, "loops_one_per_session") {
@@ -1799,6 +1872,43 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn a_loop(times: Option<i64>, runs: i64, rules: LoopRules) -> Loop {
+        Loop {
+            id: "l".into(),
+            session_id: "s".into(),
+            machine_id: "m".into(),
+            prompt: "Check the To do column.".into(),
+            every_seconds: 5400,
+            until: None,
+            times,
+            runs,
+            state: "running".into(),
+            note: None,
+            next_run_at: "2026-11-15T00:00:00Z".into(),
+            started_by: None,
+            last_run_at: None,
+            rules,
+        }
+    }
+
+    #[test]
+    fn a_loops_message_says_its_a_loop_and_what_to_do_in_each_case() {
+        let m = a_loop(Some(20), 2, LoopRules::default()).message("Home Lab");
+        assert!(m.starts_with("Check the To do column. (This is an Omicron loop, run 3 of 20, every 1 hour 30 minutes."), "{m}");
+        assert!(m.contains("Nobody is watching this window"), "{m}");
+        assert!(m.contains("`omicron tasks list \"Home Lab\"`"), "{m}");
+        assert!(m.contains(&format!("If you have a question: {}.", LoopRules::QUESTION)), "{m}");
+        assert!(m.contains(&format!("If there's nothing left to do: {}.", LoopRules::IDLE)), "{m}");
+        assert!(!m.contains('\n'), "one line: {m}");
+        // A case that's set replaces its default; a blank one keeps it.
+        let set = LoopRules { question: Some("Ask in the Questions column.".into()), idle: Some("  ".into()), ..Default::default() };
+        let m = a_loop(None, 0, set).message("Home Lab");
+        assert!(m.contains("run 1, every"), "{m}");
+        assert!(m.contains("If you have a question: Ask in the Questions column."), "{m}");
+        assert!(!m.contains(LoopRules::QUESTION), "{m}");
+        assert!(m.contains(LoopRules::IDLE), "{m}");
+    }
 
     #[test]
     fn to_do_is_the_first_status_that_isnt_done() {

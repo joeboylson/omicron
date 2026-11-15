@@ -598,6 +598,11 @@ impl WebMachine {
                 if s("now") == "true" {
                     a.push("--now".into());
                 }
+                for (key, flag) in [("if_question", "--if-question"), ("if_info", "--if-info"), ("if_done", "--if-done"), ("if_input", "--if-input"), ("if_idle", "--if-idle")] {
+                    if !s(key).trim().is_empty() {
+                        a.extend([flag.into(), s(key)]);
+                    }
+                }
                 a
             }
             "runs-start" => {
