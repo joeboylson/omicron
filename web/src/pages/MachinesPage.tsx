@@ -4,8 +4,9 @@
 // registers a machine and shows its key once. Machines are switched off or
 // removed here. The web version of `omicron machines`.
 
+import { CopyButton } from "@/components/CopyButton";
 import { useCallback, useRef, useEffect, useState } from "react";
-import { Check, Copy, KeyRound, MoreHorizontal, Power, Trash2 } from "lucide-react";
+import { KeyRound, MoreHorizontal, Power, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 import { useApp } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -221,7 +222,6 @@ function NewKey({
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [key, setKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   // Fresh each time it opens (not when the list reloads, which live
   // updates do while you're typing).
   // Whether the Projects were ticked or unticked by hand since it opened.
@@ -232,7 +232,6 @@ function NewKey({
       setPicked(projects.length === 1 ? [projects[0]!.id] : []);
       setTouched(false);
       setKey(null);
-      setCopied(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -265,15 +264,7 @@ function NewKey({
               {command}
             </code>
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  await navigator.clipboard?.writeText(command).catch(() => {});
-                  setCopied(true);
-                }}
-              >
-                {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
-              </Button>
+              <CopyButton text={command} variant="secondary" size="default" icon />
               <Button onClick={() => onOpenChange(false)}>Done</Button>
             </DialogFooter>
           </>

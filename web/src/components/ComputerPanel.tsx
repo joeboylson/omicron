@@ -1,3 +1,4 @@
+import { CopyButton } from "@/components/CopyButton";
 import { useEffect, useState } from "react";
 import { Computer } from "lucide-react";
 import { useApp } from "@/lib/app";
@@ -221,15 +222,12 @@ function LoopForm({ session, onStart }: { session: string; onStart: (prompt: str
 
 /** Something only a terminal can do: what it's for, and the words to paste. */
 function CopyRow({ intro, command }: { intro: string; command: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <div className="grid gap-1.5 px-4 py-2 text-sm">
       <span>{intro}</span>
       <span className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1">
         <code className="flex-1 break-all font-mono text-xs">{command}</code>
-        <Button variant="ghost" size="sm" className="h-8" onClick={() => navigator.clipboard?.writeText(command).then(() => setCopied(true), () => {})}>
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        <CopyButton text={command} className="h-8" />
       </span>
     </div>
   );

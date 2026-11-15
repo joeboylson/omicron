@@ -1,3 +1,4 @@
+import { CopyButton } from "@/components/CopyButton";
 import { useState } from "react";
 import { Confirm } from "@/components/base/confirm";
 import { Folder as FolderIcon, LogOut, Plus, Terminal as TerminalIcon, Undo2, X } from "lucide-react";
@@ -391,10 +392,9 @@ function folderParts(path: string): { name: string; parent: string } {
 
 /** Add a folder: done on this computer, in the folder, with a command to copy. */
 function AddFolder() {
-  const [copied, setCopied] = useState(false);
   const command = "omicron folders add";
   return (
-    <Popover onOpenChange={() => setCopied(false)}>
+    <Popover>
       <PopoverTrigger asChild>
         <button type="button" className="mb-3 flex items-center gap-1 rounded px-1 py-1 text-xs text-link hover:bg-muted">
           <Plus className="h-3.5 w-3.5" aria-hidden /> Add Folder
@@ -404,13 +404,7 @@ function AddFolder() {
         <p>In the folder, on this computer, run:</p>
         <div className="flex items-center gap-2 rounded-md bg-muted py-1 pl-3 pr-1">
           <code className="flex-1 font-mono text-xs">{command}</code>
-          <button
-            type="button"
-            className="rounded px-2 py-1 text-xs hover:bg-background"
-            onClick={() => navigator.clipboard?.writeText(command).then(() => setCopied(true), () => {})}
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
+          <CopyButton text={command} className="h-8 px-2 text-xs" />
         </div>
         <p className="text-muted-foreground">Opening a Claude session in a folder adds it too.</p>
       </PopoverContent>

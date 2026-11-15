@@ -2,6 +2,7 @@
 // (the ones you can see). Any member can add people to their Projects or
 // take them out. Mirrors `omicron people`.
 
+import { CopyButton } from "@/components/CopyButton";
 import { useCallback, useEffect, useState } from "react";
 import { FolderKanban, MoreHorizontal, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
@@ -233,12 +234,11 @@ export function PeoplePage() {
 /** How someone new gets in: they open this page's address and sign in with
  *  Tailscale; then they're listed here, to add to Projects. */
 function AddPerson({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const [copied, setCopied] = useState(false);
   const address = window.location.origin;
   // Opened on this computer itself, the address is one only it can use.
   const here = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(address);
   return (
-    <Dialog open={open} onOpenChange={(o) => (onOpenChange(o), setCopied(false))}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-4 sm:max-w-md">
         <DialogHeader className="text-left">
           <DialogTitle>Add someone</DialogTitle>
@@ -251,18 +251,7 @@ function AddPerson({ open, onOpenChange }: { open: boolean; onOpenChange: (open:
         {!here && (
           <div className="flex items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
             <code className="min-w-0 flex-1 break-all tabular-nums text-sm">{address}</code>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                navigator.clipboard?.writeText(address).then(
-                  () => setCopied(true),
-                  () => {},
-                )
-              }
-            >
-              {copied ? "Copied" : "Copy"}
-            </Button>
+            <CopyButton text={address} />
           </div>
         )}
         <p className="text-sm text-muted-foreground">They need to be on your Tailscale network to open it.</p>

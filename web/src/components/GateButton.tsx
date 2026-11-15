@@ -1,3 +1,4 @@
+import { CopyButton } from "@/components/CopyButton";
 import { useEffect, useState } from "react";
 import { MonitorSmartphone, MonitorX } from "lucide-react";
 import { useApp } from "@/lib/app";
@@ -91,7 +92,6 @@ export function GateButton() {
 
 /** Opening it from elsewhere isn't allowed: the command to run on it, to copy. */
 function OpenOnIt({ machine, until }: { machine: string; until: string }) {
-  const [copied, setCopied] = useState(false);
   const command = `omicron remote on --until ${until}`;
   return (
     <div className="grid gap-1.5">
@@ -100,19 +100,7 @@ function OpenOnIt({ machine, until }: { machine: string; until: string }) {
       </p>
       <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted py-1.5 pl-3 pr-1">
         <code className="min-w-0 flex-1 font-mono text-xs">{command}</code>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 shrink-0"
-          onClick={() =>
-            navigator.clipboard?.writeText(command).then(
-              () => setCopied(true),
-              () => {},
-            )
-          }
-        >
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        <CopyButton text={command} className="h-8 shrink-0" />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 // Who's in a Project, in one place from the board's header: its members
 // (add and take out), and the link to send someone new.
+import { CopyButton } from "@/components/CopyButton";
 import { useEffect, useState } from "react";
 import { Share } from "lucide-react";
 import { useApp } from "@/lib/app";
@@ -47,10 +48,8 @@ export function ShareSheet({
 }) {
   const { db, act } = useApp();
   const [people, setPeople] = useState<Person[]>([]);
-  const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (open) {
-      setCopied(false);
       act(async () => setPeople(await listPeople(db)));
     }
   }, [open, db, act]);
@@ -79,19 +78,7 @@ export function ShareSheet({
               <span className="min-w-0 flex-1 truncate text-sm" title={link}>
                 {link.replace(/^https?:\/\//, "")}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-link"
-                onClick={() =>
-                  navigator.clipboard?.writeText(link).then(
-                    () => setCopied(true),
-                    () => {},
-                  )
-                }
-              >
-                {copied ? "Copied" : "Copy Link"}
-              </Button>
+              <CopyButton text={link} label="Copy Link" className="text-link" />
               {canShare && (
                 <Button variant="ghost" size="sm" className="text-link" onClick={() => navigator.share({ title: project.name, url: link }).catch(() => {})}>
                   Share…

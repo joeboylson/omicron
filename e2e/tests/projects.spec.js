@@ -502,6 +502,13 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await expect(accounts).toContainText("No Claude accounts saved on this computer.");
     await expect(accounts).not.toContainText("<name>");
     await expect(accounts.getByRole("button", { name: "Copy" })).toBeVisible();
+    // Copying refused: it says so, not "Copied" (#243).
+    await page.evaluate(() => {
+      navigator.clipboard.writeText = () => Promise.reject(new Error("no"));
+      document.execCommand = () => false;
+    });
+    await accounts.getByRole("button", { name: "Copy" }).click();
+    await expect(accounts.getByRole("button", { name: "Couldn't Copy" })).toBeVisible();
     await expect(sheet.getByRole("region", { name: "Teams" })).toBeVisible();
 
     // A loop for a session here: started and stopped from the page.

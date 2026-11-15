@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/copy";
 import { Confirm } from "@/components/base/confirm";
 import { useEffect, useState } from "react";
 import { AlertCircle, Copy, Repeat, Terminal } from "lucide-react";
@@ -127,11 +128,11 @@ function SessionNotes({
     : tasks.length > 0
       ? `#${tasks[0].number} ${tasks[0].title} is waiting for it`
       : "Nothing given to it";
-  const [copied, setCopied] = useState<number | null>(null);
+  // Which note's command was copied, or couldn't be (#243).
+  const [copied, setCopied] = useState<{ n: number; ok: boolean } | null>(null);
   const copy = async (n: HandoffNote) => {
     // Pastes into any Claude session to continue from this note.
-    await navigator.clipboard?.writeText(`omicron handoff show '${project.name}' ${n.number} --pickup`).catch(() => {});
-    setCopied(n.number);
+    setCopied({ n: n.number, ok: await copyText(`omicron handoff show '${project.name}' ${n.number} --pickup`) });
   };
   return (
     <>
@@ -224,7 +225,7 @@ function SessionNotes({
                     onClick={() => copy(n)}
                   >
                     <Copy className="h-3.5 w-3.5" />
-                    {copied === n.number ? "Copied" : "Copy"}
+                    {copied?.n === n.number ? (copied.ok ? "Copied" : "Couldn't Copy") : "Copy"}
                   </Button>
                 </div>
                 <Markdown text={n.body} className="line-clamp-[12] text-[0.9375rem] sm:text-sm" />
