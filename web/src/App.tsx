@@ -109,7 +109,7 @@ export default function App() {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-6">
         <h1 className="text-2xl font-semibold">
-          {signInError.words === OFFLINE_WORDS ? "You're offline" : signInError.who ? "We couldn't tell who you are" : "Omicron couldn't open"}
+          {signInError.words === OFFLINE_WORDS ? "You're offline" : signInError.who ? "Couldn't tell who you are" : "Omicron couldn't open"}
         </h1>
         <div role="alert" className="grid gap-2">
           {signInError.words === OFFLINE_WORDS ? (

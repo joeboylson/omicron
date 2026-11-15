@@ -1676,7 +1676,6 @@ test("appearance: Light, Dark or the system, saved with you and on every device"
   await page.goto(omicron.url);
   // Your menu, with Settings in it (#162).
   await page.getByTestId("me").click();
-  await page.getByRole("menuitem", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
   // The same top bar as the other pages.
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
@@ -1717,7 +1716,6 @@ test("Machines: make a key for a new machine, see it, change its Projects, switc
   await startProjectIn(page, name);
   await page.goto(omicron.url);
   await page.getByTestId("me").click();
-  await page.getByRole("menuitem", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Machines and their keys" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Machines" })).toBeVisible();
 
