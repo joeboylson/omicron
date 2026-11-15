@@ -111,10 +111,12 @@ export async function addTaskToPlan(db: SupabaseClient, plan: LoopPlan, taskId: 
 export async function startLoop(
   db: SupabaseClient,
   session: ClaudeSession,
-  what: { kind: "command"; prompt: string; every_seconds: number; times: number | null } | { kind: "tasks"; task_ids: string[] },
+  what: { kind: "command"; prompt: string; every_seconds: number; times: number | null; now?: boolean } | { kind: "tasks"; task_ids: string[] },
 ) {
   if (what.kind === "command") {
-    must(await db.from("loops").insert({ kind: "command", session_id: session.id, prompt: what.prompt, every_seconds: what.every_seconds, times: what.times }));
+    must(await db.from("loops").insert({ kind: "command", session_id: session.id, prompt: what.prompt, every_seconds: what.every_seconds, times: what.times,
+        // Any first run time given means "run now" (#260); none waits one interval.
+        ...(what.now ? { next_run_at: new Date().toISOString() } : {}) }));
   } else {
     must(
       await db.from("loops").insert({ kind: "tasks", session_id: session.id, task_ids: what.task_ids }),

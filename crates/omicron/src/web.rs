@@ -595,6 +595,9 @@ impl WebMachine {
                 if !s("times").is_empty() {
                     a.extend(["--times".into(), s("times")]);
                 }
+                if s("now") == "true" {
+                    a.push("--now".into());
+                }
                 a
             }
             "runs-start" => {

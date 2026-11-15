@@ -25,6 +25,7 @@ import { Button } from "@/components/base/button";
 import { Input } from "@/components/base/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/base/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, focusSheet } from "@/components/base/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
@@ -345,6 +346,8 @@ function NewLoop({
   const [prompt, setPrompt] = useState(from?.prompt ?? "");
   const [every, setEvery] = useState(from?.every_seconds ?? 600);
   const [times, setTimes] = useState<number | null>(from?.times ?? null);
+  // The first run straight away, instead of after one interval (#260).
+  const [runNow, setRunNow] = useState(false);
   const [picked, setPicked] = useState<string[]>(draft?.task_ids ?? []);
   const [sessionId, setSessionId] = useState<string | null>(draft?.session_id ?? null);
   const [query, setQuery] = useState("");
@@ -389,11 +392,11 @@ function NewLoop({
           db,
           "/run",
           kind === "command"
-            ? { action: "loops-start", session: session.name, project: project.name, prompt: prompt.trim(), every: sayEvery(every), times: times ? String(times) : "" }
+            ? { action: "loops-start", session: session.name, project: project.name, prompt: prompt.trim(), every: sayEvery(every), times: times ? String(times) : "", now: runNow ? "true" : "" }
             : { action: "runs-start", session: session.name, project: project.name, tasks: numbers.join(",") },
         );
       } else {
-        await startLoop(db, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times } : { kind, task_ids: picked });
+        await startLoop(db, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times, now: runNow } : { kind, task_ids: picked });
       }
       if (draft) await deletePlan(db, draft);
       onChanged();
@@ -543,6 +546,12 @@ function NewLoop({
               </button>
             ))}
           </div>
+        )}
+        {step === "session" && kind === "command" && (
+          <label className="flex min-h-11 items-center gap-3 rounded-lg border px-4 py-2">
+            <span className="flex-1">Run Now</span>
+            <Switch checked={runNow} onCheckedChange={setRunNow} aria-label="Run Now" />
+          </label>
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">

@@ -38,6 +38,9 @@ pub enum Loops {
         /// Stop after this many runs
         #[arg(long)]
         times: Option<i64>,
+        /// The first run straight away, instead of after one interval
+        #[arg(long)]
+        now: bool,
         /// The session (by name; needs --project)
         #[arg(long, requires = "project")]
         session: Option<String>,
@@ -60,7 +63,7 @@ pub enum Loops {
 
 pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
     match cmd {
-        Loops::Start { prompt, every, until, times, session, project } => {
+        Loops::Start { prompt, every, until, times, now, session, project } => {
             let every = parse_every(&every)?;
             let until = until.map(|u| parse_until(&u, Local::now())).transpose()?;
             if times == Some(0) {
@@ -68,9 +71,13 @@ pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
             }
             let (board, id, name) = target(session, project, as_machine)?;
             let one_line = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
-            let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times)?;
+            let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times, now)?;
             println!("Started a loop for {name}: every {}, {}.", say_every(every), say_end(&l));
-            println!("First run at {}. Stop it with `omicron loops stop`.", say_time(&l.next_run_at));
+            if now {
+                println!("First run now. Stop it with `omicron loops stop`.");
+            } else {
+                println!("First run at {}. Stop it with `omicron loops stop`.", say_time(&l.next_run_at));
+            }
         }
         Loops::List { project } => {
             let board = sign_in(as_machine)?;

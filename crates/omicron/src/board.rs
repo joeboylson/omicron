@@ -1574,12 +1574,13 @@ impl Board {
     }
 
     /// Start a loop for a session (one running loop per session).
-    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: i64, until: Option<&str>, times: Option<i64>) -> Result<Loop> {
+    /// `now`: the first run straight away instead of after one interval (#260).
+    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: i64, until: Option<&str>, times: Option<i64>, now: bool) -> Result<Loop> {
         let rows = self
             .send(
                 "POST",
                 "/rest/v1/loops",
-                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times }),
+                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times, "next_run_at": if now { Some("now") } else { None } }),
             )
             .map_err(|e| {
                 if crate::supa::said(&e, "loops_one_per_session") {

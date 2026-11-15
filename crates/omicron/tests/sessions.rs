@@ -1029,8 +1029,14 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     let l = s.admin_request("GET", &format!("/rest/v1/loops?id=eq.{loop_id}&select=state,runs"), None).unwrap();
     assert_eq!((l[0]["state"].as_str(), l[0]["runs"].as_i64()), (Some("finished"), Some(2)));
 
-    // Another loop; the session is quit: it ends, and its loop with it.
-    ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--session", "parser", "--project", &project]);
+    // Another loop, started with --now (#260): its first run is due straight
+    // away, not in an hour. The session is quit: it ends, and its loop with it.
+    let said = ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--now", "--session", "parser", "--project", &project]);
+    assert!(said.contains("First run now."), "{said}");
+    wait_for("the first run, straight away", || {
+        let l = s.admin_request("GET", &format!("/rest/v1/loops?session_id=eq.{sid}&prompt=eq.Check%20in&select=runs"), None).unwrap();
+        l[0]["runs"].as_i64().unwrap_or(0) >= 1
+    });
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("parser\t"));
     close_window(&mac, w);
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
