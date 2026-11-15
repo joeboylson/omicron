@@ -819,6 +819,34 @@ impl Board {
         Ok(made[0]["id"].as_str().context("label wasn't made")?.to_string())
     }
 
+    /// Move a column (a status or a topic, by `table`) one place left or
+    /// right on the board (#259). The columns are renumbered 1, 2, 3… in
+    /// their new order, so ties and odd gaps sort themselves out too.
+    pub fn move_column(&self, project: &Project, table: &str, name: &str, left: bool) -> Result<()> {
+        let rows = self.get(&format!("/rest/v1/{table}?project_id=eq.{}&select=id,name,position&order=position,name", project.id))?;
+        let mut cols: Vec<(String, String, f64)> = rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| (r["id"].as_str().unwrap_or("").to_string(), r["name"].as_str().unwrap_or("").to_string(), r["position"].as_f64().unwrap_or(0.0)))
+            .collect();
+        let what = if table == "statuses" { "status" } else { "topic" };
+        let i = cols.iter().position(|c| c.1.eq_ignore_ascii_case(name)).with_context(|| {
+            let names: Vec<&str> = cols.iter().map(|c| c.1.as_str()).collect();
+            format!("{} has no {what} called {name}. It has: {}", project.name, names.join(", "))
+        })?;
+        let j = if left { i.checked_sub(1) } else { Some(i + 1).filter(|&j| j < cols.len()) };
+        let j = j.with_context(|| format!("{} is already {}", cols[i].1, if left { "first" } else { "last" }))?;
+        cols.swap(i, j);
+        for (n, (id, _, position)) in cols.iter().enumerate() {
+            let want = (n + 1) as f64;
+            if *position != want {
+                self.send("PATCH", &format!("/rest/v1/{table}?id=eq.{id}"), json!({ "position": want }))?;
+            }
+        }
+        Ok(())
+    }
+
     /// A Project's topics, in board order.
     pub fn topics(&self, project: &Project) -> Result<Vec<String>> {
         let rows = self.get(&format!("/rest/v1/topics?project_id=eq.{}&select=name&order=position,name", project.id))?;

@@ -1,9 +1,9 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
-import { addStatus, addTopic, deleteStatus, deleteTopic, renameStatus, renameTopic, updateTask, deleteTask, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task } from "@/lib/data";
+import { addStatus, addTopic, deleteStatus, deleteTopic, renameStatus, renameTopic, updateTask, deleteTask, moveColumn, loadProject, moveTask, putTaskBack, organize, renumberTasks, type ProjectData, type Status, type Task } from "@/lib/data";
 import { usePendingChanges, useUndoableDelete } from "@/lib/pending";
 import { dropPlace, inOrder, matches as shows, parseColumn, type ColumnKind } from "@/lib/board-rules";
 import {
@@ -1160,6 +1160,22 @@ function Column({
             )}
             {/* The column itself, changed where it is (HIG settings #7). */}
             <DropdownMenuSeparator />
+            {(() => {
+              // Its place among its own kind of column (#259).
+              const cols = status ? project.statuses : project.topics;
+              const at = cols.findIndex((c) => c.id === (status ? status.id : topic!.id));
+              const move = (by: -1 | 1) => act(() => moveColumn(db, status ? "statuses" : "topics", cols, at, by)).then(() => onAdded());
+              return (
+                <>
+                  <DropdownMenuItem disabled={at <= 0} onSelect={() => move(-1)}>
+                    <ArrowLeft /> Move Left
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={at < 0 || at >= cols.length - 1} onSelect={() => move(1)}>
+                    <ArrowRight /> Move Right
+                  </DropdownMenuItem>
+                </>
+              );
+            })()}
             <DropdownMenuItem
               onSelect={() => {
                 setNewName(status ? status.name : (topic?.name ?? ""));

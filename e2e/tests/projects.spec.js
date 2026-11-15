@@ -2233,7 +2233,8 @@ test("Settings: Ctrl/⌘-, opens it, shortcuts are a row, machine things only fo
 
 test("columns are added, renamed and deleted from the board itself", async ({ page, request }) => {
   await newPerson(page, request);
-  await startProjectIn(page, unique("House"));
+  const name = unique("House");
+  await startProjectIn(page, name);
   // (#228) New column at the end of the board: before Done.
   await page.getByRole("button", { name: "New Column" }).click();
   await page.getByLabel("New column").fill("Waiting");
@@ -2245,6 +2246,19 @@ test("columns are added, renamed and deleted from the board itself", async ({ pa
   await page.getByLabel("Column name").fill("Waiting on someone");
   await page.keyboard.press("Enter");
   await expect(column(page, "Waiting on someone")).toBeVisible();
+  // Moved left and right from the same menu (#259); not past either end.
+  await column(page, "Waiting on someone").getByRole("button", { name: /^More for / }).click();
+  await page.getByRole("menuitem", { name: "Move Left" }).click();
+  await expect(page.getByRole("region")).toHaveText([/^Waiting on someone/, /^To do/, /^Done/]);
+  await column(page, "Waiting on someone").getByRole("button", { name: /^More for / }).click();
+  await expect(page.getByRole("menuitem", { name: "Move Left" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Move Right" }).click();
+  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Waiting on someone/, /^Done/]);
+  // The same from the command line.
+  omicron.cli("statuses", "move", name, "Done", "left", "--as-machine");
+  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Done/, /^Waiting on someone/]);
+  omicron.cli("statuses", "move", name, "Done", "right", "--as-machine");
+  await expect(page.getByRole("region")).toHaveText([/^To do/, /^Waiting on someone/, /^Done/]);
   // Deleted while empty; a column with tasks, or Done, can't be.
   await column(page, "Done").getByRole("button", { name: /^More for / }).click();
   await expect(page.getByRole("menuitem", { name: "Delete Column" })).toBeDisabled();

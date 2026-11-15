@@ -31,6 +31,13 @@ pub enum Statuses {
     /// Give a status a color: red, orange, yellow, green, teal, blue,
     /// indigo, purple, pink, brown or gray
     Color { project: String, status: String, color: String },
+    /// Move a status one place left or right on the board
+    Move {
+        project: String,
+        status: String,
+        #[arg(value_parser = ["left", "right"])]
+        direction: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -56,6 +63,13 @@ pub enum Topics {
     Rename { project: String, name: String, new_name: String },
     /// Remove a topic. Its tasks are kept, without a topic.
     Remove { project: String, name: String },
+    /// Move a topic one place left or right on the board
+    Move {
+        project: String,
+        name: String,
+        #[arg(value_parser = ["left", "right"])]
+        direction: String,
+    },
 }
 
 pub fn projects(cmd: Projects, as_machine: bool) -> Result<()> {
@@ -122,6 +136,11 @@ pub fn statuses(cmd: Statuses, as_machine: bool) -> Result<()> {
             board.color_status(&p, &status, &color)?;
             println!("{status} is {} in {}.", color.to_lowercase(), p.name);
         }
+        Statuses::Move { project, status, direction } => {
+            let p = board.project(&project)?;
+            board.move_column(&p, "statuses", &status, direction == "left")?;
+            println!("Moved {status} {direction}.");
+        }
     }
     Ok(())
 }
@@ -181,6 +200,11 @@ pub fn topics(cmd: Topics, as_machine: bool) -> Result<()> {
             let p = board.project(&project)?;
             board.remove_topic(&p, &name)?;
             println!("Removed the topic {name}. Its tasks are kept, without a topic.");
+        }
+        Topics::Move { project, name, direction } => {
+            let p = board.project(&project)?;
+            board.move_column(&p, "topics", &name, direction == "left")?;
+            println!("Moved {name} {direction}.");
         }
     }
     Ok(())

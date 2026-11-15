@@ -181,6 +181,18 @@ export async function deleteTopic(db: SupabaseClient, topic: Topic) {
   must(await db.from("topics").delete().eq("id", topic.id));
 }
 
+/** Move a column (a status or a topic) one place left or right (#259): the
+ *  columns are numbered 1, 2, 3… in their new order, so ties sort out too. */
+export async function moveColumn(db: SupabaseClient, table: "statuses" | "topics", columns: { id: string; position: number }[], index: number, by: -1 | 1) {
+  const to = index + by;
+  if (to < 0 || to >= columns.length) return;
+  const order = [...columns];
+  [order[index], order[to]] = [order[to], order[index]];
+  for (const [n, c] of order.entries()) {
+    if (c.position !== n + 1) must(await db.from(table).update({ position: n + 1 }).eq("id", c.id));
+  }
+}
+
 export async function addStatus(db: SupabaseClient, project: ProjectData, name: string) {
   // New statuses go just before the Done status, so Done stays last.
   const done = project.statuses.find((s) => s.is_done);
