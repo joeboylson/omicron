@@ -990,7 +990,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--session", "parser", "--project", &project]);
     assert!(started.starts_with("Started a loop for parser: every 10m, 0 of 2 runs done."), "{started}");
     let o = run(&pat, None, &["loops", "start", "again", "--every", "10m", "--session", "parser", "--project", &project]);
-    assert!(String::from_utf8_lossy(&o.stderr).contains("already has a loop running"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("already on a loop"));
     let listed = ok(&pat, None, &["loops", "list", "--project", &project]);
     assert!(listed.starts_with(&format!("parser\t{project}\tevery 10m\t0 of 2 runs done\tnext ")), "{listed}");
     assert!(listed.trim_end().ends_with("Keep going with the next task"), "{listed}");

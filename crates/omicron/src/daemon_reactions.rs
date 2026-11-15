@@ -42,7 +42,7 @@ impl Reaction for RunSteps {
         "runs"
     }
     fn wants(&self, c: &Change) -> bool {
-        c.is(&["runs", "tasks", "jobs"])
+        c.is(&["loops", "tasks", "jobs"])
     }
     fn react(&self, c: &Change) -> Result<()> {
         runs_cmd::heard(&self.supabase, &self.key, &c.row);

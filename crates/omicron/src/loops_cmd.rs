@@ -281,7 +281,8 @@ impl Runner {
                 *self.owner.lock().unwrap() = Some(row["record"]["owner"].as_str().map(String::from));
                 return;
             }
-            Some("loops") => {}
+            // Tasks loops are the runs reaction's (runs_cmd).
+            Some("loops") if row["record"]["kind"] != "tasks" && row["old_record"]["kind"] != "tasks" => {}
             _ => return,
         }
         let record = if row["kind"] == "DELETE" { &row["old_record"] } else { &row["record"] };

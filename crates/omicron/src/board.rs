@@ -1071,17 +1071,17 @@ impl Board {
     /// Put the Needs review mark on (`true`, machines only) or take it off.
     /// A Project's runs, newest first.
     pub fn runs(&self, project: &Project) -> Result<Vec<Run>> {
-        Ok(serde_json::from_value(self.get(&format!("/rest/v1/runs?project_id=eq.{}&order=started_at.desc&limit=50", project.id))?)?)
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/loops?kind=eq.tasks&project_id=eq.{}&order=started_at.desc&limit=50", project.id))?)?)
     }
 
     pub fn run(&self, id: &str) -> Result<Option<Run>> {
-        let rows: Vec<Run> = serde_json::from_value(self.get(&format!("/rest/v1/runs?id=eq.{id}"))?)?;
+        let rows: Vec<Run> = serde_json::from_value(self.get(&format!("/rest/v1/loops?kind=eq.tasks&id=eq.{id}"))?)?;
         Ok(rows.into_iter().next())
     }
 
     /// Active runs on the machine signed in.
     pub fn my_active_runs(&self) -> Result<Vec<Run>> {
-        Ok(serde_json::from_value(self.get(&format!("/rest/v1/runs?machine_id=eq.{}&state=in.(running,pausing)", self.session.user.id))?)?)
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/loops?kind=eq.tasks&machine_id=eq.{}&state=in.(running,pausing)", self.session.user.id))?)?)
     }
 
     /// Start a run in a session, optionally only tasks with a label.
@@ -1100,11 +1100,11 @@ impl Board {
         };
         let rows = self.send(
             "POST",
-            "/rest/v1/runs",
-            json!({ "project_id": project.id, "machine_id": session.machine_id, "session_id": session.id, "label_id": label_id, "task_ids": task_ids }),
+            "/rest/v1/loops",
+            json!({ "kind": "tasks", "session_id": session.id, "label_id": label_id, "task_ids": task_ids }),
         );
         let rows = match rows {
-            Err(e) if format!("{e:#}").contains("runs_one_per_session") => bail!("{} is already on a run", session.name),
+            Err(e) if crate::supa::said(&e, "loops_one_per_session") => bail!("{} is already on a loop. Stop it first.", session.name),
             r => r?,
         };
         Ok(serde_json::from_value(rows.get(0).context("the run wasn't saved")?.clone())?)
@@ -1112,7 +1112,7 @@ impl Board {
 
     /// Change a run (its machine: anything; anyone else: pausing or stopped).
     fn set_run(&self, id: &str, fields: Value) -> Result<()> {
-        self.send("PATCH", &format!("/rest/v1/runs?id=eq.{id}"), fields)?;
+        self.send("PATCH", &format!("/rest/v1/loops?id=eq.{id}"), fields)?;
         Ok(())
     }
 
@@ -1551,11 +1551,11 @@ impl Board {
             .send(
                 "POST",
                 "/rest/v1/loops",
-                json!({ "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times }),
+                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times }),
             )
             .map_err(|e| {
-                if crate::supa::said(&e, "loops_one_running") {
-                    anyhow!("that session already has a loop running. Stop it first (`omicron loops stop`).")
+                if crate::supa::said(&e, "loops_one_per_session") {
+                    anyhow!("that session is already on a loop. Stop it first (`omicron loops stop`).")
                 } else {
                     e
                 }
@@ -1566,13 +1566,13 @@ impl Board {
     /// Running loops, all or one session's.
     pub fn loops(&self, session_id: Option<&str>) -> Result<Vec<Loop>> {
         let only = session_id.map(|s| format!("&session_id=eq.{s}")).unwrap_or_default();
-        let rows = self.get(&format!("/rest/v1/loops?state=eq.running{only}&order=started_at"))?;
+        let rows = self.get(&format!("/rest/v1/loops?kind=eq.command&state=eq.running{only}&order=started_at"))?;
         Ok(serde_json::from_value(rows)?)
     }
 
     /// This machine's running loops.
     pub fn machine_loops(&self, machine_id: &str) -> Result<Vec<Loop>> {
-        let rows = self.get(&format!("/rest/v1/loops?state=eq.running&machine_id=eq.{machine_id}"))?;
+        let rows = self.get(&format!("/rest/v1/loops?kind=eq.command&state=eq.running&machine_id=eq.{machine_id}"))?;
         Ok(serde_json::from_value(rows)?)
     }
 

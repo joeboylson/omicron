@@ -58,13 +58,15 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .from("loops")
       .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at")
       .eq("project_id", id)
+      .eq("kind", "command")
       .order("started_at", { ascending: false })
       .limit(30),
     db.from("folders").select("id,path,machine_id,machines(name)").eq("project_id", id).order("path"),
     db
-      .from("runs")
+      .from("loops")
       .select("id,machine_id,session_id,label_id,started_by,state,task_id,task_ids,done,note,started_at,updated_at")
       .eq("project_id", id)
+      .eq("kind", "tasks")
       .order("started_at", { ascending: false })
       .limit(20),
     db.from("loop_plans").select("id,name,kind,prompt,every_seconds,times,task_ids,session_id,template,created_at").eq("project_id", id).order("created_at"),

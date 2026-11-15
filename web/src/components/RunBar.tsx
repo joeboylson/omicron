@@ -152,7 +152,7 @@ export function RunBar({ project, onChanged, machineId }: { project: ProjectData
                 if (dev && s.machine_id === dev.machine_id) {
                   await devAction(db, "/run", { action: "runs-start", project: project.name, session: s.name, label: lbl ?? "" });
                 } else {
-                  await startRun(db, project, s, labelId);
+                  await startRun(db, s, labelId);
                 }
                 setStarting(false);
                 onChanged();

@@ -357,8 +357,11 @@ function NewLoop({
   const shown = open.filter((t) => !query.trim() || `#${t.number} ${t.title}`.toLowerCase().includes(query.trim().toLowerCase()));
   // Sessions a loop can run in: this computer's when it serves the page, else any.
   const sessions: ClaudeSession[] = project.sessions.filter((s) => !dev || s.machine_id === dev.machine_id);
-  // A session works one run at a time, so one already on a run can't take another.
-  const busy = new Set(kind === "tasks" ? project.runs.filter((r) => r.state === "running" || r.state === "pausing").map((r) => r.session_id) : []);
+  // A session holds one loop at a time, so one already on a loop can't take another.
+  const busy = new Set([
+    ...project.runs.filter((r) => r.state === "running" || r.state === "pausing").map((r) => r.session_id),
+    ...project.loops.map((l) => l.session_id),
+  ]);
   const session = sessions.find((s) => s.id === sessionId && !busy.has(s.id)) ?? null;
   const fields = () => ({
     kind,
@@ -390,7 +393,7 @@ function NewLoop({
             : { action: "runs-start", session: session.name, project: project.name, tasks: numbers.join(",") },
         );
       } else {
-        await startLoop(db, project, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times } : { kind, task_ids: picked });
+        await startLoop(db, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times } : { kind, task_ids: picked });
       }
       if (draft) await deletePlan(db, draft);
       onChanged();
@@ -535,7 +538,7 @@ function NewLoop({
               >
                 <span className="font-medium">{s.name}</span>
                 <span className="truncate text-sm text-muted-foreground">
-                  {busy.has(s.id) ? "On a run" : `${s.folder ?? "No folder"} · ${s.machine}`}
+                  {busy.has(s.id) ? "On a loop" : `${s.folder ?? "No folder"} · ${s.machine}`}
                 </span>
               </button>
             ))}

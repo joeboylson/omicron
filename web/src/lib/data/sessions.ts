@@ -52,13 +52,13 @@ export async function giveSessionTasks(db: SupabaseClient, project: ProjectData,
 
 /** Start a run in a session, through the database: its computer takes it
  * only from its owner, with its gate open. */
-export async function startRun(db: SupabaseClient, project: ProjectData, session: ClaudeSession, labelId: string | null) {
-  must(await db.from("runs").insert({ project_id: project.id, machine_id: session.machine_id, session_id: session.id, label_id: labelId }));
+export async function startRun(db: SupabaseClient, session: ClaudeSession, labelId: string | null) {
+  must(await db.from("loops").insert({ kind: "tasks", session_id: session.id, label_id: labelId }));
 }
 
 /** Pause (after the task it's on) or stop a run. Anyone in the Project can. */
 export async function setRunState(db: SupabaseClient, run: Run, state: "pausing" | "stopped") {
-  must(await db.from("runs").update({ state }).eq("id", run.id));
+  must(await db.from("loops").update({ state }).eq("id", run.id));
 }
 
 export async function stopLoop(db: SupabaseClient, loop: SessionLoop) {
@@ -110,15 +110,14 @@ export async function addTaskToPlan(db: SupabaseClient, plan: LoopPlan, taskId: 
  *  set of tasks worked down one at a time (a run). */
 export async function startLoop(
   db: SupabaseClient,
-  project: ProjectData,
   session: ClaudeSession,
   what: { kind: "command"; prompt: string; every_seconds: number; times: number | null } | { kind: "tasks"; task_ids: string[] },
 ) {
   if (what.kind === "command") {
-    must(await db.from("loops").insert({ session_id: session.id, prompt: what.prompt, every_seconds: what.every_seconds, times: what.times }));
+    must(await db.from("loops").insert({ kind: "command", session_id: session.id, prompt: what.prompt, every_seconds: what.every_seconds, times: what.times }));
   } else {
     must(
-      await db.from("runs").insert({ project_id: project.id, machine_id: session.machine_id, session_id: session.id, label_id: null, task_ids: what.task_ids }),
+      await db.from("loops").insert({ kind: "tasks", session_id: session.id, task_ids: what.task_ids }),
     );
   }
 }

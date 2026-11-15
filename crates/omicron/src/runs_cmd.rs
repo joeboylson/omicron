@@ -141,7 +141,7 @@ pub fn heard(supabase: &Supabase, key: &MachineKey, row: &Value) {
     let me = key.machine_id.to_string();
     let record = &row["record"];
     let ids: Vec<String> = match row["table_name"].as_str() {
-        Some("runs") if record["machine_id"].as_str() == Some(me.as_str()) && matches!(record["state"].as_str(), Some("running" | "pausing")) => {
+        Some("loops") if record["kind"] == "tasks" && record["machine_id"].as_str() == Some(me.as_str()) && matches!(record["state"].as_str(), Some("running" | "pausing")) => {
             vec![record["id"].as_str().unwrap_or("").to_string()]
         }
         // A team's job finished: runs here waiting on it carry on.
