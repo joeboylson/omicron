@@ -1,5 +1,5 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpDown, X, CheckCircle2, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpDown, X, CheckCircle2, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut, Eye, EyeOff } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -34,6 +34,7 @@ import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectMenu } from "@/components/ProjectMenu";
 import { TaskTree } from "@/components/TaskTree";
+import { WatchContext, WatchDialog, stopWatching, useWatch, watchers, type WatchTarget } from "@/components/WatchDialog";
 import { CARD_SHOW, CARD_SHOW_CHOICES, CardShowContext, type CardShow } from "@/lib/cardShow";
 import { NewTask, type NewTaskStart } from "@/components/NewTask";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
@@ -124,6 +125,8 @@ export function ProjectPage({ id }: { id: string }) {
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
   const [layout, setLayout] = useStored<"board" | "list" | "tree">(`omicron.layout.${id}`, "board");
   const [zoomed, setZoomed] = useStored(`omicron.zoom.${id}`, false);
+  // A watch being started from the board (#279).
+  const [watchFor, setWatchFor] = useState<WatchTarget | null>(null);
   // What cards show besides their title (#269).
   const [cardShow, setCardShow] = useStored<CardShow>(`omicron.cardShow.${id}`, CARD_SHOW);
   const [dragging, setDragging] = useState<Task | null>(null);
@@ -660,7 +663,7 @@ export function ProjectPage({ id }: { id: string }) {
   }
   return (
     // The board fills the screen and each column scrolls on its own.
-    <>
+    <WatchContext.Provider value={{ open: setWatchFor, stop: (w) => act(() => stopWatching(db, project, dev, w)).then(() => reload()) }}>
     <main className={cn("flex h-dvh min-h-0 flex-none flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
       {nav}
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
@@ -982,10 +985,11 @@ export function ProjectPage({ id }: { id: string }) {
           return done;
         }}
       />
+      <WatchDialog project={project} dev={dev} target={watchFor} onClose={() => setWatchFor(null)} onChanged={reload} />
     </main>
     {tabs}
     {besidePane}
-    </>
+    </WatchContext.Provider>
   );
 }
 
@@ -1072,6 +1076,9 @@ function Column({
   const { db, act } = useApp();
   const toast = useToast();
   const column = `col|${kind}|${refId ?? "none"}`;
+  // Sessions whose loops watch this column (#279).
+  const watch = useWatch();
+  const watching = status ? watchers(project, { statusId: status.id }) : [];
   const { setNodeRef } = useDroppable({ id: column });
   // A topic column's topic (renamed or deleted from its menu).
   const topic = kind === "t" && refId ? (project.topics.find((t) => t.id === refId) ?? null) : null;
@@ -1144,6 +1151,14 @@ function Column({
           (status ? status.name : label)
         )}
         {!renaming && <span className="font-normal tabular-nums text-muted-foreground">{tasks.length}</span>}
+        {/* Sessions watching this column (#279). */}
+        {!renaming && watching.length > 0 && (
+          <span className="flex min-w-0 items-center gap-1 truncate text-xs font-normal text-muted-foreground" title={`${watching.map((w) => w.session.name).join(", ")} watching`}>
+            <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{watching.map((w) => w.session.name).join(", ")}</span>
+            <span className="sr-only">watching</span>
+          </span>
+        )}
         </span>
         {status?.is_done && (
           <span className="relative ml-auto text-[var(--sys-green)]" title="Tasks here count as done">
@@ -1162,6 +1177,16 @@ function Column({
             <DropdownMenuItem onSelect={onAdd}>
               <Plus /> Add Task Here
             </DropdownMenuItem>
+            {status && (
+              <DropdownMenuItem onSelect={() => watch.open({ statusId: status.id })}>
+                <Eye /> Watch With a Session…
+              </DropdownMenuItem>
+            )}
+            {watching.map((w) => (
+              <DropdownMenuItem key={w.loop.id + w.index} onSelect={() => watch.stop(w)}>
+                <EyeOff /> Stop {w.session.name} Watching
+              </DropdownMenuItem>
+            ))}
             {status && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger disabled={tasks.length < 2}>

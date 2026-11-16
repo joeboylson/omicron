@@ -641,6 +641,29 @@ impl WebMachine {
                 }
                 a
             }
+            // A watch from the board (#279), as the machine.
+            "loops-watch-add" => {
+                let mut a: Vec<String> = vec!["loops".into(), "watch".into(), "add".into()];
+                if !s("status").is_empty() {
+                    a.extend(["--status".into(), s("status")]);
+                }
+                if !s("task").is_empty() {
+                    a.extend(["--task".into(), s("task")]);
+                }
+                a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
+                a
+            }
+            "loops-watch-remove" => vec![
+                "loops".into(),
+                "watch".into(),
+                "remove".into(),
+                s("number"),
+                "--session".into(),
+                s("session"),
+                "--project".into(),
+                s("project"),
+                "--as-machine".into(),
+            ],
             "runs-start" => {
                 let mut a = vec!["runs".into(), "start".into(), s("project"), "--session".into(), s("session")];
                 if !s("label").is_empty() {

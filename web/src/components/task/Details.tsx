@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Eye } from "lucide-react";
 import { Button } from "@/components/base/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/base/select";
@@ -10,6 +10,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { type SectionProps } from "@/components/task/save";
 import { DispatchRow } from "@/components/task/DispatchRow";
 import { DateField } from "@/components/task/DateField";
+import { useWatch, watchers } from "@/components/WatchDialog";
 
 const NOBODY = "nobody";
 /** Given to: still its ended session's, until given out again. */
@@ -19,6 +20,7 @@ const ENDED = "ended";
 export function TaskDetails({ project, task, save, onChanged }: SectionProps & { onChanged: () => void }) {
   // Given to's list, opened from the ended-session warning too.
   const [pickingWho, setPickingWho] = useState(false);
+  const watch = useWatch();
   const ended = !task.assignee_session_id && !task.assignee_person_id ? task.ended_session : null;
   return (
     <Group label="Details">
@@ -128,6 +130,16 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
         </Select>
       </Row>
       {task.assignee_session_id && <DispatchRow project={project} task={task} onChanged={onChanged} />}
+      {/* Sessions watching it (#279), each with a way to stop. */}
+      {watchers(project, { taskId: task.id }).map((w) => (
+        <Row key={w.loop.id + w.index} className="text-sm">
+          <Eye className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="flex-1 text-muted-foreground">{w.session.name} is watching it.</span>
+          <Button variant="ghost" size="sm" className="h-11 shrink-0 text-link sm:h-8" onClick={() => watch.stop(w)}>
+            Stop Watching
+          </Button>
+        </Row>
+      ))}
       {!task.assignee_session_id && !task.assignee_person_id && task.ended_session && (
         <Row className="text-sm text-muted-foreground">
           <AlertCircle className="h-4 w-4 shrink-0 text-[var(--orange-text)]" aria-hidden />

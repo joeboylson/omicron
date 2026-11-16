@@ -2476,3 +2476,48 @@ test("View › Show on Cards chooses what a card shows besides its title (#269)"
   await expect(row).toContainText("Two coats of white.");
   await expect(row).not.toContainText("outside");
 });
+
+test("watching from the board: a column and a task, shown where they are, and stopped (#279)", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  const win = await omicron.open("parser", name, crypto.randomUUID());
+  try {
+    omicron.cli("machines", "owner", robin.login);
+    await page.reload();
+    // A column, from its menu: parser starts a loop (as soon as it's done).
+    await column(page, "To do").getByRole("button", { name: /^More for / }).click();
+    await page.getByRole("menuitem", { name: "Watch With a Session…" }).click();
+    const sheet = page.getByRole("dialog", { name: "Watch To do" });
+    await sheet.getByRole("radio", { name: /^parser/ }).click();
+    await expect(sheet.getByLabel("Check")).toHaveValue("0");
+    await sheet.getByRole("button", { name: "Watch", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(column(page, "To do").getByRole("heading")).toContainText("parser");
+    await expect.poll(() => omicron.cli("loop", "watch", "list", "--session", "parser", "--project", name, "--as-machine")).toContain("1\tTo do");
+    // A task, from its menu: added to parser's list.
+    await page.getByRole("button", { name: /^#1 Write the parser/ }).click();
+    await page.getByRole("button", { name: "More for this task" }).click();
+    await page.getByRole("menuitem", { name: "Watch With a Session…" }).click();
+    const again = page.getByRole("dialog", { name: "Watch #1" });
+    await expect(again.getByRole("radio", { name: /^parser/ })).toContainText("Adds to its list");
+    await again.getByRole("radio", { name: /^parser/ }).click();
+    await again.getByRole("button", { name: "Watch", exact: true }).click();
+    await expect(page.getByRole("dialog").getByText("parser is watching it.")).toBeVisible();
+    await expect(page.getByRole("button", { name: /^#1 Write the parser/, includeHidden: true }).getByTitle("parser watching")).toHaveCount(1);
+    await expect.poll(() => omicron.cli("loop", "watch", "list", "--session", "parser", "--project", name, "--as-machine")).toContain("2\t#1 Write the parser");
+    // Stopped from the task's sheet, then the column's menu: with nothing
+    // left on its list and no message, the loop stops.
+    await page.getByRole("dialog").getByRole("button", { name: "Stop Watching" }).click();
+    await expect(page.getByRole("dialog").getByText("parser is watching it.")).toHaveCount(0);
+    await escape(page);
+    await expect(page.getByRole("button", { name: /^#1 Write the parser/ }).getByTitle("parser watching")).toHaveCount(0);
+    await column(page, "To do").getByRole("button", { name: /^More for / }).click();
+    await page.getByRole("menuitem", { name: "Stop parser Watching" }).click();
+    await expect(column(page, "To do").getByRole("heading")).not.toContainText("parser");
+    await expect.poll(() => omicron.cli("loops", "list", "--project", name, "--as-machine")).toContain("No loops are running.");
+  } finally {
+    win.kill();
+  }
+});

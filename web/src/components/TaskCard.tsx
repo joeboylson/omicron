@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { AlertCircle, CalendarDays, CheckSquare, MessageSquare, Terminal } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckSquare, Eye, MessageSquare, Terminal } from "lucide-react";
 import type { ProjectData, Task } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { statusColor, tint, type Color } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
 import { CARD_SHOW, useCardShow, type CardShow } from "@/lib/cardShow";
+import { watchers } from "@/components/WatchDialog";
 
 export function TaskCard({
   project,
@@ -33,6 +34,8 @@ export function TaskCard({
   const checklist = show.checklist ? task.checklist.length : 0;
   const commentCount = show.comments ? task.commentCount : 0;
   const due = show.date ? task.due_on : null;
+  // Sessions watching this very task (#279).
+  const watchedBy = watchers(project, { taskId: task.id }).map((w) => w.session.name);
   const status = project.statuses.find((s) => s.id === task.status_id);
   const done = status?.is_done ?? false;
   // Given to a session that has since ended, and not given out again.
@@ -75,7 +78,7 @@ export function TaskCard({
           ))}
         </div>
       )}
-      {(due || checklist > 0 || commentCount > 0 || assignee || session || ended) && (
+      {(due || checklist > 0 || commentCount > 0 || assignee || session || ended || watchedBy.length > 0) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {due && (
             <span
@@ -92,6 +95,12 @@ export function TaskCard({
               <span className="tabular-nums">
                 {ticked}/{task.checklist.length}
               </span>
+            </span>
+          )}
+          {watchedBy.length > 0 && (
+            <span className="flex items-center gap-1" title={`${watchedBy.join(", ")} watching`}>
+              <Eye className="h-3.5 w-3.5" aria-hidden />
+              <span>{watchedBy.join(", ")}</span>
             </span>
           )}
           {commentCount > 0 && (

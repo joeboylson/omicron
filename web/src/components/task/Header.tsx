@@ -1,7 +1,7 @@
 import { scrollMotion } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useToast } from "@/lib/toast";
-import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2, Repeat, Plus } from "lucide-react";
+import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpToLine, Check, Link2, ListChecks, MessageSquare, MoreHorizontal, Trash2, Repeat, Plus, Eye, EyeOff } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/base/dropdown-menu";
 import { addPlan, addTaskToPlan, renumberTasks, type Task } from "@/lib/data";
 import { reorder } from "@/lib/board-rules";
@@ -13,9 +13,11 @@ import { statusColor } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
 import { NeedsReview } from "@/components/TaskCard";
 import { type SectionProps } from "@/components/task/save";
+import { useWatch, watchers } from "@/components/WatchDialog";
 
 /** The sheet's top: where the task is, its ⋯ menu, its title, and Needs review. */
 export function TaskHeader({ project, task, save, change, onDelete }: SectionProps & { onDelete: (task: Task) => void }) {
+  const watch = useWatch();
   const toast = useToast();
   const { db } = useApp();
   // Higher or lower in its column without dragging (HIG drag-and-drop #2).
@@ -96,6 +98,15 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             )}
+            {/* A session checks it each run (#279). */}
+            <DropdownMenuItem onSelect={() => watch.open({ taskId: task.id })}>
+              <Eye /> Watch With a Session…
+            </DropdownMenuItem>
+            {watchers(project, { taskId: task.id }).map((w) => (
+              <DropdownMenuItem key={w.loop.id + w.index} onSelect={() => watch.stop(w)}>
+                <EyeOff /> Stop {w.session.name} Watching
+              </DropdownMenuItem>
+            ))}
             {/* Into a draft loop, to start later (#253). */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
