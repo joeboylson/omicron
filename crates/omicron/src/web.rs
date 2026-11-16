@@ -605,6 +605,19 @@ impl WebMachine {
                 }
                 a
             }
+            "loops-change" => {
+                let mut a = vec!["loops".into(), "change".into(), "--prompt".into(), s("prompt"), "--every".into(), s("every")];
+                a.extend(["--times".into(), if s("times").is_empty() { "0".into() } else { s("times") }]);
+                a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
+                if s("now") == "true" {
+                    a.push("--now".into());
+                }
+                // Every case, so a cleared one goes back to its default.
+                for (key, flag) in [("if_question", "--if-question"), ("if_info", "--if-info"), ("if_done", "--if-done"), ("if_input", "--if-input"), ("if_idle", "--if-idle")] {
+                    a.extend([flag.into(), s(key)]);
+                }
+                a
+            }
             "runs-start" => {
                 let mut a = vec!["runs".into(), "start".into(), s("project"), "--session".into(), s("session")];
                 if !s("label").is_empty() {

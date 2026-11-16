@@ -9,6 +9,7 @@ import { useApp } from "@/lib/app";
 import { devAction, type Dev } from "@/lib/dev";
 import {
   addPlan,
+  changeLoop,
   changePlan,
   deletePlan,
   sayEvery,
@@ -68,6 +69,8 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
   const [pane, setPane] = useState<"loops" | "templates">("loops");
   // The New Loop sheet: fresh, from a draft, or from a template.
   const [wizard, setWizard] = useState<{ from?: LoopPlan } | null>(null);
+  // A running loop being changed (#262), in the same steps as New Loop.
+  const [editing, setEditing] = useState<SessionLoop | null>(null);
   const [openRun, setOpenRun] = useState<Run | null>(null);
   const [naming, setNaming] = useState<{ kind: "command" | "tasks"; prompt: string; every_seconds: number | null; times: number | null; rules: LoopRules; name: string } | null>(null);
   const [deleting, setDeleting] = useState<LoopPlan | null>(null);
@@ -176,6 +179,7 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
               {r.run && (r.run.state === "running" || r.run.state === "pausing") && (
                 <DropdownMenuItem onSelect={() => change(() => setRunState(db, r.run!, "stopped"))}>Stop Now</DropdownMenuItem>
               )}
+              {r.loop && r.state === "Running" && <DropdownMenuItem onSelect={() => setEditing(r.loop!)}>Edit…</DropdownMenuItem>}
               {r.loop && r.state === "Running" && <DropdownMenuItem onSelect={() => change(() => stopLoop(db, r.loop!))}>Stop</DropdownMenuItem>}
               <DropdownMenuItem onSelect={() => asTemplate(r)}>Make Template…</DropdownMenuItem>
               {r.plan && (
@@ -272,6 +276,7 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
         />
       )}
       {wizard && <NewLoop project={project} dev={dev} from={wizard.from} onClose={() => setWizard(null)} onChanged={onChanged} />}
+      {editing && <NewLoop project={project} dev={dev} editing={editing} onClose={() => setEditing(null)} onChanged={onChanged} />}
       <Dialog open={openRun !== null} onOpenChange={(o) => !o && setOpenRun(null)}>
         <DialogContent className="max-h-[92dvh] gap-5 overflow-y-auto bg-muted sm:bg-background" onOpenAutoFocus={focusSheet}>
           {openRun && <RunSheet project={project} run={openRun} />}
@@ -352,17 +357,24 @@ function ruleFlags(rules: LoopRules): Record<string, string> {
 function NewLoop({
   project,
   dev,
-  from,
+  from: fromPlan,
+  editing,
   onClose,
   onChanged,
 }: {
   project: ProjectData;
   dev: Dev | null;
   from?: LoopPlan;
+  /** A running loop to change (#262): its message, timing and instructions. */
+  editing?: SessionLoop;
   onClose: () => void;
   onChanged: () => void;
 }) {
   const { db, act } = useApp();
+  // Changing a running loop starts from it, like a template of itself.
+  const from: LoopPlan | undefined = editing
+    ? { id: editing.id, name: "", kind: "command", prompt: editing.prompt, every_seconds: editing.every_seconds, times: editing.times, task_ids: [], session_id: editing.session_id, template: true, created_at: "", rules: editing.rules ?? {} }
+    : fromPlan;
   const draft = from && !from.template ? from : undefined;
   const [kind, setKind] = useState<"command" | "tasks">(from?.kind ?? "command");
   const [prompt, setPrompt] = useState(from?.prompt ?? "");
@@ -426,7 +438,29 @@ function NewLoop({
       onChanged();
       onClose();
     });
-  const title = { kind: "New Loop", template: "From a Template", command: "The Command", rules: "Instructions", tasks: "The Tasks", session: "The Session" }[step];
+  // Saved (#262): on its own computer by the computer itself, as when started.
+  const save = () =>
+    act(async () => {
+      if (!editing) return;
+      const its = project.sessions.find((s) => s.id === editing.session_id);
+      if (dev && its && its.machine_id === dev.machine_id) {
+        await devAction(db, "/run", {
+          action: "loops-change",
+          session: its.name,
+          project: project.name,
+          prompt: prompt.trim(),
+          every: sayEvery(every),
+          times: times ? String(times) : "",
+          now: runNow ? "true" : "",
+          ...Object.fromEntries(RULE_CASES.map(([k]) => [`if_${k}`, rules[k]?.trim() ?? ""])),
+        });
+      } else {
+        await changeLoop(db, editing, { prompt: prompt.trim(), every_seconds: every, times, rules: cleanRules(rules), reset_time: runNow });
+      }
+      onChanged();
+      onClose();
+    });
+  const title = { kind: "New Loop", template: "From a Template", command: editing ? "Edit Loop" : "The Command", rules: "Instructions", tasks: "The Tasks", session: "The Session" }[step];
   const canNext = step === "command" ? prompt.trim() !== "" : step === "tasks" ? picked.length > 0 : true;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -497,7 +531,8 @@ function NewLoop({
               <label className="grid gap-1.5 text-sm font-medium">
                 Every
                 <select value={every} onChange={(e) => setEvery(Number(e.target.value))} className="h-10 rounded-md border bg-background px-2 font-normal">
-                  {EVERY.map(([v, t]) => (
+                  {/* A loop's own timing, when it isn't one of these (set from the command line). */}
+                  {[...EVERY, ...(EVERY.some(([v]) => v === every) ? [] : ([[every, sayEvery(every)]] as [number, string][]))].map(([v, t]) => (
                     <option key={v} value={v}>
                       {t}
                     </option>
@@ -512,7 +547,7 @@ function NewLoop({
                   className="h-10 rounded-md border bg-background px-2 font-normal"
                 >
                   <option value="">Until stopped</option>
-                  {[3, 5, 10, 20, 50].map((n) => (
+                  {[...new Set([3, 5, 10, 20, 50, ...(times ? [times] : [])])].sort((x, y) => x - y).map((n) => (
                     <option key={n} value={n}>
                       {n} times
                     </option>
@@ -566,6 +601,14 @@ function NewLoop({
           </div>
         )}
 
+        {step === "rules" && editing && (
+          // When the timing changes: the next run now, or when it was due (#262).
+          <label className="flex min-h-11 items-center gap-3 rounded-lg border px-4 py-2">
+            <span className="flex-1">Reset to New Time Now</span>
+            <Switch checked={runNow} onCheckedChange={setRunNow} aria-label="Reset to New Time Now" />
+          </label>
+        )}
+
         {step === "session" && (
           <div role="radiogroup" aria-label="Session" className="grid gap-2">
             {sessions.length === 0 && <p className="text-sm text-muted-foreground">No Claude sessions to run it in yet. Save it as a draft for now.</p>}
@@ -602,7 +645,11 @@ function NewLoop({
           <Button type="button" variant="ghost" onClick={() => (back.length ? (setStep(back[back.length - 1]), setBack((b) => b.slice(0, -1))) : onClose())}>
             {back.length ? "Back" : "Cancel"}
           </Button>
-          {(step === "command" || step === "rules" || step === "tasks") && (
+          {editing && step === "rules" ? (
+            <Button type="button" onClick={save}>
+              Save
+            </Button>
+          ) : (step === "command" || step === "rules" || step === "tasks") && (
             <Button type="button" disabled={!canNext} onClick={() => go(step === "command" ? "rules" : "session")}>
               Next
             </Button>

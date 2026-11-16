@@ -561,7 +561,23 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await expect(loops).toContainText("every 15m");
     expect(omicron.cli("loops", "list", "--as-machine")).toContain("Keep going with the next task");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/loops.png` });
+    // Changed while it runs (#262): the same steps, starting from it.
     await loops.getByRole("button", { name: "More for Keep going with the next task" }).click();
+    await page.getByRole("menuitem", { name: "Edit…" }).click();
+    const edit = page.getByRole("dialog");
+    await expect(edit.getByRole("heading", { name: "Edit Loop" })).toBeVisible();
+    await expect(edit.getByLabel("Message")).toHaveValue("Keep going with the next task");
+    await edit.getByLabel("Message").fill("Keep going, and say what you did");
+    await edit.getByLabel("Every").selectOption({ label: "30 minutes" });
+    await edit.getByRole("button", { name: "Next" }).click();
+    await expect(edit.getByLabel("If it has a question")).toHaveValue("Put it in the Questions column.");
+    await edit.getByRole("switch", { name: "Reset to New Time Now" }).click();
+    await edit.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(edit).toHaveCount(0);
+    await expect(loops).toContainText("Keep going, and say what you did");
+    await expect(loops).toContainText("every 30m");
+    expect(omicron.cli("loops", "list", "--as-machine")).toContain("every 30m");
+    await loops.getByRole("button", { name: "More for Keep going, and say what you did" }).click();
     await page.getByRole("menuitem", { name: "Stop", exact: true }).click();
     await expect(loops).toContainText("Stopped");
   } finally {

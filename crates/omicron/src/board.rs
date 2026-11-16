@@ -1678,6 +1678,17 @@ impl Board {
         Ok(serde_json::from_value(rows)?)
     }
 
+    /// Change a running loop (#262); `reset_time` puts its next run at once.
+    /// None if it isn't running any more (or isn't this Project's).
+    pub fn change_loop(&self, id: &str, prompt: &str, every_seconds: i64, times: Option<i64>, rules: &LoopRules, reset_time: bool) -> Result<Option<Loop>> {
+        let rows = self.send(
+            "POST",
+            "/rest/v1/rpc/change_loop",
+            json!({ "loop_id": id, "prompt": prompt, "every_seconds": every_seconds, "times": times, "rules": rules, "reset_time": reset_time }),
+        )?;
+        rows.get(0).map(|r| serde_json::from_value(r.clone())).transpose().map_err(Into::into)
+    }
+
     pub fn stop_loop(&self, id: &str) -> Result<bool> {
         let rows = self.send("POST", "/rest/v1/rpc/stop_loop", json!({ "loop": id }))?;
         Ok(rows.as_array().is_some_and(|r| !r.is_empty()))

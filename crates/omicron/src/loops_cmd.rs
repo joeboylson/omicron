@@ -78,6 +78,38 @@ pub enum Loops {
         #[arg(long)]
         project: Option<String>,
     },
+    /// Change a running loop: its prompt, how often, how many times, or what
+    /// it does in each case. What isn't given stays as it is
+    Change {
+        /// The new prompt
+        #[arg(long)]
+        prompt: Option<String>,
+        /// How often from now on, like 10m or 2h
+        #[arg(long)]
+        every: Option<String>,
+        /// Stop after this many runs in all (0: until stopped)
+        #[arg(long)]
+        times: Option<i64>,
+        /// The next run straight away, with the new timing from then on.
+        /// Without it the next run stays when it was, and the new timing
+        /// counts from it
+        #[arg(long)]
+        now: bool,
+        #[arg(long, value_name = "TEXT")]
+        if_question: Option<String>,
+        #[arg(long, value_name = "TEXT")]
+        if_info: Option<String>,
+        #[arg(long, value_name = "TEXT")]
+        if_done: Option<String>,
+        #[arg(long, value_name = "TEXT")]
+        if_input: Option<String>,
+        #[arg(long, value_name = "TEXT")]
+        if_idle: Option<String>,
+        #[arg(long, requires = "project")]
+        session: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+    },
 }
 
 pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
@@ -131,6 +163,43 @@ pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
             };
             board.stop_loop(&l.id)?;
             println!("Stopped {name}'s loop (it ran {} {}).", l.runs, if l.runs == 1 { "time" } else { "times" });
+        }
+        Loops::Change { prompt, every, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
+            let (board, id, name) = target(session, project, as_machine)?;
+            let running = board.loops(Some(&id))?;
+            let Some(l) = running.first() else {
+                bail!("{name} has no loop running");
+            };
+            let every = every.map(|e| parse_every(&e)).transpose()?.unwrap_or(l.every_seconds);
+            let times = match times {
+                Some(0) => None,
+                Some(t) => Some(t),
+                None => l.times,
+            };
+            let prompt = prompt.map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_else(|| l.prompt.clone());
+            // A case given replaces it ("" clears it back to the default).
+            let keep = |new: Option<String>, old: &Option<String>| match new {
+                Some(t) if t.trim().is_empty() => None,
+                Some(t) => Some(t),
+                None => old.clone(),
+            };
+            let rules = omicron::board::LoopRules {
+                question: keep(if_question, &l.rules.question),
+                info: keep(if_info, &l.rules.info),
+                done: keep(if_done, &l.rules.done),
+                input: keep(if_input, &l.rules.input),
+                idle: keep(if_idle, &l.rules.idle),
+            };
+            let Some(changed) = board.change_loop(&l.id, &prompt, every, times, &rules, now)? else {
+                bail!("{name}'s loop couldn't be changed (it may have just ended)");
+            };
+            if changed.state != "running" {
+                println!("Changed {name}'s loop: it has already run {} times, so it's finished.", changed.runs);
+            } else if now {
+                println!("Changed {name}'s loop: every {}, {}. Next run now.", say_every(every), say_end(&changed));
+            } else {
+                println!("Changed {name}'s loop: every {}, {}. Next run at {}.", say_every(every), say_end(&changed), say_time(&changed.next_run_at));
+            }
         }
     }
     Ok(())

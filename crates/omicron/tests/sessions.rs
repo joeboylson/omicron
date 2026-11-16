@@ -1043,6 +1043,18 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
         let l = s.admin_request("GET", &format!("/rest/v1/loops?session_id=eq.{sid}&prompt=eq.Check%20in&select=runs"), None).unwrap();
         l[0]["runs"].as_i64().unwrap_or(0) >= 1
     });
+    // Changed while it runs (#262): what isn't given stays as it was.
+    let said = ok(&pat, None, &["loops", "change", "--every", "2h", "--prompt", "Check in again", "--session", "parser", "--project", &project]);
+    assert!(said.starts_with("Changed parser's loop: every 2h, until stopped"), "{said}");
+    let listed = ok(&pat, None, &["loops", "list", "--project", &project]);
+    assert!(listed.contains("every 2h") && listed.trim_end().ends_with("Check in again"), "{listed}");
+    let said = ok(&pat, None, &["loops", "change", "--times", "1", "--session", "parser", "--project", &project]);
+    assert!(said.contains("it's finished"), "already ran once: {said}");
+    assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
+
+    // A loop running when its session is quit ends with it.
+    let _ = std::fs::remove_file(&busy);
+    ok(&pat, None, &["loops", "start", "Last one", "--every", "1h", "--session", "parser", "--project", &project]);
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("parser\t"));
     close_window(&mac, w);
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));

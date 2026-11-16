@@ -61,6 +61,17 @@ export async function setRunState(db: SupabaseClient, run: Run, state: "pausing"
   must(await db.from("loops").update({ state }).eq("id", run.id));
 }
 
+/** Change a running loop (#262). `reset_time`: its next run at once, with the
+ *  new timing from then on; otherwise the next run stays when it was. */
+export async function changeLoop(
+  db: SupabaseClient,
+  loop: SessionLoop,
+  to: { prompt: string; every_seconds: number; times: number | null; rules: LoopRules; reset_time: boolean },
+) {
+  const rows = must(await db.rpc("change_loop", { loop_id: loop.id, ...to })) as unknown[];
+  if (!rows?.length) throw new Error("That loop isn't running any more, so it couldn't be changed.");
+}
+
 export async function stopLoop(db: SupabaseClient, loop: SessionLoop) {
   must(await db.rpc("stop_loop", { loop: loop.id }));
 }
