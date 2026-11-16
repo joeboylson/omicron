@@ -6,6 +6,7 @@ use omicron::identity;
 mod accounts_cmd;
 mod board_cmd;
 mod claude_setup;
+mod conversations_cmd;
 mod daemon;
 mod daemon_reactions;
 mod dispatch_cmd;
@@ -143,6 +144,21 @@ enum Command {
     /// A Project's topics: a second way to group tasks, as rows on the board
     #[command(subcommand)]
     Topics(projects_cmd::Topics),
+    /// Conversations: a Project's group chats with Claude sessions and pinned tasks
+    #[command(subcommand, alias = "conversation")]
+    Conversations(conversations_cmd::Conversations),
+    /// Post a message in a conversation (inside a session: as that session)
+    Say {
+        /// The conversation, by name
+        conversation: String,
+        text: String,
+        /// An image to add (give it again for more, at most 10)
+        #[arg(long = "image")]
+        images: Vec<std::path::PathBuf>,
+        /// The Project (inside a session: its own)
+        #[arg(long)]
+        project: Option<String>,
+    },
     /// Loops: a session's timer, its message, and the tasks it watches
     /// (`omicron loop check` inside a session: what's on its list)
     #[command(subcommand, alias = "loop")]
@@ -295,6 +311,8 @@ fn run(cli: Cli) -> Result<()> {
         Command::Labels(cmd) => projects_cmd::labels(cmd, cli.as_machine),
         Command::Topics(cmd) => projects_cmd::topics(cmd, cli.as_machine),
         Command::Loops(cmd) => loops_cmd::loops(cmd, cli.as_machine),
+        Command::Conversations(cmd) => conversations_cmd::conversations(cmd, cli.as_machine),
+        Command::Say { conversation, text, images, project } => conversations_cmd::say(conversation, text, images, project, cli.as_machine),
         Command::Teams(cmd) => teams_cmd::teams(cmd, cli.as_machine),
         Command::Hook(event) => hooks::hook(event),
         Command::Handoff(cmd) => handoff_cmd::handoff(cmd, cli.as_machine),

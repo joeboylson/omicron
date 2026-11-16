@@ -613,6 +613,9 @@ impl WebMachine {
                 if !s("watch_label").is_empty() {
                     a.extend(["--watch-label".into(), s("watch_label")]);
                 }
+                if !s("watch_conversation").is_empty() {
+                    a.extend(["--watch-conversation".into(), s("watch_conversation")]);
+                }
                 a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
                 if !s("times").is_empty() {
                     a.extend(["--times".into(), s("times")]);
@@ -649,6 +652,9 @@ impl WebMachine {
                 }
                 if !s("task").is_empty() {
                     a.extend(["--task".into(), s("task")]);
+                }
+                if !s("conversation").is_empty() {
+                    a.extend(["--conversation".into(), s("conversation")]);
                 }
                 a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
                 a

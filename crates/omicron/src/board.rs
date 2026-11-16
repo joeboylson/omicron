@@ -293,10 +293,40 @@ pub struct LoopWatch {
     pub given_session: Option<String>,
     #[serde(default)]
     pub task_id: Option<String>,
+    /// A conversation it takes part in (#281), instead of tasks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     #[serde(default)]
     pub instructions: String,
     #[serde(default, skip_serializing)]
     pub checked_at: Option<String>,
+}
+
+/// A group chat in a Project, with sessions and pinned tasks (#281).
+#[derive(Debug, Clone, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub unread: bool,
+    #[serde(default)]
+    pub last_message_at: Option<String>,
+}
+
+/// One message in a conversation.
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub id: String,
+    pub author_id: String,
+    pub author: String,
+    /// The person behind it (the author, or the owner of the machine that wrote it).
+    pub owner: Option<String>,
+    pub session_id: Option<String>,
+    pub session: Option<String>,
+    pub body: String,
+    pub at: String,
+    pub images: Vec<String>,
 }
 
 impl LoopRules {
@@ -1540,6 +1570,13 @@ impl Board {
         session_id: Option<&str>,
         images: &[std::path::PathBuf],
     ) -> Result<()> {
+        let paths = self.upload_images(project, images)?;
+        self.send("POST", "/rest/v1/comments", json!({ "task_id": task.id, "body": body, "session_id": session_id, "images": paths }))?;
+        Ok(())
+    }
+
+    /// Upload images (files on this machine) under a Project: their paths.
+    pub fn upload_images(&self, project: &Project, images: &[std::path::PathBuf]) -> Result<Vec<String>> {
         let mut paths = Vec::new();
         for file in images {
             let kind = image_type(file)?;
@@ -1563,8 +1600,127 @@ impl Board {
             self.supabase.upload_as(&self.session, IMAGES_BUCKET, &path, &std::fs::read(file)?, kind)?;
             paths.push(path);
         }
-        self.send("POST", "/rest/v1/comments", json!({ "task_id": task.id, "body": body, "session_id": session_id, "images": paths }))?;
+        Ok(paths)
+    }
+
+    /// A Project's conversations, newest activity first (#281).
+    pub fn conversations(&self, project: &Project) -> Result<Vec<Conversation>> {
+        Ok(serde_json::from_value(self.get(&format!(
+            "/rest/v1/conversations?project_id=eq.{}&select=id,project_id,name,unread,last_message_at&order=last_message_at.desc.nullslast,created_at.desc",
+            project.id
+        ))?)?)
+    }
+
+    pub fn conversation(&self, project: &Project, name: &str) -> Result<Conversation> {
+        self.conversations(project)?
+            .into_iter()
+            .find(|c| c.name.eq_ignore_ascii_case(name.trim()))
+            .with_context(|| format!("{} has no conversation called {name}", project.name))
+    }
+
+    pub fn conversation_by_id(&self, id: &str) -> Result<Conversation> {
+        let rows = self.get(&format!("/rest/v1/conversations?id=eq.{id}&select=id,project_id,name,unread,last_message_at"))?;
+        Ok(serde_json::from_value(rows.get(0).cloned().context("that conversation is gone")?)?)
+    }
+
+    pub fn start_conversation(&self, project: &Project, name: &str) -> Result<Conversation> {
+        if name.trim().is_empty() {
+            bail!("give the conversation a name");
+        }
+        if self.conversation(project, name).is_ok() {
+            bail!("{} already has a conversation called {}", project.name, name.trim());
+        }
+        let rows = self.send(
+            "POST",
+            "/rest/v1/conversations?select=id,project_id,name,unread,last_message_at",
+            json!({ "project_id": project.id, "name": name.trim() }),
+        )?;
+        Ok(serde_json::from_value(rows.get(0).cloned().context("the conversation wasn't started")?)?)
+    }
+
+    pub fn remove_conversation(&self, c: &Conversation) -> Result<()> {
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/conversations?id=eq.{}", c.id), None)?;
         Ok(())
+    }
+
+    pub fn mark_conversation_read(&self, c: &Conversation) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/conversations?id=eq.{}", c.id), json!({ "unread": false }))?;
+        Ok(())
+    }
+
+    /// A conversation's messages, oldest first: all of them, or those after `since`.
+    pub fn messages(&self, c: &Conversation, since: Option<&str>) -> Result<Vec<Message>> {
+        let after = since.map(|t| format!("&created_at=gt.{}", t.replace('+', "%2B"))).unwrap_or_default();
+        let rows = self.get(&format!(
+            "/rest/v1/messages?conversation_id=eq.{}{after}&select=id,author_id,author_name,author_owner,session_id,body,created_at,images,sessions(name)&order=created_at",
+            c.id
+        ))?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|v| Message {
+                id: v["id"].as_str().unwrap_or("").to_string(),
+                author_id: v["author_id"].as_str().unwrap_or("").to_string(),
+                author: v["author_name"].as_str().unwrap_or("").to_string(),
+                owner: v["author_owner"].as_str().map(String::from),
+                session_id: v["session_id"].as_str().map(String::from),
+                session: v["sessions"]["name"].as_str().map(String::from),
+                body: v["body"].as_str().unwrap_or("").to_string(),
+                at: v["created_at"].as_str().unwrap_or("").to_string(),
+                images: v["images"].as_array().into_iter().flatten().filter_map(|i| i.as_str().map(String::from)).collect(),
+            })
+            .collect())
+    }
+
+    /// Post a message, naming the Claude session it comes from, if any.
+    pub fn post_message(&self, project: &Project, c: &Conversation, body: &str, session_id: Option<&str>, images: &[std::path::PathBuf]) -> Result<()> {
+        if body.trim().is_empty() && images.is_empty() {
+            bail!("write something, or add an image with --image");
+        }
+        if images.len() > 10 {
+            bail!("a message can have at most 10 images");
+        }
+        let paths = self.upload_images(project, images)?;
+        self.send("POST", "/rest/v1/messages", json!({ "conversation_id": c.id, "body": body, "session_id": session_id, "images": paths }))?;
+        Ok(())
+    }
+
+    /// The tasks pinned to a conversation, by number.
+    pub fn pinned_tasks(&self, c: &Conversation) -> Result<Vec<TaskRow>> {
+        let rows = self.get(&format!("/rest/v1/conversation_tasks?conversation_id=eq.{}&select=task_id", c.id))?;
+        let ids: Vec<String> = rows.as_array().into_iter().flatten().filter_map(|r| r["task_id"].as_str().map(String::from)).collect();
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut tasks = self.task_rows_by_ids(&c.project_id, &ids)?;
+        tasks.sort_by_key(|t| t.number);
+        Ok(tasks)
+    }
+
+    pub fn pin_task(&self, c: &Conversation, task: &Task) -> Result<()> {
+        self.send("POST", "/rest/v1/conversation_tasks", json!({ "conversation_id": c.id, "task_id": task.id }))?;
+        Ok(())
+    }
+
+    pub fn unpin_task(&self, c: &Conversation, task: &Task) -> Result<()> {
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/conversation_tasks?conversation_id=eq.{}&task_id=eq.{}", c.id, task.id), None)?;
+        Ok(())
+    }
+
+    /// The sessions in a conversation: those whose loop watches it, by name.
+    pub fn conversation_sessions(&self, c: &Conversation) -> Result<Vec<String>> {
+        let rows = self.get(&format!("/rest/v1/loop_watches?conversation_id=eq.{}&select=loops(sessions(name))", c.id))?;
+        let mut names: Vec<String> = rows.as_array().into_iter().flatten().filter_map(|r| r["loops"]["sessions"]["name"].as_str().map(String::from)).collect();
+        names.sort();
+        Ok(names)
+    }
+
+    /// This machine's session with this name, when there's just one (for
+    /// `OMICRON_SESSION`, which names a session but not its Project).
+    pub fn my_session_named(&self, name: &str) -> Result<Option<SessionRecord>> {
+        let mine: Vec<SessionRecord> = self.sessions(None)?.into_iter().filter(|s| s.machine_id == self.me() && s.name.eq_ignore_ascii_case(name)).collect();
+        Ok(if mine.len() == 1 { mine.into_iter().next() } else { None })
     }
 
     /// Save a handoff note for a session. It replaces the session's waiting
