@@ -270,8 +270,17 @@ kbd {
   [data-radix-popper-content-wrapper]:has(> .sheet-on-phone) {
     position: fixed !important;
     transform: none !important;
-    inset: auto 0 0 0 !important;
+    inset: auto 0 var(--keyboard, 0px) 0 !important;
     min-width: 0 !important;
     width: 100% !important;
+  }
+  /* The on-screen keyboard up (lib/keyboard.ts, #264): sheets sit above it
+     and fit in what's left of the screen. */
+  html[data-keyboard] [data-sheet] {
+    bottom: var(--keyboard) !important;
+    max-height: calc(100dvh - var(--keyboard) - env(safe-area-inset-top) - 0.5rem) !important;
+  }
+  html[data-keyboard] .sheet-on-phone {
+    max-height: calc(100dvh - var(--keyboard) - env(safe-area-inset-top) - 0.5rem) !important;
   }
 }

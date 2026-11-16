@@ -87,6 +87,7 @@ export const DialogContent = React.forwardRef<
           ],
           className,
         )}
+        data-sheet=""
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={giveBack}
         {...props}

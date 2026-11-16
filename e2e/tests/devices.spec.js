@@ -182,6 +182,27 @@ for (const [kind, device] of [
       if (kind === "phone") {
         await expect(page.getByRole("navigation", { name: "Go to column" })).toHaveCount(0);
         await expect(todo.getByRole("heading", { name: new RegExp(`^${statuses[0].name} 3`) })).toBeVisible();
+        // With the on-screen keyboard up (#264), a sheet sits above it. (A
+        // keyboard can't be opened here, so its height is set as the page's
+        // own code sets it.)
+        await page.getByRole("button", { name: "New Task" }).first().tap();
+        const sheet = page.getByRole("dialog", { name: "New Task" });
+        await expect(sheet).toBeVisible();
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty("--keyboard", "300px");
+          document.documentElement.setAttribute("data-keyboard", "");
+        });
+        await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
+        const box = await sheet.boundingBox();
+        const screen = page.viewportSize().height;
+        expect(Math.round(box.y + box.height), "the sheet's bottom, above the keyboard").toBeLessThanOrEqual(screen - 300 + 1);
+        expect(box.y, "and its top still on screen").toBeGreaterThanOrEqual(0);
+        await page.evaluate(() => {
+          document.documentElement.style.removeProperty("--keyboard");
+          document.documentElement.removeAttribute("data-keyboard");
+        });
+        await sheet.getByRole("button", { name: "Cancel" }).tap();
+        await expect(sheet).toHaveCount(0);
         // A sideways swipe over the cards moves to the next column; the
         // column doesn't keep it (#190).
         const strip = () => page.evaluate(() => document.querySelector("section[data-group]").parentElement.scrollLeft);
