@@ -2426,3 +2426,35 @@ test("the tree view: groups, their tasks, each task's notes and comments, and ad
   await todo.getByRole("button", { name: /^#2 Paint the fence/ }).click();
   await expect(page.getByRole("dialog")).toContainText("Paint the fence");
 });
+
+test("View › Show on Cards chooses what a card shows besides its title (#269)", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  omicron.cli("tasks", "add", name, "Paint the fence", "--notes", "Two coats of white.", "--due", "2030-06-01", "--label", "outside", "--as-machine");
+  await page.reload();
+  const card = page.getByRole("button", { name: /^#1 Paint the fence/ });
+  await expect(card).toContainText("outside");
+  await expect(card).toContainText("Jun 1");
+  await expect(card).not.toContainText("Two coats");
+  const toggle = async (label) => {
+    await page.getByRole("button", { name: /^View and filters/ }).click();
+    await page.getByRole("menuitemcheckbox", { name: label }).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menu").waitFor({ state: "detached" });
+  };
+  await toggle("Labels");
+  await toggle("Date");
+  await toggle("Notes");
+  await expect(card).not.toContainText("outside");
+  await expect(card).not.toContainText("Jun 1");
+  await expect(card).toContainText("Two coats of white.");
+  // Kept for this Project, and the list follows it too.
+  await page.reload();
+  await expect(card).toContainText("Two coats of white.");
+  await expect(card).not.toContainText("outside");
+  await viewAs(page, "List");
+  const row = page.getByRole("button", { name: /^#1 Paint the fence/ });
+  await expect(row).toContainText("Two coats of white.");
+  await expect(row).not.toContainText("outside");
+});

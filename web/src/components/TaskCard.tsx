@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { statusColor, tint, type Color } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
+import { CARD_SHOW, useCardShow, type CardShow } from "@/lib/cardShow";
 
 export function TaskCard({
   project,
@@ -22,16 +23,22 @@ export function TaskCard({
   describedBy?: string;
   onOpen: () => void;
 }) {
-  const labels = project.labels.filter((l) => task.labelIds.includes(l.id));
-  const assignee = project.members.find((m) => m.id === task.assignee_person_id);
-  const session = project.sessions.find((c) => c.id === task.assignee_session_id);
+  // Only what View › Show on Cards asks for (#269).
+  const show = useCardShow();
+  showStatus = showStatus && show.status;
+  const labels = show.labels ? project.labels.filter((l) => task.labelIds.includes(l.id)) : [];
+  const assignee = show.givenTo ? project.members.find((m) => m.id === task.assignee_person_id) : undefined;
+  const session = show.givenTo ? project.sessions.find((c) => c.id === task.assignee_session_id) : undefined;
   const ticked = task.checklist.filter((c) => c.done).length;
+  const checklist = show.checklist ? task.checklist.length : 0;
+  const commentCount = show.comments ? task.commentCount : 0;
+  const due = show.date ? task.due_on : null;
   const status = project.statuses.find((s) => s.id === task.status_id);
   const done = status?.is_done ?? false;
   // Given to a session that has since ended, and not given out again.
-  const ended = !assignee && !session && !done && task.ended_session ? task.ended_session : null;
+  const ended = show.givenTo && !assignee && !session && !done && task.ended_session ? task.ended_session : null;
   const summaryId = useId();
-  const summary = cardSummary(project, task, showStatus);
+  const summary = cardSummary(project, task, showStatus, show);
   return (
     <Card
       role="button"
@@ -52,6 +59,7 @@ export function TaskCard({
         <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
         <span className="tabular-nums text-xs text-muted-foreground group-hover/card:text-foreground/80 group-active/card:text-foreground/80">#{task.number}</span>
       </div>
+      {show.notes && task.notes.trim() && <p className="mt-1 line-clamp-2 whitespace-pre-line break-words text-xs text-muted-foreground">{task.notes.trim()}</p>}
       {((showStatus && status) || task.needs_review || task.question?.open || labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
           {task.question?.open && <TeamWaiting />}
@@ -67,18 +75,18 @@ export function TaskCard({
           ))}
         </div>
       )}
-      {(task.due_on || task.checklist.length > 0 || task.commentCount > 0 || assignee || session || ended) && (
+      {(due || checklist > 0 || commentCount > 0 || assignee || session || ended) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-          {task.due_on && (
+          {due && (
             <span
-              className={cn("flex items-center gap-1", !done && isOverdue(task.due_on) && "text-destructive")}
-              title={!done && isOverdue(task.due_on) ? "Overdue" : undefined}
+              className={cn("flex items-center gap-1", !done && isOverdue(due) && "text-destructive")}
+              title={!done && isOverdue(due) ? "Overdue" : undefined}
             >
-              {!done && isOverdue(task.due_on) ? <AlertCircle className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
-              {!done && isOverdue(task.due_on) ? `Overdue · ${formatDate(task.due_on)}` : formatDate(task.due_on)}
+              {!done && isOverdue(due) ? <AlertCircle className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
+              {!done && isOverdue(due) ? `Overdue · ${formatDate(due)}` : formatDate(due)}
             </span>
           )}
-          {task.checklist.length > 0 && (
+          {checklist > 0 && (
             <span className="flex items-center gap-1">
               <CheckSquare className="h-3.5 w-3.5" />
               <span className="tabular-nums">
@@ -86,7 +94,7 @@ export function TaskCard({
               </span>
             </span>
           )}
-          {task.commentCount > 0 && (
+          {commentCount > 0 && (
             <span className="flex items-center gap-1" title={`${task.commentCount} comments`}>
               <MessageSquare className="h-3.5 w-3.5" />
               <span className="tabular-nums">{task.commentCount}</span>
@@ -124,23 +132,26 @@ export function TaskCard({
  * What a card shows besides its name, said in words for screen readers
  * (the card's name is only its number and title) (#201).
  */
-export function cardSummary(project: ProjectData, task: Task, showStatus: boolean): string {
+export function cardSummary(project: ProjectData, task: Task, showStatus: boolean, show: CardShow = CARD_SHOW): string {
+  // Says what the card shows, so it follows View › Show on Cards too (#269).
   const parts: string[] = [];
   const status = project.statuses.find((s) => s.id === task.status_id);
   const done = status?.is_done ?? false;
-  if (showStatus && status) parts.push(status.name);
+  if (showStatus && show.status && status) parts.push(status.name);
   if (task.question?.open) parts.push("Team is waiting on you");
   if (task.needs_review) parts.push("Needs review");
-  const labels = project.labels.filter((l) => task.labelIds.includes(l.id)).map((l) => l.name);
+  const labels = show.labels ? project.labels.filter((l) => task.labelIds.includes(l.id)).map((l) => l.name) : [];
   if (labels.length) parts.push(`${labels.length === 1 ? "Label" : "Labels"}: ${labels.join(", ")}`);
-  if (task.due_on) parts.push(!done && isOverdue(task.due_on) ? `Overdue, was due ${formatDate(task.due_on)}` : `Due ${formatDate(task.due_on)}`);
-  if (task.checklist.length) parts.push(`Checklist: ${task.checklist.filter((c) => c.done).length} of ${task.checklist.length} done`);
-  if (task.commentCount) parts.push(task.commentCount === 1 ? "1 comment" : `${task.commentCount} comments`);
-  const person = project.members.find((m) => m.id === task.assignee_person_id);
-  const session = project.sessions.find((c) => c.id === task.assignee_session_id);
-  if (person) parts.push(`Given to ${person.display_name}`);
-  else if (session) parts.push(task.picked_up_at ? `Given to ${session.name}, which has it` : `Given to ${session.name}, waiting for it`);
-  else if (!done && task.ended_session) parts.push(`Was given to ${task.ended_session}, which has ended`);
+  if (show.date && task.due_on) parts.push(!done && isOverdue(task.due_on) ? `Overdue, was due ${formatDate(task.due_on)}` : `Due ${formatDate(task.due_on)}`);
+  if (show.checklist && task.checklist.length) parts.push(`Checklist: ${task.checklist.filter((c) => c.done).length} of ${task.checklist.length} done`);
+  if (show.comments && task.commentCount) parts.push(task.commentCount === 1 ? "1 comment" : `${task.commentCount} comments`);
+  if (show.givenTo) {
+    const person = project.members.find((m) => m.id === task.assignee_person_id);
+    const session = project.sessions.find((c) => c.id === task.assignee_session_id);
+    if (person) parts.push(`Given to ${person.display_name}`);
+    else if (session) parts.push(task.picked_up_at ? `Given to ${session.name}, which has it` : `Given to ${session.name}, waiting for it`);
+    else if (!done && task.ended_session) parts.push(`Was given to ${task.ended_session}, which has ended`);
+  }
   return parts.join(". ");
 }
 

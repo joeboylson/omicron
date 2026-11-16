@@ -34,6 +34,7 @@ import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectMenu } from "@/components/ProjectMenu";
 import { TaskTree } from "@/components/TaskTree";
+import { CARD_SHOW, CARD_SHOW_CHOICES, CardShowContext, type CardShow } from "@/lib/cardShow";
 import { NewTask, type NewTaskStart } from "@/components/NewTask";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
@@ -123,6 +124,8 @@ export function ProjectPage({ id }: { id: string }) {
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
   const [layout, setLayout] = useStored<"board" | "list" | "tree">(`omicron.layout.${id}`, "board");
   const [zoomed, setZoomed] = useStored(`omicron.zoom.${id}`, false);
+  // What cards show besides their title (#269).
+  const [cardShow, setCardShow] = useStored<CardShow>(`omicron.cardShow.${id}`, CARD_SHOW);
   const [dragging, setDragging] = useState<Task | null>(null);
   const [dropHint, setDropHint] = useState<{ column: string; before: string | null } | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
@@ -746,6 +749,19 @@ export function ProjectPage({ id }: { id: string }) {
               <DropdownMenuRadioItem value="tree">Tree</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">Show on Cards</div>
+            {CARD_SHOW_CHOICES.map(([key, label]) => (
+              <DropdownMenuCheckboxItem
+                key={key}
+                checked={{ ...CARD_SHOW, ...cardShow }[key]}
+                // Stays open, to change several at once.
+                onSelect={(e) => e.preventDefault()}
+                onCheckedChange={(on) => setCardShow({ ...CARD_SHOW, ...cardShow, [key]: on === true })}
+              >
+                {label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
             <div className="px-2 py-1.5 text-xs text-muted-foreground">{layout === "board" ? "Columns" : "Group by"}</div>
             <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as "status" | "topic" | "person")}>
               <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
@@ -851,6 +867,7 @@ export function ProjectPage({ id }: { id: string }) {
           </Button>
         </div>
       )}
+      <CardShowContext.Provider value={{ ...CARD_SHOW, ...cardShow }}>
       {layout === "list" ? (
         <TaskList
           project={project}
@@ -926,6 +943,7 @@ export function ProjectPage({ id }: { id: string }) {
       </DndContext>
       </>
       )}
+      </CardShowContext.Provider>
       <NewTask
         project={project}
         start={newStart}

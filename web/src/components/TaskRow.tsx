@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
 import { LabelBadge, NeedsReview, cardSummary, formatDate, initials, isOverdue } from "@/components/TaskCard";
+import { useCardShow } from "@/lib/cardShow";
 
 /** A task as one row of the list view: number, title, labels, who has it, date. */
 export function TaskRow({
@@ -20,15 +21,19 @@ export function TaskRow({
   showStatus: boolean;
   onOpen: () => void;
 }) {
-  const labels = project.labels.filter((l) => task.labelIds.includes(l.id));
-  const assignee = project.members.find((m) => m.id === task.assignee_person_id);
-  const session = project.sessions.find((c) => c.id === task.assignee_session_id);
+  // Only what View › Show on Cards asks for (#269).
+  const show = useCardShow();
+  showStatus = showStatus && show.status;
+  const labels = show.labels ? project.labels.filter((l) => task.labelIds.includes(l.id)) : [];
+  const assignee = show.givenTo ? project.members.find((m) => m.id === task.assignee_person_id) : undefined;
+  const session = show.givenTo ? project.sessions.find((c) => c.id === task.assignee_session_id) : undefined;
   const status = project.statuses.find((s) => s.id === task.status_id);
   const done = status?.is_done ?? false;
-  const ended = !assignee && !session && !done && task.ended_session ? task.ended_session : null;
-  const overdue = !done && !!task.due_on && isOverdue(task.due_on);
+  const ended = show.givenTo && !assignee && !session && !done && task.ended_session ? task.ended_session : null;
+  const due = show.date ? task.due_on : null;
+  const overdue = !done && !!due && isOverdue(due);
   const summaryId = useId();
-  const summary = cardSummary(project, task, showStatus);
+  const summary = cardSummary(project, task, showStatus, show);
   return (
     <button
       type="button"
@@ -44,6 +49,9 @@ export function TaskRow({
       )}
       <span className="w-10 shrink-0 tabular-nums text-xs text-muted-foreground">#{task.number}</span>
       <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through")}>{task.title}</span>
+      {show.notes && task.notes.trim() && (
+        <span className="line-clamp-2 basis-full whitespace-pre-line break-words pl-[3.25rem] text-xs text-muted-foreground">{task.notes.trim()}</span>
+      )}
       {(showStatus || task.needs_review || labels.length > 0) && (
         <span className="flex flex-wrap gap-1 max-sm:basis-full max-sm:pl-[3.25rem]">
           {showStatus && status && (
@@ -58,12 +66,12 @@ export function TaskRow({
           ))}
         </span>
       )}
-      {(task.due_on || session || ended || assignee) && (
+      {(due || session || ended || assignee) && (
         <span className="flex items-center gap-3 text-xs text-muted-foreground max-sm:pl-[3.25rem]">
-          {task.due_on && (
+          {due && (
             <span className={cn("flex items-center gap-1", overdue && "text-destructive")} title={overdue ? "Overdue" : undefined}>
               {overdue ? <AlertCircle className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
-              {overdue ? `Overdue · ${formatDate(task.due_on)}` : formatDate(task.due_on)}
+              {overdue ? `Overdue · ${formatDate(due)}` : formatDate(due)}
             </span>
           )}
           {session && (
