@@ -57,6 +57,9 @@ export function useChanges(db: SupabaseClient, projectId: string | null, reload:
     };
     const name = `changes:${projectId ?? "all"}:${++next}`;
     let gone = false;
+    // When this started: the page's first load is from about now (#265).
+    const started = new Date(Date.now() - 5000).toISOString();
+    let connected = false;
     const channel = db
       .channel(name)
       .on(
@@ -75,7 +78,18 @@ export function useChanges(db: SupabaseClient, projectId: string | null, reload:
         if (gone) return;
         if (state === "SUBSCRIBED") {
           down.delete(name);
-          soon();
+          if (connected) soon();
+          else {
+            // The first time: the page has only just loaded, so reload only
+            // if something changed since (a second full load made the page
+            // slow to settle, #265). Reconnecting always reloads.
+            connected = true;
+            let q = db.from("changes").select("seq").gte("at", started).limit(1);
+            if (projectId) q = q.eq("project_id", projectId);
+            q.then(({ data, error }) => {
+              if (!gone && (error || (data && data.length > 0))) soon();
+            });
+          }
         } else down.add(name);
         tell();
       });

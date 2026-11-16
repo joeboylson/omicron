@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { must } from "../omicron";
-import type { ProjectSummary, Status, Label, Topic, Person, Comment, ChecklistItem, TeamQuestion, Dispatch, HandoffNote, ProjectData, Run, SessionLoop, LoopPlan } from "./types";
+import type { ProjectSummary, Status, Label, Topic, Person, ChecklistItem, TeamQuestion, Dispatch, HandoffNote, ProjectData, Run, SessionLoop, LoopPlan } from "./types";
 import { all, after } from "./shared";
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
@@ -36,7 +36,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       db
         .from("tasks")
         .select(
-          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(id,author_name,body,created_at,images,sessions(name)),dispatches(id,state,result,error,created_at,claimed_at,claim_by),task_jobs(jobs(id,number,title,state,step,teams(name))),team_requests(worker,state,created_at,answer_comment_id,answered_at,teams(name,machines(name,gate_until)))",
+          "id,number,title,notes,status_id,due_on,needs_review,position,assignee_person_id,assignee_session_id,ended_session,picked_up_at,topic_id,task_labels(label_id),checklist_items(id,text,done,position),comments(count),dispatches(id,state,result,error,created_at,claimed_at,claim_by),task_jobs(jobs(id,number,title,state,step,teams(name))),team_requests(worker,state,created_at,answer_comment_id,answered_at,teams(name,machines(name,gate_until)))",
         )
         .eq("project_id", id)
         .order("position")
@@ -100,16 +100,9 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       picked_up_at: t.picked_up_at,
       labelIds: (t.task_labels ?? []).map((l: { label_id: string }) => l.label_id),
       checklist: [...(t.checklist_items ?? [])].sort((a: ChecklistItem, b: ChecklistItem) => a.position - b.position),
-      comments: (t.comments ?? [])
-        .map((c: any) => ({
-          id: c.id,
-          author: c.author_name,
-          session: c.sessions?.name ?? null,
-          body: c.body,
-          created_at: c.created_at,
-          images: c.images ?? [],
-        }))
-        .sort((a: Comment, b: Comment) => a.created_at.localeCompare(b.created_at)),
+      // Only how many: a task's comments are loaded when it's opened (#265).
+      commentCount: t.comments?.[0]?.count ?? 0,
+      comments: [],
       dispatches: [...(t.dispatches ?? [])].sort((a: Dispatch, b: Dispatch) => b.created_at.localeCompare(a.created_at)),
       jobs: (t.task_jobs ?? [])
         .map((l: any) => l.jobs)

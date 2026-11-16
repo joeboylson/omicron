@@ -235,6 +235,7 @@ impl WebMachine {
             return fail(404, "no such person");
         }
         self.supabase.delete_person(id)?;
+        crate::supa::Supabase::forget_logins();
         eprintln!("omicron serve: {} deleted the person {id}", login.user.id);
         Ok((204, "application/json", Vec::new()))
     }

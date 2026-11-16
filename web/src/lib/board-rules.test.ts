@@ -50,7 +50,7 @@ const task = (number: number, more: Partial<Task> = {}): Task => ({
   picked_up_at: null,
   labelIds: [],
   checklist: [],
-  comments: [],
+  commentCount: 0, comments: [],
   dispatches: [],
   jobs: [],
   question: null,

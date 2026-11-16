@@ -4,7 +4,7 @@ import type { ProjectData, Task } from "@/lib/data";
 
 const task = (more: Partial<Task> = {}): Task =>
   ({ id: "t", number: 3, title: "Fix the gate", notes: "", status_id: "todo", due_on: null, needs_review: false, position: 0, assignee_person_id: null,
-    topic_id: null, assignee_session_id: null, ended_session: null, picked_up_at: null, labelIds: [], checklist: [], comments: [], dispatches: [], jobs: [], question: null, ...more }) as Task;
+    topic_id: null, assignee_session_id: null, ended_session: null, picked_up_at: null, labelIds: [], checklist: [], commentCount: 0, comments: [], dispatches: [], jobs: [], question: null, ...more }) as Task;
 const project = {
   statuses: [{ id: "todo", name: "To do", position: 0, is_done: false, color: null }, { id: "done", name: "Done", position: 1, is_done: true, color: null }],
   labels: [{ id: "l1", name: "outside", color: null }],
@@ -17,7 +17,7 @@ describe("cardSummary", () => {
     expect(cardSummary(project, task(), false)).toBe("");
   });
   test("what the card shows, in words, with the person's name", () => {
-    const t = task({ labelIds: ["l1"], due_on: "2020-01-02", checklist: [{ id: "a", text: "x", done: true, position: 1 }, { id: "b", text: "y", done: false, position: 2 }], comments: [{} as never], assignee_person_id: "p1", needs_review: true });
+    const t = task({ labelIds: ["l1"], due_on: "2020-01-02", checklist: [{ id: "a", text: "x", done: true, position: 1 }, { id: "b", text: "y", done: false, position: 2 }], commentCount: 1, assignee_person_id: "p1", needs_review: true });
     expect(cardSummary(project, t, true)).toBe("To do. Needs review. Label: outside. Overdue, was due Jan 2, 2020. Checklist: 1 of 2 done. 1 comment. Given to Claire Boylson");
   });
   test("a session, waiting or with it; an ended one", () => {

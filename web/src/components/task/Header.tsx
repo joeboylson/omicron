@@ -166,7 +166,7 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
         className="min-h-0 w-full resize-none border-transparent bg-transparent px-0 py-1 [overflow-wrap:anywhere] text-xl font-semibold leading-snug shadow-none [field-sizing:content] focus-visible:border-input focus-visible:bg-background focus-visible:px-3 focus-visible:ring-0 focus-visible:ring-offset-0 md:text-xl"
       />
       {/* On a phone the checklist and comments are far down: say what's there, and jump to it. */}
-      {(task.checklist.length > 0 || task.comments.length > 0) && (
+      {(task.checklist.length > 0 || task.commentCount > 0) && (
         <div className="flex gap-1 text-sm">
           {task.checklist.length > 0 && (
             <button type="button" className="flex min-h-11 items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent sm:min-h-0" onClick={() => jump("task-checklist")}>
@@ -176,11 +176,11 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
               </span>
             </button>
           )}
-          {task.comments.length > 0 && (
+          {task.commentCount > 0 && (
             <button type="button" className="flex min-h-11 items-center gap-1.5 rounded-md px-2 py-1 text-link hover:bg-accent sm:min-h-0" onClick={() => jump("task-comments")}>
               <MessageSquare className="h-4 w-4" aria-hidden />
               <span className="tabular-nums">
-                {task.comments.length} {task.comments.length === 1 ? "comment" : "comments"}
+                {task.commentCount} {task.commentCount === 1 ? "comment" : "comments"}
               </span>
             </button>
           )}

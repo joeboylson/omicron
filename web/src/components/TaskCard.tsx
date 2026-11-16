@@ -67,7 +67,7 @@ export function TaskCard({
           ))}
         </div>
       )}
-      {(task.due_on || task.checklist.length > 0 || task.comments.length > 0 || assignee || session || ended) && (
+      {(task.due_on || task.checklist.length > 0 || task.commentCount > 0 || assignee || session || ended) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
           {task.due_on && (
             <span
@@ -86,10 +86,10 @@ export function TaskCard({
               </span>
             </span>
           )}
-          {task.comments.length > 0 && (
-            <span className="flex items-center gap-1" title={`${task.comments.length} comments`}>
+          {task.commentCount > 0 && (
+            <span className="flex items-center gap-1" title={`${task.commentCount} comments`}>
               <MessageSquare className="h-3.5 w-3.5" />
-              <span className="tabular-nums">{task.comments.length}</span>
+              <span className="tabular-nums">{task.commentCount}</span>
             </span>
           )}
           {session && (
@@ -135,7 +135,7 @@ export function cardSummary(project: ProjectData, task: Task, showStatus: boolea
   if (labels.length) parts.push(`${labels.length === 1 ? "Label" : "Labels"}: ${labels.join(", ")}`);
   if (task.due_on) parts.push(!done && isOverdue(task.due_on) ? `Overdue, was due ${formatDate(task.due_on)}` : `Due ${formatDate(task.due_on)}`);
   if (task.checklist.length) parts.push(`Checklist: ${task.checklist.filter((c) => c.done).length} of ${task.checklist.length} done`);
-  if (task.comments.length) parts.push(task.comments.length === 1 ? "1 comment" : `${task.comments.length} comments`);
+  if (task.commentCount) parts.push(task.commentCount === 1 ? "1 comment" : `${task.commentCount} comments`);
   const person = project.members.find((m) => m.id === task.assignee_person_id);
   const session = project.sessions.find((c) => c.id === task.assignee_session_id);
   if (person) parts.push(`Given to ${person.display_name}`);

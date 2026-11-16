@@ -1,4 +1,6 @@
-import { type ProjectData, type Task } from "@/lib/data";
+import { useEffect, useMemo, useState } from "react";
+import { loadComments, type Comment, type ProjectData, type Task } from "@/lib/data";
+import { useApp } from "@/lib/app";
 import { Dialog, DialogContent, focusSheet } from "@/components/base/dialog";
 import { Comments } from "@/components/Comments";
 import { useTaskSave } from "@/components/task/save";
@@ -78,17 +80,32 @@ function TaskForm({
   /** Show a change at once; returns what to call once its save is done. */
   onPatch: (taskId: string, change: Partial<Task>) => () => void;
 }) {
-  const { save, change } = useTaskSave({ project, task, onChanged, onPatch });
-  const section = { project, task, save, change };
+  // Its comments, loaded when it's opened and again whenever the Project
+  // reloads (the task is a new object then), so others' comments show live (#265).
+  const { db } = useApp();
+  const [comments, setComments] = useState<Comment[] | null>(null);
+  useEffect(() => {
+    let current = true;
+    loadComments(db, task.id).then(
+      (c) => current && setComments(c),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [db, task]);
+  const full = useMemo(() => ({ ...task, comments: comments ?? [] }), [task, comments]);
+  const { save, change } = useTaskSave({ project, task: full, onChanged, onPatch });
+  const section = { project, task: full, save, change };
   return (
     <>
       <TaskHeader {...section} onDelete={onDelete} />
       <TaskDetails {...section} onChanged={onChanged} />
-      <TeamJobs project={project} task={task} onChanged={onChanged} />
+      <TeamJobs project={project} task={full} onChanged={onChanged} />
       <TaskLabels {...section} />
       <TaskNotes {...section} />
       <TaskChecklist {...section} />
-      <Comments project={project} task={task} change={change} when={when} />
+      <Comments project={project} task={full} change={change} when={when} />
     </>
   );
 }

@@ -50,6 +50,9 @@ export type Task = {
   picked_up_at: string | null;
   labelIds: string[];
   checklist: ChecklistItem[];
+  /** How many comments it has. The comments themselves are loaded when the
+   *  task is opened (#265); until then `comments` is empty. */
+  commentCount: number;
   comments: Comment[];
   /** Requests to hand it to its session, newest first. */
   dispatches: Dispatch[];

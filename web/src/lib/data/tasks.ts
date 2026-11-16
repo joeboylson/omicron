@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { must } from "../omicron";
-import type { ChecklistItem, Task, JobLink, ProjectData, Who } from "./types";
+import type { ChecklistItem, Comment, Task, JobLink, ProjectData, Who } from "./types";
 import { after } from "./shared";
 
 export async function addTask(
@@ -84,6 +84,19 @@ export async function deleteChecklistItem(db: SupabaseClient, item: ChecklistIte
 
 export async function addComment(db: SupabaseClient, task: Task, body: string, images: string[] = []) {
   must(await db.from("comments").insert({ task_id: task.id, body, images }));
+}
+
+/** A task's comments, oldest first (loaded when it's opened, #265). */
+export async function loadComments(db: SupabaseClient, taskId: string): Promise<Comment[]> {
+  const rows = must(await db.from("comments").select("id,author_name,body,created_at,images,sessions(name)").eq("task_id", taskId).order("created_at")) as any[];
+  return rows.map((c) => ({
+    id: c.id,
+    author: c.author_name,
+    session: c.sessions?.name ?? null,
+    body: c.body,
+    created_at: c.created_at,
+    images: c.images ?? [],
+  }));
 }
 
 /** Where comments' images are kept: private, filed under each Project. */

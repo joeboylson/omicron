@@ -246,19 +246,44 @@ impl Supabase {
     /// first time a Tailscale identity shows up, it gets a new person, who
     /// sees nothing until someone adds them to a Project.
     pub fn sign_in_person(&self, who: &TailscalePerson) -> Result<Session> {
+        // Who a login belongs to doesn't change, so it's looked up once per
+        // run of this program (#265): signing in was four trips to Supabase
+        // one after another, the slowest part of opening the page.
+        // Kept for 10 minutes, and forgotten when a person is deleted here.
+        let cached = known_logins().get(&who.login).filter(|(_, at)| at.elapsed() < std::time::Duration::from_secs(600)).map(|(id, _)| *id);
+        if let Some(id) = cached {
+            if let Ok(session) = self.session_for(&person_email(id)) {
+                self.seen_on_the_side(who);
+                return Ok(session);
+            }
+            // Gone meanwhile: look them up afresh below.
+            known_logins().remove(&who.login);
+        }
         let person_id = match self.person_for_login(&who.login)? {
             Some(id) => {
-                self.admin(
-                    "PATCH",
-                    &format!("/rest/v1/tailscale_identities?login=eq.{}", enc(&who.login)),
-                    Some(json!({ "last_seen": "now", "display_name": who.display_name })),
-                    None,
-                )?;
+                self.seen_on_the_side(who);
                 id
             }
             None => self.add_person(who)?,
         };
-        self.session_for(&person_email(person_id))
+        let session = self.session_for(&person_email(person_id))?;
+        known_logins().insert(who.login.clone(), (person_id, std::time::Instant::now()));
+        Ok(session)
+    }
+
+    /// Forget which person each login is (after deleting a person).
+    pub fn forget_logins() {
+        known_logins().clear();
+    }
+
+    /// When a login was last seen, and the name Tailscale gives now: nothing
+    /// waits on it, so it's saved on the side.
+    fn seen_on_the_side(&self, who: &TailscalePerson) {
+        let me = self.clone();
+        let (login, name) = (who.login.clone(), who.display_name.clone());
+        std::thread::spawn(move || {
+            let _ = me.admin("PATCH", &format!("/rest/v1/tailscale_identities?login=eq.{}", enc(&login)), Some(json!({ "last_seen": "now", "display_name": name })), None);
+        });
     }
 
     /// The person a Tailscale login belongs to, if anyone. Needs the secret key.
@@ -493,6 +518,12 @@ fn is_status(e: &anyhow::Error, code: u16) -> bool {
 
 fn is_conflict(e: &anyhow::Error) -> bool {
     is_status(e, 409)
+}
+
+/// Which person each Tailscale login is, as last looked up (see sign_in_person).
+fn known_logins() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, (Uuid, std::time::Instant)>> {
+    static KNOWN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Uuid, std::time::Instant)>>> = std::sync::OnceLock::new();
+    KNOWN.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]
