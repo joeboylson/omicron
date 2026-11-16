@@ -195,7 +195,11 @@ pub struct Loop {
     pub id: String,
     pub session_id: String,
     pub machine_id: String,
+    /// Its message; empty for a loop that only checks its watches.
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub prompt: String,
+    /// How often; 0 for "as soon as it's done".
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub every_seconds: i64,
     pub until: Option<String>,
     pub times: Option<i64>,
@@ -211,6 +215,88 @@ pub struct Loop {
     /// What the session does in each case (#261); a case left out uses the default.
     #[serde(default)]
     pub rules: LoopRules,
+    /// Next run as soon as the session is free, instead of every so often (#278).
+    #[serde(default)]
+    pub asap: bool,
+    /// Hand off and clear the session before each run (#278).
+    #[serde(default)]
+    pub start_fresh: bool,
+    /// The board rules as `omicron loop check` last gave them.
+    #[serde(default)]
+    pub rules_seen: Option<String>,
+    #[serde(default)]
+    pub project_id: String,
+}
+
+/// A task as a watch sees it (#278): enough to say what's new.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct WatchedTask {
+    pub id: String,
+    pub number: i64,
+    pub title: String,
+    pub status_id: String,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub task_labels: Vec<LabelLink>,
+    #[serde(default)]
+    pub comments: Vec<CommentStamp>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LabelLink {
+    pub label_id: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CommentStamp {
+    pub created_at: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+}
+
+impl WatchedTask {
+    /// Since a check at `since`: "new" (it appeared), "changed", or "no
+    /// change" (nothing since, and `session` has commented on it since its
+    /// last change). None: nothing since, but the session hasn't spoken to
+    /// it yet. Times are compared as written (Supabase writes them alike).
+    pub fn since(&self, since: Option<&str>, session: &str) -> Option<&'static str> {
+        let Some(since) = since else { return Some("new") };
+        let changed_at = self.comments.iter().map(|c| c.created_at.as_str()).chain([self.updated_at.as_str()]).max().unwrap_or("");
+        if self.created_at.as_str() > since {
+            return Some("new");
+        }
+        if changed_at > since {
+            return Some("changed");
+        }
+        let spoke = self.comments.iter().any(|c| c.session_id.as_deref() == Some(session) && c.created_at.as_str() >= self.updated_at.as_str());
+        spoke.then_some("no change")
+    }
+}
+
+/// A watch on a loop's list (#278): a set of tasks its session checks each
+/// run. Any mix of statuses, labels and who it's given to (all must match),
+/// or one task; with its own instructions on top of the board rules.
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct LoopWatch {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub loop_id: String,
+    #[serde(default)]
+    pub status_ids: Vec<String>,
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    #[serde(default)]
+    pub given_person: Option<String>,
+    #[serde(default)]
+    pub given_session: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
+    pub instructions: String,
+    #[serde(default, skip_serializing)]
+    pub checked_at: Option<String>,
 }
 
 impl LoopRules {
@@ -258,18 +344,25 @@ impl Loop {
     /// where its tasks are, the Project's board rules (or the usual ones
     /// when it has none), and this loop's own instructions, which win where
     /// they differ. One line, like a prompt.
-    pub fn message(&self, project: &str, board_rules: &str) -> String {
+    pub fn message(&self, project: &str, board_rules: &str, has_watches: bool) -> String {
         let run = self.runs + 1;
         let which = match self.times {
             Some(t) => format!("run {run} of {t}"),
             None => format!("run {run}"),
         };
+        let when = if self.asap { "again as soon as you're done".to_string() } else { format!("every {}", every_words(self.every_seconds)) };
+        // A loop with watches: its list, read with `omicron loop check`,
+        // which gives the board rules too (#278).
+        let check = if has_watches { "Check your list: run `omicron loop check` and work through what it gives you, as its rules say. " } else { "" };
         let mut out = format!(
-            "{} (This is an Omicron loop, {which}, every {}. Nobody is watching this window, so don't stop to ask anything here. \
+            "{} {check}(This is an Omicron loop, {which}, {when}. Nobody is watching this window, so don't stop to ask anything here. \
              The tasks are the {project} Project's, on its Omicron board: `omicron tasks list \"{project}\"`.",
             self.prompt.trim(),
-            every_words(self.every_seconds),
         );
+        if has_watches {
+            out.push(')');
+            return out.split_whitespace().collect::<Vec<_>>().join(" ");
+        }
         if board_rules.trim().is_empty() {
             out.push_str(&format!(" {project} has no board rules, so the usual ones: {}", LoopRules::usual()));
         } else {
@@ -285,6 +378,14 @@ impl Loop {
         out.push(')');
         out.split_whitespace().collect::<Vec<_>>().join(" ")
     }
+}
+
+fn null_as_empty<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String, D::Error> {
+    Ok(<Option<String> as serde::Deserialize>::deserialize(d)?.unwrap_or_default())
+}
+
+fn null_as_zero<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<i64, D::Error> {
+    Ok(<Option<i64> as serde::Deserialize>::deserialize(d)?.unwrap_or_default())
 }
 
 /// "15 minutes", "1 hour", "1 hour 30 minutes", "2 days".
@@ -867,6 +968,12 @@ impl Board {
     }
 
     /// A Project's labels and their colors.
+    /// A Project's labels as (id, name).
+    pub fn label_names(&self, project: &Project) -> Result<Vec<(String, String)>> {
+        let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&select=id,name", project.id))?;
+        Ok(rows.as_array().into_iter().flatten().map(|r| (r["id"].as_str().unwrap_or("").to_string(), r["name"].as_str().unwrap_or("").to_string())).collect())
+    }
+
     pub fn labels(&self, project: &Project) -> Result<Vec<(String, Option<String>)>> {
         let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&select=name,color&order=name", project.id))?;
         Ok(rows
@@ -902,7 +1009,7 @@ impl Board {
         Ok(used.as_array().map_or(0, |a| a.len()))
     }
 
-    fn existing_label(&self, project: &Project, name: &str) -> Result<String> {
+    pub fn existing_label(&self, project: &Project, name: &str) -> Result<String> {
         let rows = self.get(&format!("/rest/v1/labels?project_id=eq.{}&select=id,name", project.id))?;
         rows.as_array()
             .into_iter()
@@ -1002,7 +1109,7 @@ impl Board {
         Ok(made[0]["id"].as_str().context("topic wasn't made")?.to_string())
     }
 
-    fn member_id(&self, project: &Project, name: &str) -> Result<String> {
+    pub fn member_id(&self, project: &Project, name: &str) -> Result<String> {
         let rows = self.get(&format!(
             "/rest/v1/project_members?project_id=eq.{}&select=person_id,people(display_name)",
             project.id
@@ -1686,12 +1793,13 @@ impl Board {
     /// Start a loop for a session (one running loop per session).
     /// `now`: the first run straight away instead of after one interval (#260).
     #[allow(clippy::too_many_arguments)]
-    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: i64, until: Option<&str>, times: Option<i64>, now: bool, rules: &LoopRules) -> Result<Loop> {
+    pub fn start_loop(&self, session_id: &str, prompt: &str, every_seconds: Option<i64>, until: Option<&str>, times: Option<i64>, now: bool, rules: &LoopRules, asap: bool, start_fresh: bool) -> Result<Loop> {
+        let prompt = Some(prompt).filter(|p| !p.trim().is_empty());
         let rows = self
             .send(
                 "POST",
                 "/rest/v1/loops",
-                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times, "next_run_at": if now { Some("now") } else { None }, "rules": rules }),
+                json!({ "kind": "command", "session_id": session_id, "prompt": prompt, "every_seconds": every_seconds, "until": until, "times": times, "next_run_at": if now { Some("now") } else { None }, "rules": rules, "asap": asap, "start_fresh": start_fresh }),
             )
             .map_err(|e| {
                 if crate::supa::said(&e, "loops_one_per_session") {
@@ -1725,6 +1833,62 @@ impl Board {
             json!({ "loop_id": id, "prompt": prompt, "every_seconds": every_seconds, "times": times, "rules": rules, "reset_time": reset_time }),
         )?;
         rows.get(0).map(|r| serde_json::from_value(r.clone())).transpose().map_err(Into::into)
+    }
+
+    /// A loop's watches (#278), oldest first.
+    pub fn loop_watches(&self, loop_id: &str) -> Result<Vec<LoopWatch>> {
+        Ok(serde_json::from_value(self.get(&format!("/rest/v1/loop_watches?loop_id=eq.{loop_id}&order=created_at"))?)?)
+    }
+
+    pub fn add_loop_watch(&self, loop_id: &str, watch: &LoopWatch) -> Result<LoopWatch> {
+        let mut body = serde_json::to_value(watch)?;
+        body["loop_id"] = json!(loop_id);
+        let rows = self.send("POST", "/rest/v1/loop_watches", body)?;
+        Ok(serde_json::from_value(rows.get(0).cloned().context("the watch wasn't saved")?)?)
+    }
+
+    pub fn remove_loop_watch(&self, id: &str) -> Result<()> {
+        self.supabase.request_as(&self.session, "DELETE", &format!("/rest/v1/loop_watches?id=eq.{id}"), None)?;
+        Ok(())
+    }
+
+    /// Mark a watch as gone through by a check, now.
+    pub fn watch_checked(&self, id: &str) -> Result<()> {
+        self.send("PATCH", &format!("/rest/v1/loop_watches?id=eq.{id}"), json!({ "checked_at": "now" }))?;
+        Ok(())
+    }
+
+    /// The tasks a watch picks, as they are now, top first (#278).
+    pub fn watched_tasks(&self, project_id: &str, w: &LoopWatch) -> Result<Vec<WatchedTask>> {
+        let mut q = format!(
+            "/rest/v1/tasks?project_id=eq.{project_id}&select=id,number,title,status_id,position,created_at,updated_at,assignee_person_id,assignee_session_id,task_labels(label_id),comments(created_at,session_id)&order=position,number"
+        );
+        if let Some(t) = &w.task_id {
+            q.push_str(&format!("&id=eq.{t}"));
+        }
+        if !w.status_ids.is_empty() {
+            q.push_str(&format!("&status_id=in.({})", w.status_ids.join(",")));
+        }
+        if let Some(p) = &w.given_person {
+            q.push_str(&format!("&assignee_person_id=eq.{p}"));
+        }
+        if let Some(s) = &w.given_session {
+            q.push_str(&format!("&assignee_session_id=eq.{s}"));
+        }
+        let rows: Vec<WatchedTask> = serde_json::from_value(self.get(&q)?)?;
+        Ok(rows.into_iter().filter(|t| w.label_ids.iter().all(|l| t.task_labels.iter().any(|tl| &tl.label_id == l))).collect())
+    }
+
+    /// A check found nothing new: wait this long before the next (the loop's machine only).
+    pub fn loop_idle(&self, id: &str, wait_seconds: i64) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/loop_idle", json!({ "loop": id, "wait_seconds": wait_seconds }))?;
+        Ok(())
+    }
+
+    /// The board rules a check just gave (the loop's machine only).
+    pub fn loop_saw_rules(&self, id: &str, rules: &str) -> Result<()> {
+        self.send("POST", "/rest/v1/rpc/loop_saw_rules", json!({ "loop": id, "rules": rules }))?;
+        Ok(())
     }
 
     pub fn stop_loop(&self, id: &str) -> Result<bool> {
@@ -1938,13 +2102,17 @@ mod tests {
             started_by: None,
             last_run_at: None,
             rules,
+            asap: false,
+            start_fresh: false,
+            rules_seen: None,
+            project_id: "p".into(),
         }
     }
 
     #[test]
     fn a_loops_message_says_its_a_loop_with_the_board_rules_and_its_own() {
         // No board rules: the usual ones.
-        let m = a_loop(Some(20), 2, LoopRules::default()).message("Home Lab", "");
+        let m = a_loop(Some(20), 2, LoopRules::default()).message("Home Lab", "", false);
         assert!(m.starts_with("Check the To do column. (This is an Omicron loop, run 3 of 20, every 1 hour 30 minutes."), "{m}");
         assert!(m.contains("Nobody is watching this window"), "{m}");
         assert!(m.contains("`omicron tasks list \"Home Lab\"`"), "{m}");
@@ -1954,12 +2122,20 @@ mod tests {
         // Board rules said instead of the usual ones; the loop's own set
         // cases after them (blank ones aren't said).
         let own = LoopRules { question: Some("Ask in the Questions column.".into()), idle: Some("  ".into()), ..Default::default() };
-        let m = a_loop(None, 0, own).message("Home Lab", "Done work goes to Review.\nQuestions go to Waiting on Joe.");
+        let m = a_loop(None, 0, own).message("Home Lab", "Done work goes to Review.\nQuestions go to Waiting on Joe.", false);
         assert!(m.contains("run 1, every"), "{m}");
         assert!(m.contains("Board rules for Home Lab: Done work goes to Review. Questions go to Waiting on Joe."), "{m}");
         assert!(!m.contains(LoopRules::QUESTION), "{m}");
         assert!(m.contains("This loop's own instructions (they win where they differ): If you have a question: Ask in the Questions column."), "{m}");
         assert!(!m.contains("nothing left to do"), "{m}");
+        // With watches: check the list (which gives the rules); as soon as it's done.
+        let mut l = a_loop(None, 4, LoopRules::default());
+        l.prompt = String::new();
+        l.asap = true;
+        let m = l.message("Home Lab", "Done work goes to Review.", true);
+        assert!(m.starts_with("Check your list: run `omicron loop check`"), "{m}");
+        assert!(m.contains("run 5, again as soon as you're done."), "{m}");
+        assert!(!m.contains("Done work goes to Review"), "{m}");
     }
 
     #[test]

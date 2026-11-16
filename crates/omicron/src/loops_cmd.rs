@@ -13,7 +13,7 @@ use crate::board_cmd::sign_in;
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use clap::Subcommand;
-use omicron::board::{Board, Loop};
+use omicron::board::{Board, Loop, LoopWatch};
 use omicron::supa::{MachineKey, Supabase};
 use omicron::windows::{this_window, Windows};
 use serde_json::Value;
@@ -27,11 +27,19 @@ pub enum Loops {
     /// session, it's for that session unless --session says otherwise.
     /// Example: omicron loops start "Keep going with the next task" --every 10m --times 20
     Start {
-        /// What to type in each time (one line)
-        prompt: String,
+        /// What to type in each time (one line). Optional for a loop that
+        /// only checks its watches (`omicron loop watch add`)
+        prompt: Option<String>,
         /// How often, like 90s, 10m, 2h or 1h30m (at least a minute)
+        #[arg(long, required_unless_present = "asap", conflicts_with = "asap")]
+        every: Option<String>,
+        /// The next run as soon as the session is done with the last,
+        /// instead of every so often (#278)
         #[arg(long)]
-        every: String,
+        asap: bool,
+        /// Don't hand off and clear the session before each run (it does by default)
+        #[arg(long)]
+        no_start_fresh: bool,
         /// Stop after this time: 18:30, "2026-11-12 08:00", +8h, or a full timestamp
         #[arg(long, conflicts_with = "times")]
         until: Option<String>,
@@ -66,6 +74,18 @@ pub enum Loops {
         #[arg(long)]
         project: Option<String>,
     },
+    /// Inside a session: what's on its loop's list now (each watch's tasks,
+    /// new, changed or no change since the last check), with the board
+    /// rules and each watch's instructions. Marks them read
+    Check {
+        #[arg(long, requires = "project")]
+        session: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// A loop's watches: the tasks its session checks each run
+    #[command(subcommand)]
+    Watch(Watch),
     /// The loops that are running (all you can see, or one Project's)
     List {
         #[arg(long)]
@@ -112,20 +132,233 @@ pub enum Loops {
     },
 }
 
+#[derive(Subcommand)]
+pub enum Watch {
+    /// Watch tasks: any mix of statuses, labels and who they're given to
+    /// (all must match), or one task. Starts the session's loop if it has
+    /// none (checking as soon as it's done)
+    Add {
+        /// A status (give it again for more than one)
+        #[arg(long = "status")]
+        statuses: Vec<String>,
+        /// A label (give it again for more than one; tasks need them all)
+        #[arg(long = "label")]
+        labels: Vec<String>,
+        /// Tasks given to this person or Claude session, by name
+        #[arg(long)]
+        to: Option<String>,
+        /// One task, by number
+        #[arg(long)]
+        task: Option<i64>,
+        /// Its own instructions, on top of the board rules
+        #[arg(long)]
+        instructions: Option<String>,
+        #[arg(long, requires = "project")]
+        session: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// A session's loop's watches, numbered
+    List {
+        #[arg(long, requires = "project")]
+        session: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Stop watching (by its number in `omicron loop watch list`)
+    Remove {
+        number: usize,
+        #[arg(long, requires = "project")]
+        session: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+    },
+}
+
+/// A watch in words: "To do, label ui, given to parser" or "#12 Fix the gate".
+fn say_watch(board: &Board, project: &omicron::board::Project, w: &LoopWatch) -> Result<String> {
+    if let Some(t) = &w.task_id {
+        return Ok(match board.task_row(t)? {
+            Some(t) => format!("#{} {}", t.number, t.title),
+            None => "a task that's gone".into(),
+        });
+    }
+    let statuses = board.statuses(project)?;
+    let labels = board.label_names(project)?;
+    let mut parts: Vec<String> = Vec::new();
+    let names: Vec<String> = w.status_ids.iter().filter_map(|id| statuses.iter().find(|s| &s.id == id).map(|s| s.name.clone())).collect();
+    if !names.is_empty() {
+        parts.push(names.join(" or "));
+    }
+    for l in &w.label_ids {
+        if let Some((_, n)) = labels.iter().find(|(id, _)| id == l) {
+            parts.push(format!("label {n}"));
+        }
+    }
+    if let Some(p) = &w.given_person {
+        parts.push(format!("given to {}", board.person(p).map(|p| p.name).unwrap_or_else(|_| "someone".into())));
+    }
+    if let Some(s) = &w.given_session {
+        parts.push(format!("given to {}", board.session_by_id(s).map(|s| s.name).unwrap_or_else(|_| "a session".into())));
+    }
+    Ok(if parts.is_empty() { "every task".into() } else { parts.join(", ") })
+}
+
+/// The session a command is about, and its running loop (if any).
+fn session_loop(session: Option<String>, project: Option<String>, as_machine: bool) -> Result<(Board, omicron::board::SessionRecord, Option<Loop>)> {
+    let (board, id, _) = target(session, project, as_machine)?;
+    let s = board.session_by_id(&id)?;
+    let l = board.loops(Some(&id))?.into_iter().next();
+    Ok((board, s, l))
+}
+
+/// `omicron loop check`: the session's list, as it is now (#278).
+fn check(session: Option<String>, project: Option<String>, as_machine: bool) -> Result<()> {
+    let (board, s, l) = session_loop(session, project, as_machine)?;
+    let Some(l) = l else { bail!("{} has no loop running", s.name) };
+    let project = board.project(&s.project_id)?;
+    let watches = board.loop_watches(&l.id)?;
+    let statuses = board.statuses(&project)?;
+    // The board rules first, saying when they changed since the last check.
+    let rules = board.board_rules(&project)?;
+    let shown = if rules.trim().is_empty() { omicron::board::LoopRules::usual() } else { rules.trim().to_string() };
+    let changed = l.rules_seen.as_deref().is_some_and(|seen| seen != rules.trim());
+    println!("{} for {}{}:", if rules.trim().is_empty() { "The usual rules (it has no board rules)" } else { "Board rules" }, project.name, if changed { " (changed since your last check)" } else { "" });
+    println!("{shown}\n");
+    let own = l.rules.own();
+    if !own.is_empty() {
+        println!("This loop's own instructions (they win where they differ):");
+        for (case, what) in own {
+            println!("{case}: {what}.");
+        }
+        println!();
+    }
+    if watches.is_empty() {
+        println!("Nothing on the list: this loop only types its message.");
+    }
+    let mut anything = false;
+    for w in &watches {
+        println!("Watching {}:", say_watch(&board, &project, w)?);
+        if !w.instructions.trim().is_empty() {
+            println!("  Instructions: {}", w.instructions.trim());
+        }
+        let tasks = board.watched_tasks(&project.id, w)?;
+        if tasks.is_empty() {
+            println!("  (no tasks)");
+        }
+        for t in &tasks {
+            let status = statuses.iter().find(|st| st.id == t.status_id).map(|st| st.name.as_str()).unwrap_or("?");
+            let since = t.since(w.checked_at.as_deref(), &s.id);
+            if since != Some("no change") {
+                anything = true;
+            }
+            println!("  #{} {} [{}]{}", t.number, omicron::text::line(&t.title), status, since.map(|x| format!(": {x}")).unwrap_or_default());
+        }
+        board.watch_checked(&w.id)?;
+    }
+    if !watches.is_empty() {
+        println!("\nWork through these as the rules say: `omicron tasks show \"{}\" <n>` for one in full, `omicron tasks comment` to say what you did. \"no change\" means nothing happened since you last commented on it.", project.name);
+    }
+    let _ = board.loop_saw_rules(&l.id, rules.trim());
+    // Nothing new on an "as soon as it's done" loop: wait a while (#278).
+    if !watches.is_empty() && !anything && l.asap {
+        let _ = board.loop_idle(&l.id, 300);
+        println!("Nothing new: the next check is in 5 minutes. End your turn.");
+    }
+    Ok(())
+}
+
+fn watch(cmd: Watch, as_machine: bool) -> Result<()> {
+    match cmd {
+        Watch::Add { statuses, labels, to, task, instructions, session, project } => {
+            let (board, s, l) = session_loop(session, project, as_machine)?;
+            let p = board.project(&s.project_id)?;
+            let all = board.statuses(&p)?;
+            let mut w = LoopWatch { instructions: instructions.unwrap_or_default(), ..Default::default() };
+            for name in &statuses {
+                let st = all.iter().find(|st| st.name.eq_ignore_ascii_case(name.trim())).with_context(|| format!("{} has no status called {name}", p.name))?;
+                w.status_ids.push(st.id.clone());
+            }
+            for name in &labels {
+                w.label_ids.push(board.existing_label(&p, name)?);
+            }
+            if let Some(who) = &to {
+                match board.member_id(&p, who) {
+                    Ok(id) => w.given_person = Some(id),
+                    Err(_) => w.given_session = Some(board.session(&p, who).with_context(|| format!("no one and no session in {} is called {who}", p.name))?.id),
+                }
+            }
+            if let Some(n) = task {
+                w.task_id = Some(board.task(&p, n)?.id);
+            }
+            if statuses.is_empty() && labels.is_empty() && to.is_none() && task.is_none() {
+                bail!("say what to watch: --status, --label, --to or --task");
+            }
+            let l = match l {
+                Some(l) => l,
+                None => {
+                    let l = board.start_loop(&s.id, "", None, None, None, true, &Default::default(), true, true)?;
+                    println!("Started a loop for {}: as soon as it's done.", s.name);
+                    l
+                }
+            };
+            board.add_loop_watch(&l.id, &w)?;
+            println!("Added to {}'s list: {}.", s.name, say_watch(&board, &p, &w)?);
+        }
+        Watch::List { session, project } => {
+            let (board, s, l) = session_loop(session, project, as_machine)?;
+            let Some(l) = l else {
+                println!("{} has no loop running.", s.name);
+                return Ok(());
+            };
+            let p = board.project(&s.project_id)?;
+            let watches = board.loop_watches(&l.id)?;
+            if watches.is_empty() {
+                println!("{}'s loop watches nothing.", s.name);
+            }
+            for (i, w) in watches.iter().enumerate() {
+                println!("{}\t{}{}", i + 1, say_watch(&board, &p, w)?, if w.instructions.trim().is_empty() { String::new() } else { format!("\t{}", w.instructions.trim()) });
+            }
+        }
+        Watch::Remove { number, session, project } => {
+            let (board, s, l) = session_loop(session, project, as_machine)?;
+            let l = l.with_context(|| format!("{} has no loop running", s.name))?;
+            let watches = board.loop_watches(&l.id)?;
+            let w = number.checked_sub(1).and_then(|i| watches.get(i)).with_context(|| format!("{}'s loop has no watch {number} (see `omicron loop watch list`)", s.name))?;
+            board.remove_loop_watch(&w.id)?;
+            // The last watch of a loop with no message: nothing left to do, so it stops.
+            if watches.len() == 1 && l.prompt.trim().is_empty() {
+                board.stop_loop(&l.id)?;
+                println!("Removed it; {}'s loop had nothing else to do, so it stopped.", s.name);
+            } else {
+                println!("Removed it from {}'s list.", s.name);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
     match cmd {
-        Loops::Start { prompt, every, until, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
+        Loops::Check { session, project } => check(session, project, as_machine)?,
+        Loops::Watch(cmd) => watch(cmd, as_machine)?,
+        Loops::Start { prompt, every, asap, no_start_fresh, until, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
             let rules = omicron::board::LoopRules { question: if_question, info: if_info, done: if_done, input: if_input, idle: if_idle };
-            let every = parse_every(&every)?;
+            let every = every.map(|e| parse_every(&e)).transpose()?;
+            let prompt = prompt.unwrap_or_default();
             let until = until.map(|u| parse_until(&u, Local::now())).transpose()?;
             if times == Some(0) {
                 bail!("--times is at least 1");
             }
             let (board, id, name) = target(session, project, as_machine)?;
             let one_line = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
-            let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times, now, &rules)?;
-            println!("Started a loop for {name}: every {}, {}.", say_every(every), say_end(&l));
-            if now {
+            let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times, now || asap, &rules, asap, !no_start_fresh)?;
+            let how = if asap { "as soon as it's done".to_string() } else { format!("every {}", say_every(every.unwrap_or_default())) };
+            println!("Started a loop for {name}: {how}, {}.", say_end(&l));
+            if one_line.is_empty() {
+                println!("It has no message: give it something to watch with `omicron loop watch add`.");
+            }
+            if now || asap {
                 println!("First run now. Stop it with `omicron loops stop`.");
             } else {
                 println!("First run at {}. Stop it with `omicron loops stop`.", say_time(&l.next_run_at));
@@ -140,10 +373,10 @@ pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
                 let Some(s) = sessions.iter().find(|s| s.id == l.session_id) else { continue };
                 any = true;
                 println!(
-                    "{}\t{}\tevery {}\t{}\tnext {}\t{}{}",
+                    "{}\t{}\t{}\t{}\tnext {}\t{}{}",
                     s.name,
                     s.project,
-                    say_every(l.every_seconds),
+                    if l.asap { "as soon as it's done".to_string() } else { format!("every {}", say_every(l.every_seconds)) },
                     say_end(&l),
                     say_time(&l.next_run_at),
                     l.prompt,
@@ -332,6 +565,10 @@ pub struct Runner {
     owner: Mutex<Option<Option<String>>>,
 }
 
+/// Loops whose session is handing off before a run (Start Fresh): not run
+/// again until that's done.
+static FRESHENING: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+
 impl Runner {
     pub fn start(supabase: Supabase, key: MachineKey) -> Arc<Runner> {
         let runner = Arc::new(Runner { supabase, key, loops: Mutex::default(), sessions: Mutex::default(), owner: Mutex::default() });
@@ -411,6 +648,9 @@ impl Runner {
     }
 
     fn run(&self, l: &Loop, now: DateTime<Utc>) -> Result<()> {
+        if FRESHENING.lock().unwrap().get_or_insert_with(Default::default).contains(&l.id) {
+            return Ok(());
+        }
         let board = self.board()?;
         if l.until.as_deref().and_then(|u| DateTime::parse_from_rfc3339(u).ok()).is_some_and(|u| u <= now) {
             board.finish_loop(&l.id)?;
@@ -467,6 +707,19 @@ impl Runner {
             // Still working on the last one: wait for its turn to end.
             return Ok(());
         }
+        let rules = board.board_rules_of(&session.project_id).unwrap_or_default();
+        let watching = !board.loop_watches(&l.id)?.is_empty();
+        if !watching && l.prompt.trim().is_empty() {
+            // Nothing to type (no message, nothing watched): wait, saying so once.
+            let note = "waiting: nothing to do (no message, and nothing on its list)".to_string();
+            if l.note.as_deref() != Some(note.as_str()) {
+                board.loop_note(&l.id, Some(&note))?;
+                if let Some(x) = self.loops.lock().unwrap().get_mut(&l.id) {
+                    x.note = Some(note);
+                }
+            }
+            return Ok(());
+        }
         // Claim this run in the database first: only one claim of a run
         // can succeed, so two daemons for the same machine (or a tick run
         // twice) never send it twice. Then mark the session busy and send.
@@ -476,11 +729,31 @@ impl Runner {
             self.recorded(None, &l.id);
             return Ok(());
         }
-        omicron::windows::set_busy(&l.session_id, true)?;
-        // Said with each run: it's a loop, and what to do in each case (#261).
-        // With the Project's board rules as they are now (#277).
-        let rules = board.board_rules_of(&session.project_id).unwrap_or_default();
-        omicron::tell::tell(&board, &session, &l.message(&session.project, &rules))?;
+        // Said with each run: it's a loop, and what to do (#261), with the
+        // Project's board rules as they are now (#277), or, for a loop with
+        // watches, to check its list (#278).
+        let message = l.message(&session.project, &rules, watching);
+        if l.start_fresh && l.runs > 0 {
+            // Start fresh (#278): the session writes its handoff note and is
+            // cleared first. That waits on the session, so it goes on the
+            // side, and the loop isn't run again meanwhile.
+            FRESHENING.lock().unwrap().get_or_insert_with(Default::default).insert(l.id.clone());
+            let (supabase, key, session, id) = (self.supabase.clone(), self.key.clone(), session.clone(), l.id.clone());
+            std::thread::spawn(move || {
+                let done = Board::as_machine(&supabase, &key).and_then(|board| {
+                    omicron::handover::hand_off_and_clear(&supabase, &board, &session)?;
+                    omicron::windows::set_busy(&session.id, true)?;
+                    omicron::tell::tell(&board, &session, &message).map(|_| ())
+                });
+                if let Err(e) = done {
+                    eprintln!("omicron daemon: loops: {e:#}");
+                }
+                FRESHENING.lock().unwrap().get_or_insert_with(Default::default).remove(&id);
+            });
+        } else {
+            omicron::windows::set_busy(&l.session_id, true)?;
+            omicron::tell::tell(&board, &session, &message)?;
+        }
         self.recorded(claimed, &l.id);
         Ok(())
     }

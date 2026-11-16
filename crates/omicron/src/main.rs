@@ -143,8 +143,9 @@ enum Command {
     /// A Project's topics: a second way to group tasks, as rows on the board
     #[command(subcommand)]
     Topics(projects_cmd::Topics),
-    /// Loops: Omicron types a prompt into a session every so often
-    #[command(subcommand)]
+    /// Loops: a session's timer, its message, and the tasks it watches
+    /// (`omicron loop check` inside a session: what's on its list)
+    #[command(subcommand, alias = "loop")]
     Loops(loops_cmd::Loops),
     /// Teams of Claude sessions: set a folder up, start a team, give it jobs
     #[command(subcommand)]
