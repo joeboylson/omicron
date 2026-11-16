@@ -612,9 +612,10 @@ impl WebMachine {
                 if s("now") == "true" {
                     a.push("--now".into());
                 }
-                // Every case, so a cleared one goes back to its default.
+                // Every case, so a cleared one goes back to its default (as
+                // `--if-question=`: an empty argument on its own is refused below).
                 for (key, flag) in [("if_question", "--if-question"), ("if_info", "--if-info"), ("if_done", "--if-done"), ("if_input", "--if-input"), ("if_idle", "--if-idle")] {
-                    a.extend([flag.into(), s(key)]);
+                    a.push(format!("{flag}={}", s(key)));
                 }
                 a
             }
