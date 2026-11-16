@@ -478,7 +478,9 @@ impl Runner {
         }
         omicron::windows::set_busy(&l.session_id, true)?;
         // Said with each run: it's a loop, and what to do in each case (#261).
-        omicron::tell::tell(&board, &session, &l.message(&session.project))?;
+        // With the Project's board rules as they are now (#277).
+        let rules = board.board_rules_of(&session.project_id).unwrap_or_default();
+        omicron::tell::tell(&board, &session, &l.message(&session.project, &rules))?;
         self.recorded(claimed, &l.id);
         Ok(())
     }

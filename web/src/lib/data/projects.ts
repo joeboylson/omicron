@@ -153,7 +153,8 @@ export async function deleteProject(db: SupabaseClient, id: string) {
   if (gone.length === 0) throw new Error("That Project couldn't be deleted (are you a member?).");
 }
 
-export async function setRunRules(db: SupabaseClient, id: string, run_rules: string) {
+/** A Project's board rules (#277), kept as run_rules, their old name. */
+export async function setBoardRules(db: SupabaseClient, id: string, run_rules: string) {
   must(await db.from("projects").update({ run_rules }).eq("id", id));
 }
 

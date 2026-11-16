@@ -327,14 +327,14 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
 
 type Step = "kind" | "template" | "command" | "rules" | "tasks" | "session";
 
-/** A loop's cases (#261), with what the session does when one's left
- *  blank (the same defaults as `LoopRules` in the Rust code). */
-const RULE_CASES: [keyof LoopRules, string, string][] = [
-  ["question", "If it has a question", "Don't ask it in the session. Write it as a comment on its task, mark the task for review, and go on to the next thing."],
-  ["info", "If it needs more information", "Look in the task's notes and comments, the Project's other tasks and its folder first; if it still isn't there, treat it as a question."],
-  ["done", "When it finishes something", "Comment on the task saying what it did, mark it for review, and move it to the status that fits."],
-  ["input", "If it needs a person", "Comment on the task saying exactly what's needed and from whom, mark it for review, and go on to the next thing."],
-  ["idle", "If there's nothing left to do", "Say so in one line and end the turn; the next run checks again."],
+/** A loop's own instructions, by case (#261); one left blank follows the
+ *  Project's board rules (#277). */
+const RULE_CASES: [keyof LoopRules, string][] = [
+  ["question", "If it has a question"],
+  ["info", "If it needs more information"],
+  ["done", "When it finishes something"],
+  ["input", "If it needs a person"],
+  ["idle", "If there's nothing left to do"],
 ];
 
 /**
@@ -584,7 +584,7 @@ function NewLoop({
 
         {step === "rules" && (
           <div className="grid gap-4">
-            {RULE_CASES.map(([key, label, fallback]) => (
+            {RULE_CASES.map(([key, label]) => (
               <div key={key} className="grid gap-1.5">
                 <label htmlFor={`loop-rule-${key}`} className="text-sm font-medium">
                   {label}
@@ -594,7 +594,7 @@ function NewLoop({
                   rows={2}
                   value={rules[key] ?? ""}
                   onChange={(e) => setRules({ ...rules, [key]: e.target.value })}
-                  placeholder={fallback}
+                  placeholder="Blank: as the board rules say"
                 />
               </div>
             ))}

@@ -1,5 +1,5 @@
 //! What a session is told about the tasks given to it (`omicron tasks
-//! mine`), with the Project's run rules and how to report.
+//! mine`), with the Project's board rules and how to report.
 
 use crate::board_cmd::sign_in;
 use anyhow::{Context, Result};
@@ -27,13 +27,13 @@ pub fn tasks_message(tasks: &[(String, omicron::board::Task)], new: &[String]) -
     text
 }
 
-/// A Project's run rules, said with its tasks: how to work on them, beside
+/// A Project's board rules, said with its tasks: how to work on them, beside
 /// the folder's CLAUDE.md.
 pub fn rules_message(project: &str, rules: &str) -> String {
     if rules.trim().is_empty() {
-        return format!("\n{project} has no run rules; follow this folder's CLAUDE.md.\n");
+        return format!("\n{project} has no board rules; follow this folder's CLAUDE.md.\n");
     }
-    format!("\nRun rules for {project} (how to work on its tasks; this folder's CLAUDE.md applies too):\n{}\n", rules.trim())
+    format!("\nBoard rules for {project} (how to work on its tasks; this folder's CLAUDE.md applies too):\n{}\n", rules.trim())
 }
 
 /// How a session writes its report, said with every task handed over.
@@ -68,14 +68,14 @@ pub fn tasks_mine() -> Result<()> {
     }
     if !tasks.is_empty() {
         print!("{}", tasks_message(&tasks, &new));
-        // Each Project's run rules, once.
+        // Each Project's board rules, once.
         let mut seen: Vec<&str> = Vec::new();
         for (project, _) in &tasks {
             if seen.contains(&project.as_str()) {
                 continue;
             }
             seen.push(project);
-            let rules = board.run_rules(&board.project(project)?)?;
+            let rules = board.board_rules(&board.project(project)?)?;
             print!("{}", rules_message(project, &rules));
         }
     }

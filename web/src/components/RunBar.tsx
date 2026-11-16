@@ -225,7 +225,7 @@ function StartForm({
             : `${queue.length} task${queue.length === 1 ? "" : "s"} to do, starting with #${queue[0].number} ${queue[0].title}.`}
         </p>
         <p className="text-muted-foreground">
-          {project.run_rules.trim() ? "It follows the Project's run rules." : "No run rules yet: set them in Project settings."}
+          {project.run_rules.trim() ? "It follows the Project's board rules." : "No board rules yet: set them in Project settings."}
         </p>
       </div>
       {chosen && fromElsewhere && (

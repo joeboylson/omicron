@@ -10,7 +10,7 @@ pub enum Projects {
     List,
     /// Start a Project (you become its first member)
     New { name: String },
-    /// A Project's run rules: how its Claude sessions work, given to a
+    /// A Project's board rules: how its Claude sessions work, given to a
     /// session with every task. Shows them, or sets them (`-` reads stdin;
     /// "" clears them)
     Rules { project: String, rules: Option<String> },
@@ -92,9 +92,9 @@ pub fn projects(cmd: Projects, as_machine: bool) -> Result<()> {
             let p = board.project(&project)?;
             match rules {
                 None => {
-                    let r = board.run_rules(&p)?;
+                    let r = board.board_rules(&p)?;
                     if r.trim().is_empty() {
-                        println!("{} has no run rules yet. Set them with `omicron projects rules '{}' \"<rules>\"`.", p.name, p.name);
+                        println!("{} has no board rules yet. Set them with `omicron projects rules '{}' \"<rules>\"`.", p.name, p.name);
                     } else {
                         println!("{}", r.trim_end());
                     }
@@ -107,8 +107,8 @@ pub fn projects(cmd: Projects, as_machine: bool) -> Result<()> {
                     } else {
                         text
                     };
-                    board.set_run_rules(&p, text.trim())?;
-                    println!("{} {}.", if text.trim().is_empty() { "Cleared the run rules of" } else { "Saved the run rules of" }, p.name);
+                    board.set_board_rules(&p, text.trim())?;
+                    println!("{} {}.", if text.trim().is_empty() { "Cleared the board rules of" } else { "Saved the board rules of" }, p.name);
                 }
             }
         }

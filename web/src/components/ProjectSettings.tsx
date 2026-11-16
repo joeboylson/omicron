@@ -8,7 +8,7 @@ import { NameSection } from "@/components/settings/Name";
 import { StatusesSection } from "@/components/settings/Statuses";
 import { TopicsSection } from "@/components/settings/Topics";
 import { LabelsSection } from "@/components/settings/Labels";
-import { RunRulesSection } from "@/components/settings/RunRules";
+import { BoardRulesSection } from "@/components/settings/BoardRules";
 import { MachinesSection } from "@/components/settings/Machines";
 import { FoldersSection } from "@/components/settings/Folders";
 import { DeleteSection } from "@/components/settings/Delete";
@@ -38,7 +38,7 @@ const TITLES: Record<SettingPage, string> = {
   statuses: "Statuses",
   topics: "Topics",
   labels: "Labels",
-  "run-rules": "Run Rules",
+  "run-rules": "Board Rules",
   machines: "Machines",
   folders: "Folders",
   computer: "This Computer",
@@ -95,7 +95,7 @@ export function ProjectSettings({ project, dev, onChanged }: { project: ProjectD
         {shown === "statuses" && <StatusesSection {...section} />}
         {shown === "topics" && <TopicsSection {...section} />}
         {shown === "labels" && <LabelsSection {...section} />}
-        {shown === "run-rules" && <RunRulesSection {...section} />}
+        {shown === "run-rules" && <BoardRulesSection {...section} />}
         {shown === "machines" && <MachinesSection project={project} pickable={pickable} changeMachines={changeMachines} />}
         {shown === "folders" && <FoldersSection project={project} />}
         {shown === "computer" && dev && <ThisComputer project={project} dev={dev} onChanged={onChanged} />}
@@ -119,7 +119,7 @@ export function ProjectSettings({ project, dev, onChanged }: { project: ProjectD
         <Link onClick={() => open("labels")} label="Labels" value={count(project.labels.length)} />
       </Group>
       <Group title="Claude sessions">
-        <Link onClick={() => open("run-rules")} label="Run Rules" value={project.run_rules.trim() ? "Set" : "None"} />
+        <Link onClick={() => open("run-rules")} label="Board Rules" value={project.run_rules.trim() ? "Set" : "None"} />
         <Link onClick={() => open("machines")} label="Machines" value={count(inProject.length)} />
         <Link onClick={() => open("folders")} label="Folders" value={count(project.folders.length)} />
         {dev && <Link onClick={() => open("computer")} label="This Computer" value={dev.machine} />}
@@ -183,7 +183,7 @@ function Information({ project, machines }: { project: ProjectData; machines: nu
   );
 }
 
-/** Whether a Project uses Claude sessions: it has sessions, folders, or run rules. */
+/** Whether a Project uses Claude sessions: it has sessions, folders, or board rules. */
 export function usesClaude(project: ProjectData): boolean {
   return project.sessions.length > 0 || project.folders.length > 0 || project.run_rules.trim() !== "";
 }

@@ -220,24 +220,45 @@ impl LoopRules {
     pub const INPUT: &'static str = "comment on the task saying exactly what's needed and from whom, mark it for review, and go on to the next thing";
     pub const IDLE: &'static str = "say so in one line and end your turn; the next run checks again";
 
-    /// The text for each case: what was set, or the default.
-    pub fn filled(&self) -> [(&'static str, String); 5] {
-        let pick = |v: &Option<String>, d: &str| v.as_deref().map(str::trim).filter(|t| !t.is_empty()).unwrap_or(d).trim_end_matches('.').to_string();
+    /// The usual rules (#277): the five cases with what to do in each, said
+    /// when a Project has no board rules of its own, and offered as a
+    /// starting point for them.
+    pub fn usual() -> String {
         [
-            ("If you have a question", pick(&self.question, Self::QUESTION)),
-            ("If you need more information", pick(&self.info, Self::INFO)),
-            ("When you finish something", pick(&self.done, Self::DONE)),
-            ("If you need a person to do something", pick(&self.input, Self::INPUT)),
-            ("If there's nothing left to do", pick(&self.idle, Self::IDLE)),
+            ("If you have a question", Self::QUESTION),
+            ("If you need more information", Self::INFO),
+            ("When you finish something", Self::DONE),
+            ("If you need a person to do something", Self::INPUT),
+            ("If there's nothing left to do", Self::IDLE),
         ]
+        .iter()
+        .map(|(case, what)| format!("{case}: {what}."))
+        .collect::<Vec<_>>()
+        .join("\n")
+    }
+
+    /// The cases this loop sets for itself (blank ones aren't said).
+    pub fn own(&self) -> Vec<(&'static str, String)> {
+        [
+            ("If you have a question", &self.question),
+            ("If you need more information", &self.info),
+            ("When you finish something", &self.done),
+            ("If you need a person to do something", &self.input),
+            ("If there's nothing left to do", &self.idle),
+        ]
+        .into_iter()
+        .filter_map(|(case, v)| v.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(|t| (case, t.trim_end_matches('.').to_string())))
+        .collect()
     }
 }
 
 impl Loop {
-    /// What's typed into the session on a run (#261): the prompt, then that
-    /// it's an Omicron loop (which run, how often, nobody watching), where
-    /// its tasks are, and what to do in each case. One line, like a prompt.
-    pub fn message(&self, project: &str) -> String {
+    /// What's typed into the session on a run (#261, #277): the prompt, then
+    /// that it's an Omicron loop (which run, how often, nobody watching),
+    /// where its tasks are, the Project's board rules (or the usual ones
+    /// when it has none), and this loop's own instructions, which win where
+    /// they differ. One line, like a prompt.
+    pub fn message(&self, project: &str, board_rules: &str) -> String {
         let run = self.runs + 1;
         let which = match self.times {
             Some(t) => format!("run {run} of {t}"),
@@ -249,8 +270,17 @@ impl Loop {
             self.prompt.trim(),
             every_words(self.every_seconds),
         );
-        for (case, what) in self.rules.filled() {
-            out.push_str(&format!(" {case}: {what}."));
+        if board_rules.trim().is_empty() {
+            out.push_str(&format!(" {project} has no board rules, so the usual ones: {}", LoopRules::usual()));
+        } else {
+            out.push_str(&format!(" Board rules for {project}: {}", board_rules.trim()));
+        }
+        let own = self.rules.own();
+        if !own.is_empty() {
+            out.push_str(" This loop's own instructions (they win where they differ):");
+            for (case, what) in own {
+                out.push_str(&format!(" {case}: {what}."));
+            }
         }
         out.push(')');
         out.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -1285,13 +1315,21 @@ impl Board {
         Ok(rows.as_array().into_iter().flatten().filter_map(TeamTask::read).collect())
     }
 
-    /// A Project's run rules (empty if it has none).
-    pub fn run_rules(&self, project: &Project) -> Result<String> {
+    /// A Project's board rules (empty if it has none). Kept in the database
+    /// as `run_rules`, their name before #277, so older copies of Omicron
+    /// still read them.
+    pub fn board_rules(&self, project: &Project) -> Result<String> {
         let rows = self.get(&format!("/rest/v1/projects?id=eq.{}&select=run_rules", project.id))?;
         Ok(rows.get(0).and_then(|r| r["run_rules"].as_str()).unwrap_or("").to_string())
     }
 
-    pub fn set_run_rules(&self, project: &Project, rules: &str) -> Result<()> {
+    /// The board rules of a Project, by its id.
+    pub fn board_rules_of(&self, project_id: &str) -> Result<String> {
+        let rows = self.get(&format!("/rest/v1/projects?id=eq.{project_id}&select=run_rules"))?;
+        Ok(rows.get(0).and_then(|r| r["run_rules"].as_str()).unwrap_or("").to_string())
+    }
+
+    pub fn set_board_rules(&self, project: &Project, rules: &str) -> Result<()> {
         self.send("PATCH", &format!("/rest/v1/projects?id=eq.{}", project.id), json!({ "run_rules": rules }))?;
         Ok(())
     }
@@ -1904,21 +1942,24 @@ mod tests {
     }
 
     #[test]
-    fn a_loops_message_says_its_a_loop_and_what_to_do_in_each_case() {
-        let m = a_loop(Some(20), 2, LoopRules::default()).message("Home Lab");
+    fn a_loops_message_says_its_a_loop_with_the_board_rules_and_its_own() {
+        // No board rules: the usual ones.
+        let m = a_loop(Some(20), 2, LoopRules::default()).message("Home Lab", "");
         assert!(m.starts_with("Check the To do column. (This is an Omicron loop, run 3 of 20, every 1 hour 30 minutes."), "{m}");
         assert!(m.contains("Nobody is watching this window"), "{m}");
         assert!(m.contains("`omicron tasks list \"Home Lab\"`"), "{m}");
+        assert!(m.contains("Home Lab has no board rules, so the usual ones:"), "{m}");
         assert!(m.contains(&format!("If you have a question: {}.", LoopRules::QUESTION)), "{m}");
-        assert!(m.contains(&format!("If there's nothing left to do: {}.", LoopRules::IDLE)), "{m}");
         assert!(!m.contains('\n'), "one line: {m}");
-        // A case that's set replaces its default; a blank one keeps it.
-        let set = LoopRules { question: Some("Ask in the Questions column.".into()), idle: Some("  ".into()), ..Default::default() };
-        let m = a_loop(None, 0, set).message("Home Lab");
+        // Board rules said instead of the usual ones; the loop's own set
+        // cases after them (blank ones aren't said).
+        let own = LoopRules { question: Some("Ask in the Questions column.".into()), idle: Some("  ".into()), ..Default::default() };
+        let m = a_loop(None, 0, own).message("Home Lab", "Done work goes to Review.\nQuestions go to Waiting on Joe.");
         assert!(m.contains("run 1, every"), "{m}");
-        assert!(m.contains("If you have a question: Ask in the Questions column."), "{m}");
+        assert!(m.contains("Board rules for Home Lab: Done work goes to Review. Questions go to Waiting on Joe."), "{m}");
         assert!(!m.contains(LoopRules::QUESTION), "{m}");
-        assert!(m.contains(LoopRules::IDLE), "{m}");
+        assert!(m.contains("This loop's own instructions (they win where they differ): If you have a question: Ask in the Questions column."), "{m}");
+        assert!(!m.contains("nothing left to do"), "{m}");
     }
 
     #[test]

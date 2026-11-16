@@ -102,3 +102,13 @@ Loop
   `omicron loops start` / `omicron runs start`. A draft is a loop not
   started yet; a template is one kept to start again, with no tasks or
   session. "Run" is the older name for a tasks loop, still the command's.
+
+Board rules
+  A Project's rules for how its Claude sessions work: what its columns mean
+  and how work moves (like "Done work goes to Review; questions go to
+  Waiting on Joe"). Given to a session with every task and every loop run;
+  a loop's own instructions go on top and win where they differ. Set in
+  Settings › Board Rules or `omicron projects rules`. Blank, sessions get
+  the usual rules (what to do if they have a question, need more
+  information, finish something, need a person, or run out of work). Was
+  called "run rules"; don't use that name.

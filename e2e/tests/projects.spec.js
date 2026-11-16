@@ -544,7 +544,7 @@ test("This computer, in the Dev view: setup checks, loops, accounts and teams", 
     await wizard.getByRole("button", { name: "Next" }).click();
     // Instructions (#261): what it does in each case; blank ones use the default shown.
     await expect(wizard.getByRole("heading", { name: "Instructions" })).toBeVisible();
-    await expect(wizard.getByLabel("If it has a question")).toHaveAttribute("placeholder", /Don't ask it in the session/);
+    await expect(wizard.getByLabel("If it has a question")).toHaveAttribute("placeholder", /as the board rules say/);
     await wizard.getByLabel("If it has a question").fill("Put it in the Questions column.");
     await wizard.getByRole("button", { name: "Next" }).click();
     await wizard.getByRole("radio", { name: /^parser/ }).click();
@@ -643,17 +643,22 @@ test("the Dev view on a phone, through the home lab's gate, for the computer's o
 });
 });
 
-test("run rules are set in Project settings", async ({ page, request }) => {
+test("board rules are set in Project settings, starting from the usual ones (#277)", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
-  await setting(page, "Run Rules");
-  const rules = page.getByLabel("Run rules");
+  await setting(page, "Board Rules");
+  const rules = page.getByLabel("Board rules");
+  // Blank: the usual rules to start from, then edited.
+  await page.getByRole("button", { name: "Start From the Usual Rules" }).click();
+  await expect(rules).toHaveValue(/^If you have a question: /);
+  await expect(page.getByRole("button", { name: "Start From the Usual Rules" })).toHaveCount(0);
+  await expect.poll(() => omicron.cli("projects", "rules", name, "--as-machine")).toContain("When you finish something:");
   await rules.fill("Run the tests.\nCommit and push.");
   await rules.blur();
   await expect.poll(() => omicron.cli("projects", "rules", name, "--as-machine")).toContain("Run the tests.\nCommit and push.");
   await page.reload();
-  await expect(page.getByLabel("Run rules")).toHaveValue("Run the tests.\nCommit and push.");
+  await expect(page.getByLabel("Board rules")).toHaveValue("Run the tests.\nCommit and push.");
 });
 
 test("a run: started from the page, followed, paused after its task", async ({ page, request }) => {

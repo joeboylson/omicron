@@ -332,12 +332,12 @@ fn a_session_gets_its_tasks_only_when_told() {
     assert!(mine.contains("comment") && mine.contains("--review"), "{mine}");
     // With how to write the report.
     assert!(mine.contains("No jargon and no made-up terms") && mine.contains("At most 500 words"), "{mine}");
-    // And the Project's run rules, once set (#90).
-    assert!(mine.contains(&format!("{project} has no run rules; follow this folder's CLAUDE.md.")), "{mine}");
+    // And the Project's board rules, once set (#90).
+    assert!(mine.contains(&format!("{project} has no board rules; follow this folder's CLAUDE.md.")), "{mine}");
     ok(&pat, None, &["projects", "rules", &project, "Run the tests. Commit and push."]);
     assert_eq!(ok(&pat, None, &["projects", "rules", &project]).trim(), "Run the tests. Commit and push.");
     let again = ok(&mac, Some(w.id()), &["tasks", "mine"]);
-    assert!(again.contains(&format!("Run rules for {project} (how to work on its tasks; this folder's CLAUDE.md applies too):\nRun the tests. Commit and push.")), "{again}");
+    assert!(again.contains(&format!("Board rules for {project} (how to work on its tasks; this folder's CLAUDE.md applies too):\nRun the tests. Commit and push.")), "{again}");
     // A report over 500 words is refused, and nothing is saved.
     let long = vec!["word"; 501].join(" ");
     let o = run(&mac, Some(w.id()), &["tasks", "comment", &project, "1", &long, "--review"]);

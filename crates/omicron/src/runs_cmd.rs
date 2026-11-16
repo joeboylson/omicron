@@ -410,7 +410,7 @@ fn step(supabase: &Supabase, key: &MachineKey, board: &Board, id: &str) -> Resul
             omicron::host::say(
                 &session.name,
                 &format!(
-                    "Omicron run: the team {team} finished job #{job} for task #{number} \"{}\" in {}. Run `omicron tasks mine` to get the task with the Project's run rules, check the job's work (`omicron teams jobs {team}`, its branch is merged), then report on the task and move it to Review. Then stop; the run hands off and gives you the next one.",
+                    "Omicron run: the team {team} finished job #{job} for task #{number} \"{}\" in {}. Run `omicron tasks mine` to get the task with the Project's board rules, check the job's work (`omicron teams jobs {team}`, its branch is merged), then report on the task and move it to Review. Then stop; the run hands off and gives you the next one.",
                     omicron::text::line(&tt.task.title),
                     project.name
                 ),
@@ -424,7 +424,7 @@ fn step(supabase: &Supabase, key: &MachineKey, board: &Board, id: &str) -> Resul
             omicron::host::say(
                 &session.name,
                 &format!(
-                    "Omicron run: your next task is #{} \"{}\" in {}. Run `omicron tasks mine` to get it with the Project's run rules, and work on it as they say: move it to Doing, do it, report on it, and move it to Review. Then stop; the run hands off and gives you the next one.",
+                    "Omicron run: your next task is #{} \"{}\" in {}. Run `omicron tasks mine` to get it with the Project's board rules, and work on it as they say: move it to Doing, do it, report on it, and move it to Review. Then stop; the run hands off and gives you the next one.",
                     task.number,
                     omicron::text::line(&task.title),
                     project.name
