@@ -319,6 +319,11 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
                 omicron::windows::this_window(&windows)?
                     .and_then(|pid| windows.windows.get(&pid))
                     .and_then(|w| w.session_id.clone())
+                    // Or the session Omicron opened this in, by its name (#271).
+                    .or_else(|| {
+                        let name = std::env::var("OMICRON_SESSION").ok().filter(|n| !n.trim().is_empty())?;
+                        board.session(&p, &name).ok().map(|s| s.id)
+                    })
             } else {
                 None
             };

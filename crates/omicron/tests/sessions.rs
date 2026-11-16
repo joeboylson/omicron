@@ -982,14 +982,14 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     let mut d = daemon(&mac, &path);
 
     // Bad starts are refused.
-    let o = run(&pat, None, &["loops", "start", "x", "--every", "30s", "--session", "parser", "--project", &project]);
+    let o = run(&pat, None, &["loops", "start", "--no-start-fresh", "x", "--every", "30s", "--session", "parser", "--project", &project]);
     assert!(String::from_utf8_lossy(&o.stderr).contains("at most once a minute"));
 
     // Started from elsewhere: it only runs while the gate is open.
     open_gate(&mac, &pat);
-    let started = ok(&pat, None, &["loops", "start", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--if-question", "Put it in the Questions column.", "--session", "parser", "--project", &project]);
+    let started = ok(&pat, None, &["loops", "start", "--no-start-fresh", "Keep going\nwith the next task", "--every", "10m", "--times", "2", "--if-question", "Put it in the Questions column.", "--session", "parser", "--project", &project]);
     assert!(started.starts_with("Started a loop for parser: every 10m, 0 of 2 runs done."), "{started}");
-    let o = run(&pat, None, &["loops", "start", "again", "--every", "10m", "--session", "parser", "--project", &project]);
+    let o = run(&pat, None, &["loops", "start", "--no-start-fresh", "again", "--every", "10m", "--session", "parser", "--project", &project]);
     assert!(String::from_utf8_lossy(&o.stderr).contains("already on a loop"));
     let listed = ok(&pat, None, &["loops", "list", "--project", &project]);
     assert!(listed.starts_with(&format!("parser\t{project}\tevery 10m\t0 of 2 runs done\tnext ")), "{listed}");
@@ -1037,7 +1037,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
     // away, not in an hour. The session is quit: it ends, and its loop with it.
     // (The last run's turn ends first, as Claude's Stop hook would say.)
     let _ = std::fs::remove_file(&busy);
-    let said = ok(&pat, None, &["loops", "start", "Check in", "--every", "1h", "--now", "--session", "parser", "--project", &project]);
+    let said = ok(&pat, None, &["loops", "start", "--no-start-fresh", "Check in", "--every", "1h", "--now", "--session", "parser", "--project", &project]);
     assert!(said.contains("First run now."), "{said}");
     wait_for("the first run, straight away", || {
         let l = s.admin_request("GET", &format!("/rest/v1/loops?session_id=eq.{sid}&prompt=eq.Check%20in&select=runs"), None).unwrap();
@@ -1054,7 +1054,7 @@ fn a_loop_types_its_prompt_in_when_due_waits_while_busy_and_ends() {
 
     // A loop running when its session is quit ends with it.
     let _ = std::fs::remove_file(&busy);
-    ok(&pat, None, &["loops", "start", "Last one", "--every", "1h", "--session", "parser", "--project", &project]);
+    ok(&pat, None, &["loops", "start", "--no-start-fresh", "Last one", "--every", "1h", "--session", "parser", "--project", &project]);
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("parser\t"));
     close_window(&mac, w);
     assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
@@ -1081,7 +1081,7 @@ fn the_prompt_and_stop_hooks_mark_a_session_busy_and_free() {
     hook(&mac, w.id(), "stop", json!({ "session_id": claude, "stop_hook_active": false }));
     assert!(!busy.exists(), "the end of the turn marks it free");
     // Inside the session, loops start and stop for it without naming it.
-    assert!(ok(&mac, Some(w.id()), &["loops", "start", "Keep going", "--every", "10m"]).starts_with("Started a loop for parser"));
+    assert!(ok(&mac, Some(w.id()), &["loops", "start", "--no-start-fresh", "Keep going", "--every", "10m"]).starts_with("Started a loop for parser"));
     assert!(ok(&mac, Some(w.id()), &["loops", "stop"]).starts_with("Stopped parser's loop"));
     w.kill().unwrap();
 }
@@ -1454,7 +1454,7 @@ fn a_loop_runs_once_with_two_daemons_survives_a_restart_and_ends_on_time() {
     let w = open_window(&mac, &path, &["parser", "--project", &project]);
     // Started from elsewhere: it only runs while the gate is open.
     open_gate(&mac, &pat);
-    ok(&pat, None, &["loops", "start", "Next task please", "--every", "10m", "--session", "parser", "--project", &project]);
+    ok(&pat, None, &["loops", "start", "--no-start-fresh", "Next task please", "--every", "10m", "--session", "parser", "--project", &project]);
     let loop_id = s
         .admin_request("GET", "/rest/v1/loops?prompt=eq.Next task please&state=eq.running&select=id,sessions!inner(projects!inner(name))", None)
         .unwrap()
@@ -1802,4 +1802,53 @@ fn commands_inside_a_session_act_as_the_machine_even_without_the_flag() {
     assert!(by("From Pat.").starts_with("Pat, "), "{shown}");
     assert!(by("From the session.").starts_with(&box_name), "{shown}");
     assert!(by("From Pat again.").starts_with("Pat, "), "{shown}");
+}
+
+/// A loop's watches (#278): added from inside the session (starting its
+/// loop), listed, checked (new, then nothing, then no change once the
+/// session has commented), and removed (the loop stops with nothing left).
+#[test]
+fn a_loop_watches_tasks_and_its_session_checks_them() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let (mac, mac_name, path) = machine_with_claude(&s);
+    ok(&pat, None, &["machines", "add", &mac_name, &project]);
+    let w = open_window(&mac, &path, &["parser", "--project", &project]);
+    ok(&pat, None, &["tasks", "add", &project, "Write the parser"]);
+    ok(&pat, None, &["projects", "rules", &project, "Done work goes to Done."]);
+
+    let added = ok(&mac, None, &["loop", "watch", "add", "--status", "To do", "--instructions", "One at a time.", "--session", "parser", "--project", &project]);
+    assert!(added.contains("Started a loop for parser: as soon as it's done."), "{added}");
+    assert!(added.contains("Added to parser's list: To do."), "{added}");
+    assert_eq!(ok(&mac, None, &["loop", "watch", "list", "--session", "parser", "--project", &project]).trim(), "1\tTo do\tOne at a time.");
+    assert!(ok(&pat, None, &["loops", "list", "--project", &project]).contains("as soon as it's done"));
+    // Its machine runs it at once (as soon as it's done): the session is
+    // told to check its list.
+    let mut d = daemon(&mac, &path);
+    wait_for("the first run", || typed_lines(&mac).iter().any(|l| l.starts_with("Check your list: run `omicron loop check`")));
+    d.kill().unwrap();
+
+    let first = ok(&mac, None, &["loop", "check", "--session", "parser", "--project", &project]);
+    assert!(first.starts_with(&format!("Board rules for {project}:\nDone work goes to Done.")), "{first}");
+    assert!(first.contains("Watching To do:\n  Instructions: One at a time.\n  #1 Write the parser [To do]: new"), "{first}");
+    // Nothing since, and the session hasn't said anything on it: no mark.
+    let second = ok(&mac, None, &["loop", "check", "--session", "parser", "--project", &project]);
+    assert!(second.contains("  #1 Write the parser [To do]\n"), "{second}");
+    assert!(!second.contains("Nothing new"), "{second}");
+    // Once it has commented, and nothing changed since: no change, and wait.
+    let o = command(&mac, None, &["tasks", "comment", &project, "1", "Half done."]).env("OMICRON_SESSION", &w.name).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    ok(&mac, None, &["loop", "check", "--session", "parser", "--project", &project]);
+    let fourth = ok(&mac, None, &["loop", "check", "--session", "parser", "--project", &project]);
+    assert!(fourth.contains("  #1 Write the parser [To do]: no change"), "{fourth}");
+    assert!(fourth.contains("Nothing new: the next check is in 5 minutes."), "{fourth}");
+    // The board rules changing is said once.
+    ok(&pat, None, &["projects", "rules", &project, "Done work goes to Review."]);
+    assert!(ok(&mac, None, &["loop", "check", "--session", "parser", "--project", &project]).contains("(changed since your last check)"), "rules changed");
+    // Removing the last watch of a loop with no message stops it.
+    let removed = ok(&mac, None, &["loop", "watch", "remove", "1", "--session", "parser", "--project", &project]);
+    assert!(removed.contains("so it stopped"), "{removed}");
+    assert!(ok(&pat, None, &["loops", "list", "--project", &project]).starts_with("No loops are running."));
 }
