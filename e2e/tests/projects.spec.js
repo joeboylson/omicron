@@ -407,7 +407,8 @@ test("the Dev view: this computer's sessions in terminals, and tasks handed over
     await expect(term.locator(".xterm-rows")).toContainText("hello from the page");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/dev-view.png` });
     // The terminal follows the page's theme, as it changes (#98).
-    const background = () => term.locator(".xterm-viewport").evaluate((el) => getComputedStyle(el).backgroundColor);
+    // (xterm 6 colors the scrolling area; 5 colored the viewport.)
+    const background = () => term.locator(".xterm-scrollable-element").evaluate((el) => getComputedStyle(el).backgroundColor);
     await page.evaluate(() => (document.documentElement.dataset.theme = "light"));
     await expect.poll(background).toBe("rgb(255, 255, 255)");
     await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));

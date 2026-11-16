@@ -102,11 +102,13 @@ export function Terminal({ session, active }: { session: string; active: boolean
       }).catch(() => {});
 
     // Keys go in order, one request at a time; whatever is typed while one
-    // is on its way goes together in the next.
+    // is on its way goes together in the next. Keys typed before the session
+    // is connected wait for it, rather than being sent too early and lost (#272).
     let waiting = "";
     let busy = false;
+    let connected = false;
     const flush = async () => {
-      if (busy || !waiting) return;
+      if (busy || !waiting || !connected) return;
       busy = true;
       while (waiting) {
         const data = waiting;
@@ -141,6 +143,8 @@ export function Terminal({ session, active }: { session: string; active: boolean
         setState("open");
         fitter.fit();
         post("size", { rows: term.rows, cols: term.cols });
+        connected = true;
+        flush();
         const reader = res.body.getReader();
         for (;;) {
           const { value, done } = await reader.read();
