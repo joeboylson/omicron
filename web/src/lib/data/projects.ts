@@ -38,7 +38,7 @@ function withWatches(rows: any[]): SessionLoop[] {
 }
 
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
-  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders, runs, plans] = await Promise.all([
+  const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders, runs, plans, conversations] = await Promise.all([
     db.from("projects").select("id,name,run_rules").eq("id", id).maybeSingle(),
     db.from("statuses").select("id,name,position,is_done,color").eq("project_id", id).order("position").order("name"),
     db.from("labels").select("id,name,color").eq("project_id", id).order("name"),
@@ -67,7 +67,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db.from("topics").select("id,name,position").eq("project_id", id).order("position").order("name"),
     db
       .from("loops")
-      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at,rules,asap,start_fresh,loop_watches(id,status_ids,label_ids,given_person,given_session,task_id,instructions,created_at)")
+      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at,rules,asap,start_fresh,loop_watches(id,status_ids,label_ids,given_person,given_session,task_id,conversation_id,instructions,created_at)")
       .eq("project_id", id)
       .eq("kind", "command")
       .order("started_at", { ascending: false })
@@ -81,6 +81,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       .order("started_at", { ascending: false })
       .limit(20),
     db.from("loop_plans").select("id,name,kind,prompt,every_seconds,times,task_ids,session_id,template,created_at,rules").eq("project_id", id).order("created_at"),
+    db.from("conversations").select("id,name,unread,last_message_at,created_at,conversation_tasks(task_id,created_at)").eq("project_id", id),
   ]);
   const p = must(project);
   if (!p) return null;
@@ -136,6 +137,12 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     pastLoops: withWatches(must(loops) ?? []).filter((l) => l.state !== "running"),
     runs: must(runs) as Run[],
     plans: must(plans) as LoopPlan[],
+    conversations: (must(conversations) as any[])
+      .map(({ conversation_tasks, ...c }) => ({
+        ...c,
+        task_ids: [...(conversation_tasks ?? [])].sort((a: any, b: any) => a.created_at.localeCompare(b.created_at)).map((x: any) => x.task_id),
+      }))
+      .sort((a, b) => (b.last_message_at ?? b.created_at).localeCompare(a.last_message_at ?? a.created_at)),
     folders: (must(folders) as any[])
       .map((f) => ({ id: f.id, path: f.path, machine_id: f.machine_id, machine: f.machines?.name ?? "" }))
       .sort((a, b) => a.machine.localeCompare(b.machine) || a.path.localeCompare(b.path)),

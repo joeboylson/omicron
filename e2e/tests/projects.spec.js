@@ -2525,3 +2525,74 @@ test("watching from the board: a column and a task, shown where they are, and st
     win.kill();
   }
 });
+
+test("a conversation: started, a session added, a task pinned, messages with #12 and @name, Unread (#281)", async ({ page, request }) => {
+  const robin = await newPerson(page, request);
+  const name = unique("Code");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Write the parser");
+  const win = await omicron.open("parser", name, crypto.randomUUID());
+  try {
+    omicron.cli("machines", "owner", robin.login);
+    await page.reload();
+    const tabBar = page.getByRole("navigation", { name: "Project" });
+    await tabBar.getByRole("button", { name: /Conversations/ }).click();
+    await expect(page.getByText("No conversations yet.")).toBeVisible();
+    await page.getByRole("button", { name: "New Conversation" }).click();
+    await page.getByRole("dialog", { name: "New Conversation" }).getByLabel("Name").fill("PR review");
+    await page.getByRole("button", { name: "Start" }).click();
+    const view = page.getByRole("region", { name: "PR review" });
+    await expect(view.getByRole("heading", { name: "PR review" })).toBeVisible();
+
+    // Add parser: it starts a loop.
+    await view.getByRole("button", { name: "Add Session" }).click();
+    const sheet = page.getByRole("dialog", { name: "Add a Session to PR review" });
+    await sheet.getByRole("radio", { name: /^parser/ }).click();
+    await sheet.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(view.getByRole("list", { name: "Sessions in it" })).toContainText("parser");
+    await expect.poll(() => omicron.cli("loop", "watch", "list", "--session", "parser", "--project", name, "--as-machine")).toContain("the conversation PR review");
+
+    // Pin #1 (from the side on a wide screen, from a sheet on a phone).
+    const narrow = (page.viewportSize()?.width ?? 1280) < 1024;
+    if (narrow) await view.getByRole("button", { name: "0 tasks" }).click();
+    const pins = narrow ? page.getByRole("dialog", { name: "Pinned Tasks" }) : view.getByRole("complementary", { name: "Pinned" });
+    await pins.getByRole("button", { name: "Add Task" }).click();
+    await page.getByRole("option", { name: /#1 Write the parser/ }).click();
+    await expect(pins.getByRole("list", { name: "Pinned tasks" })).toContainText("Write the parser");
+    if (narrow) await escape(page);
+
+    // A message with # and @ suggestions.
+    const box = view.getByLabel("New message");
+    await box.fill("@par");
+    await expect(page.getByRole("listbox", { name: "Sessions" })).toContainText("@parser");
+    await box.press("Enter");
+    await box.pressSequentially("PR #");
+    await page.getByRole("option", { name: /#1 Write the parser/ }).click();
+    await box.pressSequentially("is waiting");
+    await expect(box).toHaveValue("@parser PR #1 is waiting");
+    await box.press("ControlOrMeta+Enter");
+    const messages = view.getByRole("list", { name: "Messages" });
+    await expect(messages).toContainText("@parser PR #1 is waiting");
+    await expect(messages.getByRole("link", { name: "#1" })).toBeVisible();
+
+    // The session's check gets it; its answer makes the conversation Unread.
+    const check = omicron.cli("loop", "check", "--session", "parser", "--project", name, "--as-machine");
+    expect(check).toContain("@parser PR #1 is waiting");
+    expect(check).not.toContain("not yours to act on");
+    omicron.cli("say", "PR review", "On it.", "--project", name, "--as-machine");
+    await expect(messages).toContainText("On it.");
+    await expect(view.getByRole("button", { name: "Mark as Read" })).toBeVisible();
+    await expect(tabBar.getByRole("button", { name: /Conversations/ })).toContainText("1");
+    await view.getByRole("button", { name: "Mark as Read" }).click();
+    await expect(view.getByRole("button", { name: "Mark as Read" })).toHaveCount(0);
+
+    // #1 links to the task, and the task back to the conversation.
+    await messages.getByRole("link", { name: "#1" }).first().click();
+    const task = page.getByRole("dialog");
+    await expect(task.getByText("Mentioned in")).toBeVisible();
+    await task.getByRole("link", { name: "PR review" }).click();
+    await expect(page.getByRole("region", { name: "PR review" })).toBeVisible();
+  } finally {
+    win.kill();
+  }
+});

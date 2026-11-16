@@ -137,6 +137,31 @@ export type ProjectData = {
   pastLoops: SessionLoop[];
   /** Loops not started yet, and templates for new ones (#253). */
   plans: LoopPlan[];
+  /** Group chats with its sessions, newest activity first (#281). */
+  conversations: Conversation[];
+};
+
+/** A group chat in a Project, with sessions and pinned tasks (#281). */
+export type Conversation = {
+  id: string;
+  name: string;
+  /** A session spoke last. */
+  unread: boolean;
+  last_message_at: string | null;
+  created_at: string;
+  /** Pinned tasks' ids. */
+  task_ids: string[];
+};
+
+/** One message in a conversation. */
+export type Message = {
+  id: string;
+  author: string;
+  /** The Claude session that wrote it, when one did. */
+  session: string | null;
+  body: string;
+  created_at: string;
+  images: string[];
 };
 
 /** A loop not started yet (a draft), or a template to start new ones from. */
@@ -209,6 +234,8 @@ export type LoopWatch = {
   given_person: string | null;
   given_session: string | null;
   task_id: string | null;
+  /** A conversation it takes part in, instead of tasks (#281). */
+  conversation_id: string | null;
   instructions: string;
 };
 

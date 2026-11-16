@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { AlertCircle, Eye } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, Eye, MessagesSquare } from "lucide-react";
+import { go, useApp } from "@/lib/app";
+import { mentionsOf } from "@/lib/data";
 import { Button } from "@/components/base/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/base/select";
@@ -140,6 +142,7 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
           </Button>
         </Row>
       ))}
+      <Mentions projectId={project.id} taskId={task.id} />
       {!task.assignee_session_id && !task.assignee_person_id && task.ended_session && (
         <Row className="text-sm text-muted-foreground">
           <AlertCircle className="h-4 w-4 shrink-0 text-[var(--orange-text)]" aria-hidden />
@@ -152,5 +155,40 @@ export function TaskDetails({ project, task, save, onChanged }: SectionProps & {
         </Row>
       )}
     </Group>
+  );
+}
+
+/** The conversations that mention it (#12), each a way there (#281). */
+function Mentions({ projectId, taskId }: { projectId: string; taskId: string }) {
+  const { db } = useApp();
+  const [found, setFound] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let gone = false;
+    mentionsOf(db, taskId).then((m) => !gone && setFound(m), () => {});
+    return () => {
+      gone = true;
+    };
+  }, [db, taskId]);
+  return (
+    <>
+      {found.map((c) => (
+        <Row key={c.id} className="text-sm">
+          <MessagesSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="flex-1 text-muted-foreground">
+            Mentioned in{" "}
+            <a
+              href={`/p/${projectId}?view=conversations&c=${c.id}`}
+              className="text-link hover:underline"
+              onClick={(e) => {
+                e.preventDefault();
+                go(`/p/${projectId}?view=conversations&c=${c.id}`);
+              }}
+            >
+              {c.name}
+            </a>
+          </span>
+        </Row>
+      ))}
+    </>
   );
 }

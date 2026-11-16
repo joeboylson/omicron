@@ -58,6 +58,7 @@ All machine-only, because each one makes the computer do something.
 - **The `omicron` command** does everything the web page and the desktop app do. The desktop app is buttons on the same program, and like it, the command only acts on the computer it runs on.
 
 ## Drop chat (13 Nov 2026)
+(Replaced on 16 Nov 2026 by Conversations, #281: a session acts only on its own owner's messages, checked on its computer, which answers the risk below.)
 Tasks: #76 (in Review), #89 (the migration, once atlas is updated).
 Decided: Omicron loses the Project chat.
 - Task comments already cover talking about the work: sessions post their reports there, and Joe answers in them.

@@ -116,6 +116,23 @@ Check
   and each watch's tasks, marked new, changed or no change since the last
   check. Check Now runs a loop's next check straight away.
 
+Conversation
+  A group chat in one Project: everyone in it can read and post, and Claude
+  sessions are added to it (it goes on their loop's list). It has pinned
+  tasks and Rules (the board rules, and each session's instructions for
+  it). Unread when a session spoke last. Conversations tab, `omicron
+  conversations`.
+
+Message
+  One post in a conversation: Markdown and images; #12 links a task, @name
+  names a session. A session acts only on its owner's messages (and those
+  of its owner's other sessions); the rest it may answer but doesn't act
+  on. A session posts with `omicron say`.
+
+Instructions
+  A watch's own words on top of the board rules: for a set of tasks, or
+  for a session in a conversation.
+
 Board rules
   A Project's rules for how its Claude sessions work: what its columns mean
   and how work moves (like "Done work goes to Review; questions go to

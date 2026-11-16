@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Switch } from "@/components/base/switch";
 import { cn, radioArrows } from "@/lib/utils";
 
-/** What a watch started from the board looks at (#279): a column, or one task. */
-export type WatchTarget = { statusId: string } | { taskId: string };
+/** What a watch started from the board looks at (#279): a column, or one
+ *  task; or a conversation the session is added to (#281). */
+export type WatchTarget = { statusId: string } | { taskId: string } | { conversationId: string };
 
 export type Watcher = { loop: SessionLoop; session: ClaudeSession; index: number };
 
@@ -35,8 +36,10 @@ export function watchers(project: ProjectData, target: WatchTarget): Watcher[] {
     (loop.watches ?? []).forEach((w, index) => {
       const hit =
         "statusId" in target
-          ? !w.task_id && w.status_ids.length === 1 && w.status_ids[0] === target.statusId && w.label_ids.length === 0 && !w.given_person && !w.given_session
-          : w.task_id === target.taskId;
+          ? !w.task_id && !w.conversation_id && w.status_ids.length === 1 && w.status_ids[0] === target.statusId && w.label_ids.length === 0 && !w.given_person && !w.given_session
+          : "taskId" in target
+            ? w.task_id === target.taskId
+            : w.conversation_id === target.conversationId;
       if (hit) out.push({ loop, session, index });
     });
   }
@@ -70,12 +73,15 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
   const onRun = new Set(project.runs.filter((r) => r.state === "running" || r.state === "pausing").map((r) => r.session_id));
   const session = sessions.find((s) => s.id === sessionId && !onRun.has(s.id)) ?? null;
   const loop = session ? project.loops.find((l) => l.session_id === session.id) : undefined;
+  const conversation = target && "conversationId" in target ? project.conversations.find((c) => c.id === target.conversationId) : undefined;
   const what =
     target && "statusId" in target
       ? (project.statuses.find((s) => s.id === target.statusId)?.name ?? "this column")
-      : target
+      : target && "taskId" in target
         ? `#${project.tasks.find((t) => t.id === target.taskId)?.number ?? "?"}`
         : "";
+  // Sessions already in the conversation aren't offered again.
+  const inIt = new Set(conversation ? watchers(project, { conversationId: conversation.id }).map((w) => w.session.id) : []);
 
   const watch = () =>
     act(async () => {
@@ -87,7 +93,7 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
           db,
           "/run",
           loop
-            ? { action: "loops-watch-add", session: session.name, project: project.name, status: status?.name ?? "", task: task ? String(task.number) : "" }
+            ? { action: "loops-watch-add", session: session.name, project: project.name, status: status?.name ?? "", task: task ? String(task.number) : "", conversation: conversation?.name ?? "" }
             : {
                 action: "loops-start",
                 session: session.name,
@@ -98,10 +104,11 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
                 start_fresh: startFresh ? "true" : "false",
                 watch_status: status?.name ?? "",
                 watch_tasks: task ? String(task.number) : "",
+                watch_conversation: conversation?.name ?? "",
               },
         );
       } else {
-        const w = "statusId" in target ? { status_ids: [target.statusId] } : { task_id: target.taskId };
+        const w = "statusId" in target ? { status_ids: [target.statusId] } : "taskId" in target ? { task_id: target.taskId } : { conversation_id: target.conversationId };
         if (loop) {
           must(await db.from("loop_watches").insert({ ...w, loop_id: loop.id }));
         } else {
@@ -116,8 +123,8 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
     <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92dvh] gap-4 overflow-y-auto sm:max-w-md" onOpenAutoFocus={focusSheet}>
         <DialogHeader className="text-left">
-          <DialogTitle>Watch {what}</DialogTitle>
-          <DialogDescription className="sr-only">Pick a session to watch it.</DialogDescription>
+          <DialogTitle>{conversation ? `Add a Session to ${conversation.name}` : `Watch ${what}`}</DialogTitle>
+          <DialogDescription className="sr-only">Pick a session.</DialogDescription>
         </DialogHeader>
         <div role="radiogroup" aria-label="Session" className="grid gap-2">
           {sessions.length === 0 && <p className="text-sm text-muted-foreground">No Claude sessions here yet.</p>}
@@ -129,7 +136,7 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
                 type="button"
                 role="radio"
                 aria-checked={sessionId === s.id && !onRun.has(s.id)}
-                disabled={onRun.has(s.id)}
+                disabled={onRun.has(s.id) || inIt.has(s.id)}
                 onKeyDown={radioArrows}
                 onClick={() => setSessionId(s.id)}
                 className={cn(
@@ -139,7 +146,7 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
               >
                 <span className="font-medium">{s.name}</span>
                 <span className="truncate text-sm text-muted-foreground">
-                  {onRun.has(s.id) ? "On a run" : has ? `Adds to its list (${has.asap ? "as soon as it's done" : `every ${sayEvery(has.every_seconds)}`})` : "Starts a loop"}
+                  {inIt.has(s.id) ? "Already in it" : onRun.has(s.id) ? "On a run" : has ? `Adds to its list (${has.asap ? "as soon as it's done" : `every ${sayEvery(has.every_seconds)}`})` : "Starts a loop"}
                 </span>
               </button>
             );
@@ -168,7 +175,13 @@ export function WatchDialog({ project, dev, target, onClose, onChanged }: { proj
             Cancel
           </Button>
           <Button type="button" disabled={!session} onClick={watch}>
-            <Eye aria-hidden /> Watch
+            {conversation ? (
+              "Add"
+            ) : (
+              <>
+                <Eye aria-hidden /> Watch
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

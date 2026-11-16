@@ -3,13 +3,14 @@
 // floating bar with its labels beside the icons, a little above the bottom.
 // Tabs only move between sections, and every tab is always there (an empty
 // one says why).
-import { ListTodo, Repeat, Settings, TerminalSquare } from "lucide-react";
+import { ListTodo, MessagesSquare, Repeat, Settings, TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ProjectTab = "tasks" | "dev" | "loops" | "settings";
+export type ProjectTab = "tasks" | "conversations" | "dev" | "loops" | "settings";
 
 export const PROJECT_TABS: { tab: ProjectTab; label: string; Icon: typeof ListTodo }[] = [
   { tab: "tasks", label: "Tasks", Icon: ListTodo },
+  { tab: "conversations", label: "Conversations", Icon: MessagesSquare },
   { tab: "dev", label: "Dev", Icon: TerminalSquare },
   { tab: "loops", label: "Loops", Icon: Repeat },
   { tab: "settings", label: "Settings", Icon: Settings },
@@ -29,7 +30,7 @@ export function ProjectTabs({ tab, onTab, badges = {} }: { tab: ProjectTab; onTa
       )}
     >
       {/* Close together in the middle, not spread edge to edge (#255). */}
-      <ul className="mx-auto flex max-w-[18rem] justify-center sm:max-w-none sm:gap-0.5">
+      <ul className="mx-auto flex max-w-[24rem] justify-center sm:max-w-none sm:gap-0.5">
         {PROJECT_TABS.map(({ tab: t, label, Icon }) => {
           const on = t === tab;
           const count = badges[t];
@@ -38,6 +39,8 @@ export function ProjectTabs({ tab, onTab, badges = {} }: { tab: ProjectTab; onTa
               <button
                 type="button"
                 aria-current={on ? "page" : undefined}
+                // The count is said after the tab's name, not in it.
+                aria-description={count ? `${count} unread` : undefined}
                 onClick={() => onTab(t)}
                 className={cn(
                   "relative flex h-[3.25rem] w-full flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -48,7 +51,7 @@ export function ProjectTabs({ tab, onTab, badges = {} }: { tab: ProjectTab; onTa
                 <span className="relative">
                   <Icon className="h-6 w-6 sm:h-4 sm:w-4" aria-hidden strokeWidth={on ? 2.25 : 1.75} />
                   {count ? (
-                    <span className="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-[var(--sys-red)] px-1 text-center text-[0.6875rem] leading-4 text-white sm:hidden">
+                    <span aria-hidden className="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-[var(--sys-red)] px-1 text-center text-[0.6875rem] leading-4 text-white sm:hidden">
                       {count}
                     </span>
                   ) : null}

@@ -18,7 +18,7 @@ describe("cardSummary", () => {
   });
   test("what the card shows, in words, with the person's name", () => {
     const t = task({ labelIds: ["l1"], due_on: "2020-01-02", checklist: [{ id: "a", text: "x", done: true, position: 1 }, { id: "b", text: "y", done: false, position: 2 }], commentCount: 1, assignee_person_id: "p1", needs_review: true });
-    expect(cardSummary(project, t, true)).toBe("To do. Needs review. Label: outside. Overdue, was due Jan 2, 2020. Checklist: 1 of 2 done. 1 comment. Given to Claire Boylson");
+    expect(cardSummary(project, t, true)).toBe("To do. Unread. Label: outside. Overdue, was due Jan 2, 2020. Checklist: 1 of 2 done. 1 comment. Given to Claire Boylson");
   });
   test("a session, waiting or with it; an ended one", () => {
     expect(cardSummary(project, task({ assignee_session_id: "s1" }), false)).toBe("Given to parser, waiting for it");

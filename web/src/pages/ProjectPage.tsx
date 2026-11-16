@@ -59,6 +59,7 @@ import { UndoSteps, type Step } from "@/lib/undo";
 import { rememberTask } from "@/lib/recent";
 import { ProjectTabs, TAB_BAR_SPACE, type ProjectTab } from "@/components/ProjectTabs";
 import { LoopsTab } from "@/components/LoopsTab";
+import { ConversationsTab } from "@/components/ConversationsTab";
 import { DevView, SessionPage, type DevSection } from "@/components/DevView";
 import { useDev } from "@/lib/dev";
 import { ColorDot } from "@/components/ColorDot";
@@ -98,12 +99,15 @@ export function ProjectPage({ id }: { id: string }) {
   // The Project's sections, as a tab bar (#248): Tasks (?view absent), Dev, Runs, Settings.
   // (?view=runs, from before runs and loops were one thing, opens Loops.)
   const tab: ProjectTab =
-    viewInAddress === "dev" || viewInAddress === "loops" || viewInAddress === "settings" ? viewInAddress : viewInAddress === "runs" ? "loops" : "tasks";
+    viewInAddress === "dev" || viewInAddress === "loops" || viewInAddress === "settings" || viewInAddress === "conversations" ? viewInAddress : viewInAddress === "runs" ? "loops" : "tasks";
   // A Settings page open (#257): tapping a tab, Settings too, goes back to its top.
   const [, setSettingInAddress] = useAddressValue("setting");
+  // An open conversation (#281).
+  const [, setConversationInAddress] = useAddressValue("c");
   const setTab = (t: ProjectTab) => {
     setViewInAddress(t === "tasks" ? null : t);
     setSettingInAddress(null);
+    setConversationInAddress(null);
   };
   // The Dev tab's section and an open session, in the address (#252).
   const [paneInAddress, setPaneInAddress] = useAddressValue("pane");
@@ -594,7 +598,8 @@ export function ProjectPage({ id }: { id: string }) {
   // One tab bar, the same element whichever tab is showing, so focus stays
   // on the tab just chosen (it's always the root fragment's second child).
   const unread = project.tasks.filter((t) => t.needs_review).length;
-  const tabs = <ProjectTabs tab={tab} onTab={setTab} badges={unread ? { tasks: unread } : {}} />;
+  const unreadTalk = project.conversations.filter((c) => c.unread).length;
+  const tabs = <ProjectTabs tab={tab} onTab={setTab} badges={{ ...(unread ? { tasks: unread } : {}), ...(unreadTalk ? { conversations: unreadTalk } : {}) }} />;
   // A session kept open beside every tab, on a wide screen (#252): the
   // board and a session at the same time.
   const besideOpen = !!dev && !!beside && project.sessions.some((s) => s.name === beside);
@@ -642,6 +647,20 @@ export function ProjectPage({ id }: { id: string }) {
             )}
           </div>
         )}
+      </main>
+      {tabs}
+      {besidePane}
+      </>
+    );
+  }
+  if (tab === "conversations") {
+    return (
+      <>
+      <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
+        {nav}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
+          <ConversationsTab project={project} dev={dev} onChanged={reload} onOpenTask={(n) => (setTab("tasks"), setOpenTask(n))} onEditLoops={() => setTab("loops")} />
+        </div>
       </main>
       {tabs}
       {besidePane}

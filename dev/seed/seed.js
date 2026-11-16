@@ -387,6 +387,18 @@ async function seed(omicron) {
     old.cli("handoff", "write", "Wrote the first version of handoff notes. Nothing left open.");
     old.close();
 
+    // A conversation (#281): Joe and two sessions, two pinned tasks, the
+    // last word a session's (so it's Unread).
+    const [talk] = await joe.call("POST", "/rest/v1/conversations", { project_id: code.id, name: "Sessions strip review" });
+    const lumenTasks = await joe.call("GET", `/rest/v1/tasks?project_id=eq.${code.id}&number=in.(5,8)&select=id`);
+    for (const t of lumenTasks) await joe.call("POST", "/rest/v1/conversation_tasks", { conversation_id: talk.id, task_id: t.id });
+    webPage.cli("loop", "watch", "add", "--conversation", "Sessions strip review");
+    parser.cli("loops", "start", "--every", "15m", "--no-start-fresh", "--watch-conversation", "Sessions strip review");
+    await joe.call("POST", "/rest/v1/messages", { conversation_id: talk.id, body: "@web-page the strip is up for review (#8). Can you check it on a phone?" });
+    webPage.cli("say", "Sessions strip review", "Checked on a phone: the chips wrap well and the sheet opens. One thing: closed sessions look the same as open ones, which is #5.");
+    await joe.call("POST", "/rest/v1/messages", { conversation_id: talk.id, body: "OK, it's updated. @parser does the change list need anything for this?" });
+    parser.cli("say", "Sessions strip review", "No: closing a session is already one line in the change list. Nothing to do on my side.");
+
     // A Unread mark from a session without a comment, too.
     webPage.cli("tasks", "unread", "Lumen", "9");
 

@@ -224,6 +224,18 @@ async function escape(page) {
     await shot("4n-dev-tab");
     await tab("Loops");
     await shot("4o-runs-tab");
+    // Conversations (#281): the list, then one open.
+    await tab("Conversations");
+    await page.getByRole("table", { name: "Conversations" }).or(page.getByRole("list", { name: "Conversations" })).first().waitFor();
+    await shot("4p-conversations");
+    await page.getByRole("button", { name: "Sessions strip review" }).filter({ visible: true }).first().click();
+    await page.getByRole("list", { name: "Messages" }).getByText("Nothing to do on my side").waitFor();
+    await shot("4q-conversation");
+    await page.getByRole("button", { name: "Rules" }).click();
+    await page.getByRole("dialog", { name: "Rules" }).waitFor();
+    await shot("4r-conversation-rules");
+    await escape(page);
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     await tab("Tasks");
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();
