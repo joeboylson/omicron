@@ -69,7 +69,7 @@ test("screenshots", async ({ browser, request }) => {
   await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Wire up the web page" });
   const machine = unique("mac-mini");
   omicron.cli("machines", "register", machine, "--all-projects");
-  omicron.cli("tasks", "needs-review", omicronProject.id, "1", "--as-machine");
+  omicron.cli("tasks", "unread", omicronProject.id, "1", "--as-machine");
   // Three Claude sessions on the Omicron Project: two open, one closed.
   await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Sessions on the web page" });
   const windows = [];
@@ -91,7 +91,7 @@ test("screenshots", async ({ browser, request }) => {
   await call("POST", "/rest/v1/comments", { task_id: (await call("GET", `/rest/v1/tasks?project_id=eq.${omicronProject.id}&number=eq.2&select=id`))[0].id, body: "Nice. Can the closed ones fade a bit more?" });
   await call("POST", "/rest/v1/tasks", { project_id: omicronProject.id, status_id: code.id, title: "Parse the change list", assignee_session_id: parser });
   // The house task gets it too, so it shows on the main screenshot.
-  omicron.cli("tasks", "needs-review", project.id, String(gate.number), "--as-machine");
+  omicron.cli("tasks", "unread", project.id, String(gate.number), "--as-machine");
 
   const shoot = async (page, name) => {
     await page.waitForTimeout(300);

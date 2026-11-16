@@ -157,11 +157,11 @@ fn checklists() {
 }
 
 #[test]
-fn only_a_claude_session_can_ask_for_review_and_anyone_can_clear_it() {
+fn unread_is_whoever_spoke_last() {
     let s = supabase_or_skip!();
     let (me, project) = person_with_project(&s, "Pat");
     ok(&me, &["tasks", "add", &project, "Write the report"]);
-    assert!(fails(&me, &["tasks", "needs-review", &project, "1"]).contains("only a Claude session"));
+    assert!(fails(&me, &["tasks", "unread", &project, "1"]).contains("only a Claude session"));
 
     // Add a machine (where the Claude session runs) to the Project.
     let (session, machine_id) = machine(&s);
@@ -172,11 +172,23 @@ fn only_a_claude_session_can_ask_for_review_and_anyone_can_clear_it() {
         Some(json!({ "project_id": me_admin[0]["id"], "machine_id": machine_id })),
     )
     .unwrap();
-    assert!(ok(&session, &["tasks", "needs-review", &project, "1"]).contains("needs review"));
-    assert!(ok(&me, &["tasks", "list", &project]).contains("#1  Write the report  needs review"));
+    assert!(ok(&session, &["tasks", "unread", &project, "1"]).contains("unread"));
+    assert!(ok(&me, &["tasks", "list", &project]).contains("#1  Write the report  unread"));
 
-    let cleared = ok(&me, &["tasks", "reviewed", &project, "1"]);
-    assert!(!cleared.contains("needs review"), "{cleared}");
+    let cleared = ok(&me, &["tasks", "read", &project, "1"]);
+    assert!(!cleared.contains("unread"), "{cleared}");
+
+    // Whoever spoke last (#280): a session's comment marks it Unread; a
+    // person's comment, or a person moving it, reads it.
+    let unread = || ok(&me, &["tasks", "show", &project, "1"]).contains("unread");
+    ok(&session, &["tasks", "comment", &project, "1", "Done: see the report"]);
+    assert!(unread());
+    ok(&me, &["tasks", "comment", &project, "1", "Thanks"]);
+    assert!(!unread());
+    ok(&session, &["tasks", "comment", &project, "1", "One more thing"]);
+    assert!(unread());
+    ok(&me, &["tasks", "done", &project, "1"]);
+    assert!(!unread());
 }
 
 #[test]

@@ -4,6 +4,8 @@ export type ProjectSummary = {
   id: string;
   name: string;
   taskCount: number;
+  /** Tasks a session spoke on last. */
+  unreadCount: number;
   memberCount: number;
   /** Machines added to it (not counting ones on every Project). */
   machineCount: number;

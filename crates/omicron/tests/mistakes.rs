@@ -55,7 +55,7 @@ const CASES: &[(&[&str], &str)] = &[
     (&["tasks", "comment", "{p}", "1", ""], "write something"),
     (&["tasks", "comment", "{p}", "1", "x", "--image", "/no/such.png"], "can't read /no/such.png"),
     (&["tasks", "comment", "{p}", "1", "x", "--image", "/etc/hosts"], "isn't an image"),
-    (&["tasks", "needs-review", "{p}", "1"], "only a Claude session"),
+    (&["tasks", "unread", "{p}", "1"], "only a Claude session"),
     (&["tasks", "link", "{p}", "1", "noteam", "1"], "no team called noteam"),
     (&["tasks", "mine"], "inside a Claude session"),
     (&["tasks", "frobnicate"], "unrecognized subcommand"),

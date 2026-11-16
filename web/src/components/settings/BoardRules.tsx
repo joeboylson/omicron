@@ -11,10 +11,10 @@ import type { SectionProps } from "@/components/settings/types";
  *  The same as `LoopRules::usual` in the Rust code, said to loops when a
  *  Project has no board rules of its own. */
 export const USUAL_RULES = [
-  "If you have a question: don't ask it here. Write it as a comment on its task (`omicron tasks comment`), mark the task for review (`omicron tasks needs-review`), and go on to the next thing.",
+  "If you have a question: don't ask it here. Write it as a comment on its task (`omicron tasks comment`) and go on to the next thing.",
   "If you need more information: look in the task's notes and comments, the Project's other tasks and this folder first; if it still isn't there, treat it as a question.",
-  "When you finish something: comment on the task saying what you did, mark it for review, and move it to the status that fits.",
-  "If you need a person to do something: comment on the task saying exactly what's needed and from whom, mark it for review, and go on to the next thing.",
+  "When you finish something: comment on the task saying what you did, and move it to the status that fits.",
+  "If you need a person to do something: comment on the task saying exactly what's needed and from whom, and go on to the next thing.",
   "If there's nothing left to do: say so in one line and end your turn; the next run checks again.",
 ].join("\n");
 

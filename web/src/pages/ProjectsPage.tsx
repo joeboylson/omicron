@@ -15,6 +15,7 @@ import {
 } from "@/lib/data";
 import { MultiSelect } from "@/components/MultiSelect";
 import { Button } from "@/components/base/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { TopBar } from "@/components/TopBar";
@@ -95,16 +96,23 @@ export function ProjectsPage() {
       accessorKey: "name",
       header: ({ column }) => <SortHeader column={column} label="Name" />,
       cell: ({ row }) => (
-        <a
-          href={`/p/${row.original.id}`}
-          className="inline-flex min-h-8 items-center font-medium hover:underline"
-          onClick={(e) => {
-            e.preventDefault();
-            go(`/p/${row.original.id}`);
-          }}
-        >
-          {row.original.name}
-        </a>
+        <>
+          <a
+            href={`/p/${row.original.id}`}
+            className="inline-flex min-h-8 items-center font-medium hover:underline"
+            onClick={(e) => {
+              e.preventDefault();
+              go(`/p/${row.original.id}`);
+            }}
+          >
+            {row.original.name}
+          </a>
+          {row.original.unreadCount > 0 && (
+            <Badge className="ml-2 border-transparent tabular-nums text-white" style={{ background: "var(--sys-indigo)" }} aria-label={`${row.original.unreadCount} unread`}>
+              {row.original.unreadCount}
+            </Badge>
+          )}
+        </>
       ),
       meta: { phone: "main" },
     },

@@ -409,7 +409,7 @@ export function ProjectPage({ id }: { id: string }) {
   // The filters that are on, by name, each with a way to take it off.
   const onFilters: { key: string; label: string; off: () => void }[] = [
     ...(filters.mine ? [{ key: "mine", label: "Mine", off: () => setFilters({ ...filters, mine: false }) }] : []),
-    ...(filters.review ? [{ key: "review", label: "Needs review", off: () => setFilters({ ...filters, review: false }) }] : []),
+    ...(filters.review ? [{ key: "review", label: "Unread", off: () => setFilters({ ...filters, review: false }) }] : []),
     ...(filters.due ? [{ key: "due", label: "Due in 7 days", off: () => setFilters({ ...filters, due: false }) }] : []),
     ...(filters.label
       ? [{ key: "label", label: project.labels.find((l) => l.id === filters.label)?.name ?? "A label", off: () => setFilters({ ...filters, label: null }) }]
@@ -593,7 +593,8 @@ export function ProjectPage({ id }: { id: string }) {
   );
   // One tab bar, the same element whichever tab is showing, so focus stays
   // on the tab just chosen (it's always the root fragment's second child).
-  const tabs = <ProjectTabs tab={tab} onTab={setTab} />;
+  const unread = project.tasks.filter((t) => t.needs_review).length;
+  const tabs = <ProjectTabs tab={tab} onTab={setTab} badges={unread ? { tasks: unread } : {}} />;
   // A session kept open beside every tab, on a wide screen (#252): the
   // board and a session at the same time.
   const besideOpen = !!dev && !!beside && project.sessions.some((s) => s.name === beside);
@@ -689,11 +690,11 @@ export function ProjectPage({ id }: { id: string }) {
           {(
             [
               ["mine", "Mine"],
-              ["review", "Needs review"],
+              ["review", "Unread"],
               ["due", "Due in 7 days"],
             ] as const
           )
-            // Needs review is a Claude session's mark: only where it can be.
+            // Unread comes from a Claude session: only where there can be one.
             .filter(([k]) => k !== "review" || filters.review || usesClaude(project) || project.tasks.some((t) => t.needs_review))
             .map(([k, label]) => (
             <Button
@@ -777,7 +778,7 @@ export function ProjectPage({ id }: { id: string }) {
             {(
               [
                 ["mine", "Mine"],
-                ["review", "Needs review"],
+                ["review", "Unread"],
                 ["due", "Due in 7 days"],
               ] as const
             )

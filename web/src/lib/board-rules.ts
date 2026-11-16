@@ -87,7 +87,7 @@ export type Filters = { mine: boolean; review: boolean; due: boolean; label: str
 
 /**
  * Whether a task shows under the search `query` (every word in its number,
- * title or notes) and the filters: given to me, needs review, due within a
+ * title or notes) and the filters: given to me, unread, due within a
  * week of `now`, has the label.
  */
 export function matches(task: Task, query: string, filters: Filters, me: string, now: number): boolean {

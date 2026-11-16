@@ -14,9 +14,10 @@ Done status
   The one status in a Project that means a task is finished. Each Project
   picks its own.
 
-Needs review
-  A mark on a task that means "check this." Only a Claude session can add it.
-  It isn't a status. The task stays in whatever status it was in.
+Unread
+  A task a Claude session spoke on last: its comment marks the task Unread.
+  A person commenting on it, moving it, or choosing Mark as Read reads it.
+  It isn't a status. (Once called Needs review.)
 
 Task
   One piece of work in a Project, given to a person or a Claude session.

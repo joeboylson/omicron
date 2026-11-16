@@ -387,8 +387,8 @@ async function seed(omicron) {
     old.cli("handoff", "write", "Wrote the first version of handoff notes. Nothing left open.");
     old.close();
 
-    // A Needs review mark from a session without a comment, too.
-    webPage.cli("tasks", "needs-review", "Lumen", "9");
+    // A Unread mark from a session without a comment, too.
+    webPage.cli("tasks", "unread", "Lumen", "9");
 
     // Claude accounts each machine reports (names and numbers only).
     const soon = (mins) => new Date(Date.now() + mins * 60000).toISOString();

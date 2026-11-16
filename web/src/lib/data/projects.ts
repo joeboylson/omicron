@@ -8,13 +8,16 @@ import { all, after } from "./shared";
 
 export async function listProjects(db: SupabaseClient): Promise<ProjectSummary[]> {
   const rows = must(
-    await db.from("projects").select("id,name,tasks(count),project_members(count),project_machines(count),sessions(count)").order("name"),
+    await db.from("projects").select("id,name,tasks(count),unread:tasks(count),project_members(count),project_machines(count),sessions(count)")
+      .eq("unread.needs_review", true)
+      .order("name"),
   );
   const count = (r: any, k: string): number => r[k]?.[0]?.count ?? 0;
   return (rows as any[]).map((r) => ({
     id: r.id,
     name: r.name,
     taskCount: count(r, "tasks"),
+    unreadCount: count(r, "unread"),
     memberCount: count(r, "project_members"),
     machineCount: count(r, "project_machines"),
     sessionCount: count(r, "sessions"),

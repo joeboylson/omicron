@@ -25,7 +25,7 @@ It prints the task, its checklist, linked team jobs and every comment.
 ## Comments, state, and closing
 
 - Comment: `omicron tasks comment Omicron <n> "<text>"` (from a Claude
-  session, add `--as-machine`; a report for review adds `--review`).
+  session, add `--as-machine`; a session's comment marks the task Unread).
 - Move: `omicron tasks move Omicron <n> "<status>"`; finished:
   `omicron tasks done Omicron <n>`.
 - A whole task from start to Review, like a session does it:

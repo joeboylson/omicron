@@ -72,7 +72,7 @@ export function TaskCard({
               {status.name}
             </Badge>
           )}
-          {task.needs_review && <NeedsReview />}
+          {task.needs_review && <Unread />}
           {labels.map((l) => (
             <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />
           ))}
@@ -148,7 +148,7 @@ export function cardSummary(project: ProjectData, task: Task, showStatus: boolea
   const done = status?.is_done ?? false;
   if (showStatus && show.status && status) parts.push(status.name);
   if (task.question?.open) parts.push("Team is waiting on you");
-  if (task.needs_review) parts.push("Needs review");
+  if (task.needs_review) parts.push("Unread");
   const labels = show.labels ? project.labels.filter((l) => task.labelIds.includes(l.id)).map((l) => l.name) : [];
   if (labels.length) parts.push(`${labels.length === 1 ? "Label" : "Labels"}: ${labels.join(", ")}`);
   if (show.date && task.due_on) parts.push(!done && isOverdue(task.due_on) ? `Overdue, was due ${formatDate(task.due_on)}` : `Due ${formatDate(task.due_on)}`);
@@ -197,12 +197,11 @@ export function TeamWaiting() {
   );
 }
 
-/** The Needs review mark: orange, Apple's color for "look at this". */
-/** "Check this": indigo, apart from the orange that warns something's wrong (an ended session, remote control off). */
-export function NeedsReview() {
+/** Unread: a session spoke last. Indigo, apart from the orange that warns something's wrong (an ended session, remote control off). */
+export function Unread() {
   return (
     <Badge className="border-transparent font-medium text-white hover:opacity-90" style={{ background: "var(--sys-indigo)" }}>
-      Needs review
+      Unread
     </Badge>
   );
 }

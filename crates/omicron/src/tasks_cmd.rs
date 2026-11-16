@@ -69,10 +69,12 @@ pub enum Tasks {
     Check { project: String, number: i64, text: String },
     /// Tick or untick a checklist item (counting from 1)
     Tick { project: String, number: i64, item: usize },
-    /// Mark a task as needing review (Claude sessions only)
-    NeedsReview { project: String, number: i64 },
-    /// Take the Needs review mark off a task
-    Reviewed { project: String, number: i64 },
+    /// Mark a task Unread (Claude sessions only; a session's comment does it too)
+    #[command(alias = "needs-review")]
+    Unread { project: String, number: i64 },
+    /// Mark a task as read
+    #[command(alias = "reviewed")]
+    Read { project: String, number: i64 },
     /// Give a task to a Claude session in the Project. The session gets it
     /// when told to get its tasks, or by Dispatch.
     Send { project: String, number: i64, session: String },
@@ -93,7 +95,7 @@ pub enum Tasks {
         number: i64,
         /// The comment ("" for images only)
         text: String,
-        /// Also mark it as needing review (a Claude session's report)
+        /// Also mark it Unread (a session's comment does this anyway)
         #[arg(long)]
         review: bool,
         /// An image to add (PNG, JPEG, GIF or WebP, up to 10 MB). Can be
@@ -112,7 +114,7 @@ pub enum Tasks {
     },
 }
 
-/// One task on one line: `#3  Buy milk  [food, shop]  due 2026-11-30  to Sam  checklist 1/2  needs review`
+/// One task on one line: `#3  Buy milk  [food, shop]  due 2026-11-30  to Sam  checklist 1/2  unread`
 pub fn one_line(t: &Task) -> String {
     let mut parts = vec![format!("#{}", t.number), omicron::text::line(&t.title)];
     if !t.labels.is_empty() {
@@ -132,7 +134,7 @@ pub fn one_line(t: &Task) -> String {
         parts.push(format!("checklist {done}/{}", t.checklist.len()));
     }
     if t.needs_review {
-        parts.push("needs review".into());
+        parts.push("unread".into());
     }
     parts.join("  ")
 }
@@ -267,12 +269,12 @@ pub fn tasks(cmd: Tasks, as_machine: bool) -> Result<()> {
             let t = board.toggle_checklist_item(&p, number, item)?;
             changed(&p, t)
         }
-        Tasks::NeedsReview { project, number } => {
+        Tasks::Unread { project, number } => {
             let p = board.project(&project)?;
             let t = board.set_needs_review(&p, number, true)?;
             changed(&p, t)
         }
-        Tasks::Reviewed { project, number } => {
+        Tasks::Read { project, number } => {
             let p = board.project(&project)?;
             let t = board.set_needs_review(&p, number, false)?;
             changed(&p, t)

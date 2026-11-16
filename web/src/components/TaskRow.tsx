@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { statusColor, type Color } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
-import { LabelBadge, NeedsReview, cardSummary, formatDate, initials, isOverdue } from "@/components/TaskCard";
+import { LabelBadge, Unread, cardSummary, formatDate, initials, isOverdue } from "@/components/TaskCard";
 import { useCardShow } from "@/lib/cardShow";
 
 /** A task as one row of the list view: number, title, labels, who has it, date. */
@@ -60,7 +60,7 @@ export function TaskRow({
               {status.name}
             </Badge>
           )}
-          {task.needs_review && <NeedsReview />}
+          {task.needs_review && <Unread />}
           {labels.map((l) => (
             <LabelBadge key={l.id} name={l.name} color={l.color as Color | null} />
           ))}

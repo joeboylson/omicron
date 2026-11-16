@@ -300,10 +300,10 @@ pub struct LoopWatch {
 }
 
 impl LoopRules {
-    pub const QUESTION: &'static str = "don't ask it here. Write it as a comment on its task (`omicron tasks comment`), mark the task for review (`omicron tasks needs-review`), and go on to the next thing";
+    pub const QUESTION: &'static str = "don't ask it here. Write it as a comment on its task (`omicron tasks comment`) and go on to the next thing";
     pub const INFO: &'static str = "look in the task's notes and comments, the Project's other tasks and this folder first; if it still isn't there, treat it as a question";
-    pub const DONE: &'static str = "comment on the task saying what you did, mark it for review, and move it to the status that fits";
-    pub const INPUT: &'static str = "comment on the task saying exactly what's needed and from whom, mark it for review, and go on to the next thing";
+    pub const DONE: &'static str = "comment on the task saying what you did, and move it to the status that fits";
+    pub const INPUT: &'static str = "comment on the task saying exactly what's needed and from whom, and go on to the next thing";
     pub const IDLE: &'static str = "say so in one line and end your turn; the next run checks again";
 
     /// The usual rules (#277): the five cases with what to do in each, said
@@ -1305,7 +1305,7 @@ impl Board {
         self.move_task(project, number, &done.name)
     }
 
-    /// Put the Needs review mark on (`true`, machines only) or take it off.
+    /// Mark a task Unread (`true`, machines only) or read.
     /// A Project's runs, newest first.
     pub fn runs(&self, project: &Project) -> Result<Vec<Run>> {
         Ok(serde_json::from_value(self.get(&format!("/rest/v1/loops?kind=eq.tasks&project_id=eq.{}&order=started_at.desc&limit=50", project.id))?)?)

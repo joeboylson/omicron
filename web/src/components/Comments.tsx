@@ -129,7 +129,7 @@ export function Comments({
     <Group title="Comments" id={id}>
       {task.comments.length > 0 && (
         <ul aria-label="Comments" className="divide-y">
-          {/* Waiting for review: the session's last comment is its report. */}
+          {/* Unread: the session's last comment is its report. */}
           {task.comments.map((c) => (
             <li
               key={c.id}
@@ -137,7 +137,7 @@ export function Comments({
             >
               {c.id === report && (
                 <span className="text-xs font-medium text-[var(--indigo-text)]" data-testid="report-mark">
-                  Report · Needs review
+                  Report · Unread
                 </span>
               )}
               <div className="flex items-baseline gap-2 text-xs text-muted-foreground">

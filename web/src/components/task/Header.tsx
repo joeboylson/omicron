@@ -11,11 +11,11 @@ import { Button } from "@/components/base/button";
 import { Textarea } from "@/components/ui/textarea";
 import { statusColor } from "@/lib/colors";
 import { ColorDot } from "@/components/ColorDot";
-import { NeedsReview } from "@/components/TaskCard";
+import { Unread } from "@/components/TaskCard";
 import { type SectionProps } from "@/components/task/save";
 import { useWatch, watchers } from "@/components/WatchDialog";
 
-/** The sheet's top: where the task is, its ⋯ menu, its title, and Needs review. */
+/** The sheet's top: where the task is, its ⋯ menu, its title, and Unread. */
 export function TaskHeader({ project, task, save, change, onDelete }: SectionProps & { onDelete: (task: Task) => void }) {
   const watch = useWatch();
   const toast = useToast();
@@ -200,11 +200,10 @@ export function TaskHeader({ project, task, save, change, onDelete }: SectionPro
     </DialogHeader>
 
     {task.needs_review && (
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 text-sm" data-testid="needs-review">
-        <NeedsReview />
-        <span className="min-w-[12rem] flex-1 text-muted-foreground">A Claude session asked for this to be checked.</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3 text-sm" data-testid="unread">
+        <Unread />
         <Button size="sm" variant="outline" onClick={() => save({ needs_review: false })}>
-          <Check /> Reviewed
+          <Check /> Mark as Read
         </Button>
       </div>
     )}

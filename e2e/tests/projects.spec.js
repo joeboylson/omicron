@@ -221,23 +221,27 @@ test("changes made somewhere else show up without reloading", async ({ page, req
   await other.close();
 });
 
-test("a Claude session marks a task for review, and a person takes it off", async ({ page, request }) => {
+test("a Claude session's comment marks a task Unread, counted on the Tasks tab and Projects, and Mark as Read reads it (#280)", async ({ page, request }) => {
   await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Write the parser");
 
-  // The Claude session, through its machine's key.
-  omicron.cli("tasks", "needs-review", name, "1", "--as-machine");
+  // The Claude session's comment, through its machine's key.
+  omicron.cli("tasks", "comment", name, "1", "Done: it parses", "--as-machine");
   const card = column(page, "To do").getByRole("button", { name: "#1 Write the parser" });
-  await expect(card).toContainText("Needs review");
+  await expect(card).toContainText("Unread");
+  await expect(page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: /Tasks/ })).toContainText("1");
+  await page.goto(omicron.url);
+  await expect(page.getByLabel("1 unread").filter({ visible: true })).toBeVisible();
+  await page.goBack();
 
   await card.click();
-  await expect(page.getByTestId("needs-review")).toBeVisible();
-  await page.getByRole("button", { name: "Reviewed" }).click();
-  await expect(page.getByTestId("needs-review")).toHaveCount(0);
+  await expect(page.getByTestId("unread")).toBeVisible();
+  await page.getByRole("button", { name: "Mark as Read" }).click();
+  await expect(page.getByTestId("unread")).toHaveCount(0);
   await escape(page);
-  await expect(card).not.toContainText("Needs review");
+  await expect(card).not.toContainText("Unread");
 });
 
 test("statuses are set in Project settings, members from Share", async ({ page, request }) => {
@@ -1052,9 +1056,9 @@ test("a task sent to a Claude session from the page is picked up by it", async (
     const comments = page.getByRole("list", { name: "Comments" });
     // The session is the author, its computer where; it's marked as the report (#173).
     await expect(comments.getByTestId("comment-author").first()).toHaveText(`parseron ${machineName}`);
-    await expect(comments.getByTestId("report-mark")).toHaveText("Report · Needs review");
+    await expect(comments.getByTestId("report-mark")).toHaveText("Report · Unread");
     await expect(comments).toContainText("Parser done, with tests.");
-    await expect(page.getByTestId("needs-review")).toBeVisible();
+    await expect(page.getByTestId("unread")).toBeVisible();
 
     // A person answers from the page.
     await page.getByLabel("New comment").fill("Thanks, looks good.");
@@ -1145,8 +1149,8 @@ test("the board's columns are statuses or topics", async ({ page, request }) => 
   const name = unique("House");
   await startProjectIn(page, name);
   await addTaskIn(page, "To do", "Water the plants");
-  // No Claude sessions here: no Needs review filter either (#160).
-  await expect(page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Needs review" })).toHaveCount(0);
+  // No Claude sessions here: no Unread filter either (#160).
+  await expect(page.getByRole("group", { name: "Filters" }).getByRole("button", { name: "Unread" })).toHaveCount(0);
 
   // By topic with no topics yet: one "No topic" column, and how to add some.
   await viewAs(page, "Topic");

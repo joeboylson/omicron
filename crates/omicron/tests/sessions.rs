@@ -395,9 +395,9 @@ fn a_session_reports_on_its_task_and_a_person_answers() {
     hook(&mac, w.id(), "session-start", json!({ "session_id": conversation, "cwd": "/w", "source": "startup" }));
     ok(&pat, None, &["tasks", "add", &project, "Write the parser"]);
 
-    // The session reports, from inside its window, and asks for review.
+    // The session reports, from inside its window, and the task is Unread.
     let shown = ok(&mac, Some(w.id()), &["tasks", "comment", &project, "1", "Done: parser plus 12 tests.", "--review"]);
-    assert!(shown.contains("needs review"), "{shown}");
+    assert!(shown.contains("unread"), "{shown}");
     assert!(shown.contains(&format!("{mac_name} (session parser), ")), "{shown}");
     assert!(shown.contains(": Done: parser plus 12 tests."), "{shown}");
 
@@ -408,7 +408,7 @@ fn a_session_reports_on_its_task_and_a_person_answers() {
     let lines: Vec<&str> = shown.lines().filter(|l| l.contains(": Done:") || l.contains("Looks good")).collect();
     assert_eq!(lines.len(), 2, "{shown}");
     assert!(lines[0].contains("session parser") && lines[1].starts_with("  Pat, "), "{shown}");
-    assert!(!shown.contains("needs review"), "{shown}");
+    assert!(!shown.contains("unread"), "{shown}");
 
     // A machine can't sign a comment as another machine's session.
     let (other, other_name) = machine(&s);
