@@ -47,9 +47,12 @@ export function Comments({
   task,
   change,
   when,
+  id = "task-comments",
 }: {
   project: ProjectData;
   task: Task;
+  /** Its id on the page (the tree view shows many, #268). */
+  id?: string;
   change: (work: () => Promise<unknown>) => Promise<unknown>;
   when: (iso: string) => string;
 }) {
@@ -123,7 +126,7 @@ export function Comments({
   }
 
   return (
-    <Group title="Comments" id="task-comments">
+    <Group title="Comments" id={id}>
       {task.comments.length > 0 && (
         <ul aria-label="Comments" className="divide-y">
           {/* Waiting for review: the session's last comment is its report. */}

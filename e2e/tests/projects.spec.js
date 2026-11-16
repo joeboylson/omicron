@@ -2398,3 +2398,31 @@ test("a card drops into an empty column, near its top, zoomed out or not (#270)"
   await dropAtTopOfDone("Bravo");
   await expect.poll(() => omicron.cli("tasks", "list", name, "--as-machine")).toMatch(/Done\n\s+#2\s+Bravo/);
 });
+
+test("the tree view: groups, their tasks, each task's notes and comments, and adding a comment there (#268)", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Fix the gate");
+  omicron.cli("tasks", "add", name, "Paint the fence", "--notes", "The **white** paint, two coats.", "--as-machine");
+  omicron.cli("tasks", "comment", name, "1", "The latch is loose.", "--as-machine");
+  await page.reload();
+  await viewAs(page, "Tree");
+  const todo = page.getByRole("region", { name: "To do", exact: true });
+  await expect(todo.getByRole("button", { name: /^#1 Fix the gate/ })).toBeVisible();
+  // Notes as a quote, with their formatting; comments under the task.
+  await expect(todo.getByLabel("Notes of #2")).toContainText("The white paint, two coats.");
+  await expect(todo.getByLabel("Notes of #2").locator("strong")).toHaveText("white");
+  const gate = todo.locator("li").filter({ has: page.getByRole("button", { name: /^#1 Fix the gate/ }) });
+  await expect(gate).toContainText("The latch is loose.");
+  // A comment added right there.
+  await gate.getByLabel("New comment").fill("Bought a new one.");
+  await gate.getByRole("button", { name: "Send" }).click();
+  await expect(gate).toContainText("Bought a new one.");
+  await expect.poll(() => omicron.cli("tasks", "show", name, "1", "--as-machine")).toContain("Bought a new one.");
+  // Kept on reload; a task still opens from its node.
+  await page.reload();
+  await viewIs(page, "Tree");
+  await todo.getByRole("button", { name: /^#2 Paint the fence/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("Paint the fence");
+});

@@ -99,6 +99,21 @@ export async function loadComments(db: SupabaseClient, taskId: string): Promise<
   }));
 }
 
+/** Every comment in a Project, by task, oldest first: for the tree view
+ *  (#268), which shows them all at once. */
+export async function loadProjectComments(db: SupabaseClient, projectId: string): Promise<Map<string, Comment[]>> {
+  const rows = must(
+    await db.from("comments").select("id,task_id,author_name,body,created_at,images,sessions(name),tasks!inner(project_id)").eq("tasks.project_id", projectId).order("created_at"),
+  ) as any[];
+  const byTask = new Map<string, Comment[]>();
+  for (const c of rows) {
+    const list = byTask.get(c.task_id) ?? [];
+    list.push({ id: c.id, author: c.author_name, session: c.sessions?.name ?? null, body: c.body, created_at: c.created_at, images: c.images ?? [] });
+    byTask.set(c.task_id, list);
+  }
+  return byTask;
+}
+
 /** Where comments' images are kept: private, filed under each Project. */
 export const IMAGES_BUCKET = "comment-images";
 

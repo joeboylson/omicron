@@ -33,6 +33,7 @@ import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { ProjectMenu } from "@/components/ProjectMenu";
+import { TaskTree } from "@/components/TaskTree";
 import { NewTask, type NewTaskStart } from "@/components/NewTask";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
@@ -120,7 +121,7 @@ export function ProjectPage({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTask]);
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
-  const [layout, setLayout] = useStored<"board" | "list">(`omicron.layout.${id}`, "board");
+  const [layout, setLayout] = useStored<"board" | "list" | "tree">(`omicron.layout.${id}`, "board");
   const [zoomed, setZoomed] = useStored(`omicron.zoom.${id}`, false);
   const [dragging, setDragging] = useState<Task | null>(null);
   const [dropHint, setDropHint] = useState<{ column: string; before: string | null } | null>(null);
@@ -193,6 +194,7 @@ export function ProjectPage({ id }: { id: string }) {
           { id: "group-person", label: "Columns by person", group: ready.name, keywords: "group given to who", run: () => setGroupBy("person") },
           { id: "show-board", label: "Show as a board", group: ready.name, keywords: "view columns", run: () => setLayout("board") },
           { id: "show-list", label: "Show as a list", group: ready.name, keywords: "view rows", run: () => setLayout("list") },
+          { id: "show-tree", label: "Show as a tree", group: ready.name, keywords: "view notes comments", run: () => setLayout("tree") },
           // With a task open: move it to any status from here too.
           ...(() => {
             const open = ready.tasks.find((t) => t.number === openTask);
@@ -738,9 +740,10 @@ export function ProjectPage({ id }: { id: string }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <div className="px-2 py-1.5 text-xs text-muted-foreground">Show</div>
-            <DropdownMenuRadioGroup value={layout} onValueChange={(v) => setLayout(v as "board" | "list")}>
+            <DropdownMenuRadioGroup value={layout} onValueChange={(v) => setLayout(v as "board" | "list" | "tree")}>
               <DropdownMenuRadioItem value="board">Board</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="list">List</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="tree">Tree</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <div className="px-2 py-1.5 text-xs text-muted-foreground">{layout === "board" ? "Columns" : "Group by"}</div>
@@ -855,6 +858,15 @@ export function ProjectPage({ id }: { id: string }) {
           showStatus={groupBy !== "status"}
           filtering={filtering}
           onOpen={(t) => setOpenTask(t.number)}
+        />
+      ) : layout === "tree" ? (
+        <TaskTree
+          project={project}
+          groups={groups}
+          showStatus={groupBy !== "status"}
+          filtering={filtering}
+          onOpen={(t) => setOpenTask(t.number)}
+          onChanged={reload}
         />
       ) : (
       <>

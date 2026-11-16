@@ -164,6 +164,11 @@ async function escape(page) {
     await view("List");
     await page.getByRole("list", { name: "To do" }).waitFor();
     await shot("2g-house-list", true);
+    // The tree: each task's notes and comments under it (#268).
+    await view("Tree");
+    await page.getByRole("region", { name: "To do", exact: true }).getByRole("button", { name: /^#\d+ / }).first().waitFor();
+    await page.waitForTimeout(800);
+    await shot("2j-house-tree", true);
     await view("Board");
     await page.getByRole("button", { name: /Fix the back gate/ }).click();
     await shot("3-task");
