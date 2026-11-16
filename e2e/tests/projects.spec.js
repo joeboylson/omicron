@@ -2366,3 +2366,34 @@ test("the Dev tab's Keys: this computer's remote control keys, listed and taken 
   await expect(page.getByText("No keys.", { exact: false })).toBeVisible();
   expect(omicron.cli("remote", "list")).not.toContain(id);
 });
+
+test("a card drops into an empty column, near its top, zoomed out or not (#270)", async ({ page, request }) => {
+  await newPerson(page, request);
+  const name = unique("House");
+  await startProjectIn(page, name);
+  await addTaskIn(page, "To do", "Alpha");
+  await addTaskIn(page, "To do", "Bravo");
+  const card = (t) => page.getByRole("button", { name: new RegExp(`^#\\d+ ${t}$`) });
+  const said = page.locator('[id^="DndLiveRegion"]');
+  // Picked up, and let go just under the empty Done column's name.
+  async function dropAtTopOfDone(title) {
+    const a = await card(title).boundingBox();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 10, { steps: 5 });
+    const done = await column(page, "Done").boundingBox();
+    await page.mouse.move(done.x + done.width / 2, done.y + 70, { steps: 15 });
+    await expect(said).toContainText(`is over Done`);
+    await page.mouse.up();
+    await expect(said).toContainText(`Dropped`);
+    await expect(column(page, "Done").getByRole("button", { name: new RegExp(`^#\\d+ ${title}$`) })).toBeVisible();
+  }
+  await dropAtTopOfDone("Alpha");
+  // With the board zoomed out, the same (the card being dragged was full
+  // size, which tipped it into the column next door).
+  omicron.cli("tasks", "move", name, "1", "To do", "--as-machine");
+  await expect(column(page, "Done").getByRole("button", { name: /^#\d+ / })).toHaveCount(0);
+  await page.getByRole("button", { name: "Zoom Out" }).click();
+  await dropAtTopOfDone("Bravo");
+  await expect.poll(() => omicron.cli("tasks", "list", name, "--as-machine")).toMatch(/Done\n\s+#2\s+Bravo/);
+});

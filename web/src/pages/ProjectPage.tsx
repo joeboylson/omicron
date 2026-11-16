@@ -13,6 +13,8 @@ import {
   MouseSensor,
   TouchSensor,
   closestCorners,
+  pointerWithin,
+  type CollisionDetection,
   useDroppable,
   useSensor,
   useSensors,
@@ -858,7 +860,7 @@ export function ProjectPage({ id }: { id: string }) {
       <>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={underPointer}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={(e) => {
@@ -903,7 +905,8 @@ export function ProjectPage({ id }: { id: string }) {
       </div>
         <DragOverlay>
           {dragging && (
-            <div className="rotate-1 cursor-grabbing opacity-90 shadow-xl">
+            // As small as the board when it's zoomed out, so it matches what it was picked up from.
+            <div className="rotate-1 cursor-grabbing opacity-90 shadow-xl" style={zoomed ? { zoom: 0.75 } : undefined}>
               <TaskCard project={project} task={dragging} onOpen={() => {}} />
             </div>
           )}
@@ -955,6 +958,17 @@ export function ProjectPage({ id }: { id: string }) {
     </>
   );
 }
+
+/** Where a dragged card is over: among the columns and cards under the
+ *  pointer, the closest; elsewhere, the closest of all. The pointer decides
+ *  first, so the size of the card being dragged can't tip it into the
+ *  column next door (#270). */
+const underPointer: CollisionDetection = (args) => {
+  const under = pointerWithin(args);
+  if (under.length === 0) return closestCorners(args);
+  const ids = new Set(under.map((c) => c.id));
+  return closestCorners({ ...args, droppableContainers: args.droppableContainers.filter((c) => ids.has(c.id)) });
+};
 
 /** While a card is dragged over another column: that column, and the card
  *  it would go before (null: at the end), to draw where it lands. */
