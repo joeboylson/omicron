@@ -2409,6 +2409,8 @@ test("a card drops into an empty column, near its top, zoomed out or not (#270)"
   // With the board zoomed out, the same (the card being dragged was full
   // size, which tipped it into the column next door).
   omicron.cli("tasks", "move", name, "1", "To do", "--as-machine");
+  // (Read afresh: a live update can be slow when the database is busy.)
+  await page.reload();
   await expect(column(page, "Done").getByRole("button", { name: /^#\d+ / })).toHaveCount(0);
   await page.getByRole("button", { name: "Zoom Out" }).click();
   await dropAtTopOfDone("Bravo");

@@ -95,13 +95,25 @@ Folder
   "repo" for it.
 
 Loop
-  Work a session keeps doing on its own, one loop at a time per session.
-  Two kinds: repeat a command (a message typed in every so often, a set
-  number of times or until stopped), or work through tasks (chosen ones in
-  order, or the top status, one at a time). Started from the Loops tab or
-  `omicron loops start` / `omicron runs start`. A draft is a loop not
+  A session's one timer for work it does on its own (a session has at most
+  one): every so often, or as soon as it's done with the last run. Each run
+  it types its message (if it has one), and, if it has watches, tells the
+  session to check its list. Start Fresh (on by default) has the session
+  write its handoff note and clear before each run. Started from the Loops
+  tab, `omicron loops start`, or by adding a watch. A draft is a loop not
   started yet; a template is one kept to start again, with no tasks or
-  session. "Run" is the older name for a tasks loop, still the command's.
+  session. "Run" is the older name for working through tasks; `omicron
+  runs` still starts the older kind.
+
+Watch
+  One item on a loop's list: tasks picked by status, label and who they're
+  given to (all must match), or one task, with its own instructions on top
+  of the board rules. `omicron loop watch add`.
+
+Check
+  One go through a loop's list: `omicron loop check` gives the board rules
+  and each watch's tasks, marked new, changed or no change since the last
+  check. Check Now runs a loop's next check straight away.
 
 Board rules
   A Project's rules for how its Claude sessions work: what its columns mean
