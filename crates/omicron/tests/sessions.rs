@@ -1847,6 +1847,9 @@ fn a_loop_watches_tasks_and_its_session_checks_them() {
     // The board rules changing is said once.
     ok(&pat, None, &["projects", "rules", &project, "Done work goes to Review."]);
     assert!(ok(&mac, None, &["loop", "check", "--session", "parser", "--project", &project]).contains("(changed since your last check)"), "rules changed");
+    // Check Now: its next run straight away (#278).
+    let now = ok(&pat, None, &["loops", "now", "--session", "parser", "--project", &project]);
+    assert!(now.starts_with("parser's loop runs now"), "{now}");
     // Removing the last watch of a loop with no message stops it.
     let removed = ok(&mac, None, &["loop", "watch", "remove", "1", "--session", "parser", "--project", &project]);
     assert!(removed.contains("so it stopped"), "{removed}");

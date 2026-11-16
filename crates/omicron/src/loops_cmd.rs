@@ -92,6 +92,13 @@ pub enum Loops {
         #[arg(long)]
         project: Option<String>,
     },
+    /// Run a session's loop now (its next check straight away)
+    Now {
+        #[arg(long, requires = "project")]
+        session: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+    },
     /// A loop's watches: the tasks its session checks each run
     #[command(subcommand)]
     Watch(Watch),
@@ -350,6 +357,14 @@ fn watch(cmd: Watch, as_machine: bool) -> Result<()> {
 pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
     match cmd {
         Loops::Check { session, project } => check(session, project, as_machine)?,
+        Loops::Now { session, project } => {
+            let (board, s, l) = session_loop(session, project, as_machine)?;
+            let l = l.with_context(|| format!("{} has no loop running", s.name))?;
+            if !board.check_now(&l.id)? {
+                bail!("{}'s loop isn't running any more", s.name);
+            }
+            println!("{}'s loop runs now (once {} is free).", s.name, s.name);
+        }
         Loops::Watch(cmd) => watch(cmd, as_machine)?,
         Loops::Start { prompt, every, asap, no_start_fresh, watch_tasks, watch_status, watch_label, until, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
             let rules = omicron::board::LoopRules { question: if_question, info: if_info, done: if_done, input: if_input, idle: if_idle };

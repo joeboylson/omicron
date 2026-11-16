@@ -1891,6 +1891,12 @@ impl Board {
         Ok(())
     }
 
+    /// A running loop's next run straight away (#278).
+    pub fn check_now(&self, id: &str) -> Result<bool> {
+        let rows = self.send("POST", "/rest/v1/rpc/check_now", json!({ "loop": id }))?;
+        Ok(rows.as_array().is_some_and(|r| !r.is_empty()))
+    }
+
     pub fn stop_loop(&self, id: &str) -> Result<bool> {
         let rows = self.send("POST", "/rest/v1/rpc/stop_loop", json!({ "loop": id }))?;
         Ok(rows.as_array().is_some_and(|r| !r.is_empty()))

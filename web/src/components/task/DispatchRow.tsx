@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, Loader2, Send, Terminal } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { useAwakeMachines } from "@/lib/awake";
-import { giveUpDispatch, requestDispatch, type ProjectData, type Task } from "@/lib/data";
+import { checkNow, giveUpDispatch, requestDispatch, sayEvery, type ProjectData, type Task } from "@/lib/data";
 import { Button } from "@/components/base/button";
 import { Row } from "@/components/Grouped";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,8 @@ export function DispatchRow({ project, task, onChanged }: { project: ProjectData
   const awake = useAwakeMachines(db);
   const [asking, setAsking] = useState(false);
   const session = project.sessions.find((s) => s.id === task.assignee_session_id);
+  // A session with a loop gets its work on its checks: Dispatch becomes Check Now (#278).
+  const loop = session ? project.loops.find((l) => l.session_id === session.id && l.state !== "stopped") : undefined;
   const latest = task.dispatches[0];
   // A request nobody took by the time the database allows (claim_by), or
   // one a machine took but never finished: over, whatever its state says;
@@ -77,6 +79,23 @@ export function DispatchRow({ project, task, onChanged }: { project: ProjectData
   const off = asleep && !working && !task.picked_up_at ? ` ${machine} is off, so it can't be sent now.` : "";
   // When the last send happened, at the end, in words.
   const time = at ? ` (${ago(at)})` : "";
+
+  if (loop && !task.picked_up_at) {
+    return (
+      <Row className="text-sm">
+        <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span role="status" aria-live="polite" data-testid="dispatch" className="flex-1 text-muted-foreground">
+          {name} checks its list {loop.asap ? "as soon as it's done" : `every ${sayEvery(loop.every_seconds)}`}.{off}
+        </span>
+        {!asleep && (
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => act(() => checkNow(db, loop)).then(() => onChanged())} title={`${name} checks its list now`}>
+            <Send className="h-4 w-4" aria-hidden />
+            Check Now
+          </Button>
+        )}
+      </Row>
+    );
+  }
 
   return (
     <Row className="text-sm">

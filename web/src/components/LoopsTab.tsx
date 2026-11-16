@@ -11,6 +11,7 @@ import {
   addPlan,
   changeLoop,
   changePlan,
+  checkNow,
   deletePlan,
   sayEvery,
   setRunState,
@@ -183,6 +184,7 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
               {r.run && (r.run.state === "running" || r.run.state === "pausing") && (
                 <DropdownMenuItem onSelect={() => change(() => setRunState(db, r.run!, "stopped"))}>Stop Now</DropdownMenuItem>
               )}
+              {r.loop && r.state === "Running" && <DropdownMenuItem onSelect={() => change(() => checkNow(db, r.loop!))}>Check Now</DropdownMenuItem>}
               {r.loop && r.state === "Running" && <DropdownMenuItem onSelect={() => setEditing(r.loop!)}>Edit…</DropdownMenuItem>}
               {r.loop && r.state === "Running" && <DropdownMenuItem onSelect={() => change(() => stopLoop(db, r.loop!))}>Stop</DropdownMenuItem>}
               <DropdownMenuItem onSelect={() => asTemplate(r)}>Make Template…</DropdownMenuItem>

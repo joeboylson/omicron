@@ -72,6 +72,12 @@ export async function changeLoop(
   if (!rows?.length) throw new Error("That loop isn't running any more, so it couldn't be changed.");
 }
 
+/** A running loop's next run straight away (#278): Dispatch, for a session that has a loop. */
+export async function checkNow(db: SupabaseClient, loop: SessionLoop) {
+  const rows = must(await db.rpc("check_now", { loop: loop.id })) as unknown[];
+  if (!rows?.length) throw new Error("That loop isn't running any more.");
+}
+
 export async function stopLoop(db: SupabaseClient, loop: SessionLoop) {
   must(await db.rpc("stop_loop", { loop: loop.id }));
 }
