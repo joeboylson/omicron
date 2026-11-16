@@ -1,5 +1,5 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpDown, X, CheckCircle2, ChevronLeft, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpDown, X, CheckCircle2, MoreHorizontal, TerminalSquare, Plus, Search, SlidersHorizontal, Pencil, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/select";
 import { useApp, go, useAddressValue } from "@/lib/app";
 import { useChanges } from "@/lib/live";
@@ -30,6 +30,7 @@ import { Input } from "@/components/base/input";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
+import { ProjectMenu } from "@/components/ProjectMenu";
 import { NewTask, type NewTaskStart } from "@/components/NewTask";
 import { ProjectSettings, usesClaude } from "@/components/ProjectSettings";
 import { Sessions } from "@/components/Sessions";
@@ -538,16 +539,12 @@ export function ProjectPage({ id }: { id: string }) {
     });
   };
   const nav = (
-    // Back and the Project's name in one row; the page's one action at the
-    // end; everything else is in the tabs below (#249).
+    // The Project's name, a menu with Home and the other Projects (#266);
+    // the page's one action at the end; everything else is in the tabs below.
     <NavBar
       inline
-      title={project.name}
-      left={
-        <Button variant="ghost" size="icon" className="[&_svg]:size-6" aria-label="Back to Projects" title="Back to Projects" onClick={() => go("/")}>
-          <ChevronLeft />
-        </Button>
-      }
+      titleClassName="pl-3 sm:pl-3"
+      title={<ProjectMenu id={project.id} name={project.name} />}
       right={
         <>
         {dev &&

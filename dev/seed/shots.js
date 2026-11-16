@@ -114,6 +114,13 @@ async function escape(page) {
     await page.getByRole("link", { name: /^House and garden/ }).click();
     await page.getByRole("button", { name: /Fix the back gate/ }).waitFor();
     await shot("2-house");
+    // The Project's name is a menu: Home and the other Projects (#266).
+    await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+    await page.getByRole("menuitem", { name: "Home" }).waitFor();
+    await page.getByRole("menuitem", { name: /Lumen/ }).waitFor();
+    await shot("2a-project-menu");
+    await escape(page);
+    await page.getByRole("menu").waitFor({ state: "detached" });
     // The same with Increase Contrast on (#214).
     await page.emulateMedia({ contrast: "more" });
     await shot("2b-house-more-contrast");
@@ -189,7 +196,8 @@ async function escape(page) {
     await tab("Loops");
     await shot("3f-runs-empty");
     await tab("Tasks");
-    await page.getByRole("button", { name: "Back to Projects" }).click();
+    await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+    await page.getByRole("menuitem", { name: "Home" }).click();
     await page.getByRole("link", { name: /^Lumen/ }).click();
     await page.getByRole("button", { name: /Parse the change list/ }).waitFor();
     await shot("4-lumen");
@@ -235,7 +243,8 @@ async function escape(page) {
     await page.getByTestId("ended-session").waitFor();
     await shot("4c-ended-session");
     await escape(page);
-    await page.getByRole("button", { name: "Back to Projects" }).click();
+    await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+    await page.getByRole("menuitem", { name: "Home" }).click();
     await page.getByRole("link", { name: /^Lisbon trip/ }).click();
     await page.getByRole("button", { name: /Day trip to Sintra/ }).waitFor();
     await shot("6-lisbon");

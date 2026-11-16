@@ -124,7 +124,8 @@ test("each machine's Claude accounts show on the Machines page, live", async ({ 
   await page.getByRole("button", { name: "New Project" }).first().click();
   await page.getByLabel("New Project name").fill(unique("Desk"));
   await page.getByRole("button", { name: "Create Project" }).click();
-  await page.getByRole("button", { name: "Back to Projects" }).click();
+  await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+  await page.getByRole("menuitem", { name: "Home" }).click();
   const name = unique("laptop");
   const key = omicron.cli("machines", "register", name, "--print").trim();
   // The machine reports, as its daemon does (signed in with its own key).

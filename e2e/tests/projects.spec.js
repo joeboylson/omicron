@@ -113,7 +113,10 @@ test("start a Project and add a task to it", async ({ page, request }) => {
   await expect(column(page, "To do").getByRole("button", { name: "#1 Buy milk" })).toBeVisible();
 
   // Back on the Projects list, it shows with its task count.
-  await page.getByRole("button", { name: "Back to Projects" }).click();
+  // The Project's name is a menu (#266): Home, and every Project to switch to.
+  await page.getByRole("heading", { level: 1, name }).getByRole("button").click();
+  await expect(page.getByRole("menuitem", { name })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("menuitem", { name: "Home" }).click();
   await expect(page.getByRole("row", { name: new RegExp(name) }).getByRole("cell").nth(1)).toHaveText(/^1\b/);
 });
 

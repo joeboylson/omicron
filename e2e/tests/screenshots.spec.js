@@ -119,7 +119,8 @@ test("screenshots", async ({ browser, request }) => {
       await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Settings", exact: true }).click();
       await expect(page.getByRole("region", { name: "Project settings" })).toBeVisible();
       await shoot(page, `${kind}-${scheme}-4-settings`);
-      await page.getByRole("button", { name: "Back to Projects" }).click();
+      await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+      await page.getByRole("menuitem", { name: "Home" }).click();
       await page.getByRole("link", { name: /^Omicron\s*\d+ tasks?$/ }).click();
       await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Dev", exact: true }).click();
       await expect(page.getByRole("region", { name: "Claude sessions" })).toContainText("handoff");

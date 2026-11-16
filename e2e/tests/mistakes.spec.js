@@ -22,7 +22,8 @@ test("a second Project with the same name is refused, plainly", async ({ page, r
     await page.keyboard.press("Enter");
     if (attempt === name) {
       await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-      await page.getByRole("button", { name: "Back to Projects" }).click();
+      await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+      await page.getByRole("menuitem", { name: "Home" }).click();
     }
   }
   await expect(page.getByText(`You already have a Project called ${name.toUpperCase()}`)).toBeVisible();
