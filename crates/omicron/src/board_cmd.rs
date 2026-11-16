@@ -57,7 +57,17 @@ fn kept_login(who: &str, sign_in: impl FnOnce() -> Result<omicron::supa::Session
 /// Whether `sign_in` signs in as this machine rather than as you.
 pub fn acts_as_machine(as_machine: bool) -> Result<bool> {
     let config = Config::load()?;
+    let told = std::env::var("OMICRON_AS").ok();
     Ok(as_machine
-        || std::env::var("OMICRON_AS").is_ok_and(|v| v == "machine")
+        || told.as_deref() == Some("machine")
+        // Inside a Claude session Omicron opened, a command is the session's,
+        // so it acts as the machine and says which session wrote it, with or
+        // without --as-machine (#271). OMICRON_AS=person still acts as you.
+        || (told.as_deref() != Some("person") && in_session())
         || config.supabase()?.secret_key.is_none())
+}
+
+/// Whether this runs inside a Claude session Omicron opened (`omicron open`).
+fn in_session() -> bool {
+    std::env::var("OMICRON_SESSION").is_ok_and(|s| !s.trim().is_empty())
 }

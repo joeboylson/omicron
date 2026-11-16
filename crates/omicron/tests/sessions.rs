@@ -1766,3 +1766,40 @@ fn a_run_gives_big_tasks_to_a_team_and_checks_them_after() {
     ok(&mac, None, &["sessions", "send", "runner", "\u{4}", "--no-enter"]);
     let _ = Command::new("kill").arg(pid.to_string()).status();
 }
+
+/// On a computer that has both its owner's Tailscale login and the secret
+/// key (like a Web Machine), a command run inside an Omicron session acts as
+/// the machine, so a comment is the session's, not the owner's (#271).
+#[test]
+fn commands_inside_a_session_act_as_the_machine_even_without_the_flag() {
+    let s = supabase_or_skip!();
+    let pat = person(&s, "Pat");
+    let project = unique("Code");
+    ok(&pat, None, &["projects", "new", &project]);
+    let box_name = unique("box");
+    let key = s.register_machine(&box_name, false, None).unwrap();
+    ok(&pat, None, &["machines", "add", &box_name, &project]);
+    // Pat's computer is that machine too.
+    let config = pat.home.join("config.json");
+    let mut c: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
+    c["machine_key"] = json!(key.to_string());
+    std::fs::write(&config, c.to_string()).unwrap();
+    ok(&pat, None, &["tasks", "add", &project, "Write the parser"]);
+
+    let comment = |env: &[(&str, &str)], text: &str| {
+        let mut cmd = command(&pat, None, &["tasks", "comment", &project, "1", text]);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let o = cmd.output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    };
+    comment(&[], "From Pat.");
+    comment(&[("OMICRON_SESSION", "parser")], "From the session.");
+    comment(&[("OMICRON_SESSION", "parser"), ("OMICRON_AS", "person")], "From Pat again.");
+    let shown = ok(&pat, None, &["tasks", "show", &project, "1"]);
+    let by = |text: &str| shown.lines().find(|l| l.contains(text)).unwrap_or_default().trim().to_string();
+    assert!(by("From Pat.").starts_with("Pat, "), "{shown}");
+    assert!(by("From the session.").starts_with(&box_name), "{shown}");
+    assert!(by("From Pat again.").starts_with("Pat, "), "{shown}");
+}
