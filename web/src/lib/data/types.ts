@@ -190,7 +190,28 @@ export type SessionLoop = {
   next_run_at: string;
   last_run_at: string | null;
   rules?: LoopRules;
+  /** Next run as soon as the session's done, instead of every so often (#278). */
+  asap?: boolean;
+  /** Hands off and clears the session before each run (#278). */
+  start_fresh?: boolean;
+  /** The tasks it checks each run (#278). */
+  watches?: LoopWatch[];
 };
+
+/** One item on a loop's list (#278): tasks by status, label and who
+ *  they're given to (all must match), or one task. */
+export type LoopWatch = {
+  id: string;
+  status_ids: string[];
+  label_ids: string[];
+  given_person: string | null;
+  given_session: string | null;
+  task_id: string | null;
+  instructions: string;
+};
+
+/** A watch to add: any of its parts (the rest empty). */
+export type NewWatch = Partial<Omit<LoopWatch, "id">>;
 
 /** Who a task is given to: a person, a Claude session, or (both null) nobody. */
 export type Who = { person: string | null; session: string | null };

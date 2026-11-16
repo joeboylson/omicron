@@ -366,7 +366,7 @@ async function escape(page) {
       await shot("4m-loops-tab");
       // Stop it, so the next pass can start one in docs-site again.
       await page.locator("tr, li").filter({ hasText: "Running", visible: true }).getByRole("button", { name: /^More for/ }).first().click();
-      await page.getByRole("menuitem", { name: "Stop Now" }).click();
+      await page.getByRole("menuitem", { name: /^Stop/ }).first().click();
       await page.locator("tr, li").filter({ hasText: /Stopped/, visible: true }).first().waitFor();
       await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name: "Templates" }).click();
       await shot("4n-templates");

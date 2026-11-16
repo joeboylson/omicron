@@ -661,7 +661,7 @@ test("board rules are set in Project settings, starting from the usual ones (#27
   await expect(page.getByLabel("Board rules")).toHaveValue("Run the tests.\nCommit and push.");
 });
 
-test("a run: started from the page, followed, paused after its task", async ({ page, request }) => {
+test("a loop over chosen tasks: drafted from a task, started from the page, stopped, kept as a template", async ({ page, request }) => {
   const robin = await newPerson(page, request);
   const name = unique("Code");
   await startProjectIn(page, name);
@@ -692,23 +692,22 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     await wizard.getByRole("radio", { name: /^parser/ }).click();
     await wizard.getByRole("button", { name: "Start", exact: true }).click();
     await expect(wizard).toHaveCount(0);
-    // Running: the draft became the run, working down #2.
+    // Running: the draft became a loop watching #2, as soon as it's done (#278).
     await expect(loops).not.toContainText("Draft");
     await expect(loops).toContainText("Running");
-    await expect(loops).toContainText("0 of 1 done");
-    await expect.poll(() => omicron.cli("tasks", "show", name, "2", "--as-machine")).toContain("sent to session parser");
+    await expect(loops).toContainText("Watching #2");
+    await expect(loops).toContainText("as soon as it's done");
+    // Its session's list: #2, new.
+    await expect.poll(() => omicron.cli("loop", "check", "--session", "parser", "--project", name, "--as-machine")).toContain("#2 Write the tests [To do]: new");
     if (process.env.OMICRON_SHOTS) await page.screenshot({ path: `${process.env.OMICRON_SHOTS}/run-bar.png` });
 
-    // Paused: it stops once the task it's on is finished.
-    await loops.getByRole("button", { name: "More for 1 task" }).click();
-    await page.getByRole("menuitem", { name: "Pause After This Task" }).click();
-    await expect(loops).toContainText("Pausing");
-    omicron.cli("tasks", "done", name, "2", "--as-machine");
+    // Stopped from its menu.
+    await loops.getByRole("button", { name: "More for Watching #2" }).click();
+    await page.getByRole("menuitem", { name: "Stop", exact: true }).click();
     await expect(loops).toContainText("Stopped");
-    await expect(loops).toContainText("1 of 1 done");
 
     // Kept as a template (no tasks or session), and used for a new one.
-    await loops.getByRole("button", { name: "More for 1 task" }).click();
+    await loops.getByRole("button", { name: "More for Watching #2" }).click();
     await page.getByRole("menuitem", { name: "Make Template…" }).click();
     await page.getByLabel("Name").fill("Nightly tasks");
     await page.getByRole("button", { name: "Make Template", exact: true }).click();
@@ -717,7 +716,19 @@ test("a run: started from the page, followed, paused after its task", async ({ p
     await templates.getByRole("button", { name: "Use" }).click();
     await expect(wizard.getByRole("heading", { name: "The Tasks" })).toBeVisible();
     await expect(wizard.getByRole("checkbox", { checked: true })).toHaveCount(0);
-    await wizard.getByRole("button", { name: "Cancel" }).click();
+    // A whole column instead (#278): watching To do.
+    await wizard.getByRole("radiogroup", { name: "Which tasks" }).getByRole("radio", { name: "A Column" }).click();
+    await wizard.getByLabel("Column").selectOption({ label: "To do" });
+    await wizard.getByRole("button", { name: "Next" }).click();
+    await wizard.getByRole("radio", { name: /^parser/ }).click();
+    await expect(wizard.getByRole("switch", { name: "Start Fresh Each Run" })).toBeChecked();
+    await wizard.getByRole("button", { name: "Start", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    await page.getByRole("radiogroup", { name: "Show" }).getByRole("radio", { name: "Loops" }).click();
+    await expect(loops).toContainText("Watching To do");
+    await expect.poll(() => omicron.cli("loop", "watch", "list", "--session", "parser", "--project", name, "--as-machine")).toContain("1\tTo do");
+    await loops.getByRole("button", { name: "More for Watching To do" }).click();
+    await page.getByRole("menuitem", { name: "Stop", exact: true }).click();
   } finally {
     daemon?.stop();
     win.kill();

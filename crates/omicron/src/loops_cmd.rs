@@ -40,6 +40,15 @@ pub enum Loops {
         /// Don't hand off and clear the session before each run (it does by default)
         #[arg(long)]
         no_start_fresh: bool,
+        /// Watch these tasks (by number, like 4,7,2), one watch each, in this order
+        #[arg(long, value_delimiter = ',')]
+        watch_tasks: Vec<i64>,
+        /// Watch the tasks in this status (with --watch-label: only those with it)
+        #[arg(long)]
+        watch_status: Option<String>,
+        /// With --watch-status: only tasks with this label
+        #[arg(long)]
+        watch_label: Option<String>,
         /// Stop after this time: 18:30, "2026-11-12 08:00", +8h, or a full timestamp
         #[arg(long, conflicts_with = "times")]
         until: Option<String>,
@@ -342,7 +351,7 @@ pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
     match cmd {
         Loops::Check { session, project } => check(session, project, as_machine)?,
         Loops::Watch(cmd) => watch(cmd, as_machine)?,
-        Loops::Start { prompt, every, asap, no_start_fresh, until, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
+        Loops::Start { prompt, every, asap, no_start_fresh, watch_tasks, watch_status, watch_label, until, times, now, if_question, if_info, if_done, if_input, if_idle, session, project } => {
             let rules = omicron::board::LoopRules { question: if_question, info: if_info, done: if_done, input: if_input, idle: if_idle };
             let every = every.map(|e| parse_every(&e)).transpose()?;
             let prompt = prompt.unwrap_or_default();
@@ -355,7 +364,24 @@ pub fn loops(cmd: Loops, as_machine: bool) -> Result<()> {
             let l = board.start_loop(&id, &one_line, every, until.map(|u| u.to_rfc3339()).as_deref(), times, now || asap, &rules, asap, !no_start_fresh)?;
             let how = if asap { "as soon as it's done".to_string() } else { format!("every {}", say_every(every.unwrap_or_default())) };
             println!("Started a loop for {name}: {how}, {}.", say_end(&l));
-            if one_line.is_empty() {
+            // Its watches, given with it (#278).
+            if !watch_tasks.is_empty() || watch_status.is_some() {
+                let s = board.session_by_id(&id)?;
+                let p = board.project(&s.project_id)?;
+                let mut watches = Vec::new();
+                for n in &watch_tasks {
+                    watches.push(LoopWatch { task_id: Some(board.task(&p, *n)?.id), ..Default::default() });
+                }
+                if let Some(status) = &watch_status {
+                    let st = board.statuses(&p)?.into_iter().find(|st| st.name.eq_ignore_ascii_case(status.trim())).with_context(|| format!("{} has no status called {status}", p.name))?;
+                    let label_ids = watch_label.as_deref().map(|n| board.existing_label(&p, n)).transpose()?.into_iter().collect();
+                    watches.push(LoopWatch { status_ids: vec![st.id], label_ids, ..Default::default() });
+                }
+                for w in &watches {
+                    board.add_loop_watch(&l.id, w)?;
+                    println!("Watching {}.", say_watch(&board, &p, w)?);
+                }
+            } else if one_line.is_empty() {
                 println!("It has no message: give it something to watch with `omicron loop watch add`.");
             }
             if now || asap {

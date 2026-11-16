@@ -26,6 +26,14 @@ export async function startProject(db: SupabaseClient, name: string): Promise<st
   return (p as { id: string }).id;
 }
 
+/** Loops with their watches, oldest first (#278). */
+function withWatches(rows: any[]): SessionLoop[] {
+  return rows.map(({ loop_watches, ...l }) => ({
+    ...l,
+    watches: [...(loop_watches ?? [])].sort((a: any, b: any) => a.created_at.localeCompare(b.created_at)).map(({ created_at: _, ...w }: any) => w),
+  }));
+}
+
 export async function loadProject(db: SupabaseClient, id: string): Promise<ProjectData | null> {
   const [project, statuses, labels, members, tasks, sessions, handoffs, topics, loops, folders, runs, plans] = await Promise.all([
     db.from("projects").select("id,name,run_rules").eq("id", id).maybeSingle(),
@@ -56,7 +64,7 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
     db.from("topics").select("id,name,position").eq("project_id", id).order("position").order("name"),
     db
       .from("loops")
-      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at,rules")
+      .select("id,session_id,state,started_at,prompt,every_seconds,until,times,runs,note,next_run_at,last_run_at,rules,asap,start_fresh,loop_watches(id,status_ids,label_ids,given_person,given_session,task_id,instructions,created_at)")
       .eq("project_id", id)
       .eq("kind", "command")
       .order("started_at", { ascending: false })
@@ -121,8 +129,8 @@ export async function loadProject(db: SupabaseClient, id: string): Promise<Proje
       gone_why: r.gone_why,
     })),
     handoffs: must(handoffs) as HandoffNote[],
-    loops: (must(loops) as SessionLoop[]).filter((l) => l.state === "running"),
-    pastLoops: (must(loops) as SessionLoop[]).filter((l) => l.state !== "running"),
+    loops: withWatches(must(loops) ?? []).filter((l) => l.state === "running"),
+    pastLoops: withWatches(must(loops) ?? []).filter((l) => l.state !== "running"),
     runs: must(runs) as Run[],
     plans: must(plans) as LoopPlan[],
     folders: (must(folders) as any[])

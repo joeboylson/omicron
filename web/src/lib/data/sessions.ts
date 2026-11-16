@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computerHeaders } from "../remote";
 import { must } from "../omicron";
-import type { Task, ClaudeSession, LoopPlan, LoopRules, ProjectData, Run, SessionLoop } from "./types";
+import type { Task, ClaudeSession, LoopPlan, LoopRules, NewWatch, ProjectData, Run, SessionLoop } from "./types";
 
 export async function removeSession(db: SupabaseClient, session: ClaudeSession) {
   must(await db.from("sessions").delete().eq("id", session.id));
@@ -123,15 +123,36 @@ export async function addTaskToPlan(db: SupabaseClient, plan: LoopPlan, taskId: 
 export async function startLoop(
   db: SupabaseClient,
   session: ClaudeSession,
-  what: { kind: "command"; prompt: string; every_seconds: number; times: number | null; now?: boolean; rules?: LoopRules } | { kind: "tasks"; task_ids: string[] },
+  what: {
+    /** Optional with watches: one with only watches is a watcher (#278). */
+    prompt: string;
+    every_seconds: number | null;
+    /** The next run as soon as the session's done. */
+    asap: boolean;
+    times: number | null;
+    now?: boolean;
+    rules?: LoopRules;
+    start_fresh: boolean;
+    watches: NewWatch[];
+  },
 ) {
-  if (what.kind === "command") {
-    must(await db.from("loops").insert({ kind: "command", session_id: session.id, prompt: what.prompt, every_seconds: what.every_seconds, times: what.times, rules: what.rules ?? {},
+  const row = must(
+    await db
+      .from("loops")
+      .insert({
+        kind: "command",
+        session_id: session.id,
+        prompt: what.prompt.trim() || null,
+        every_seconds: what.asap ? null : what.every_seconds,
+        asap: what.asap,
+        start_fresh: what.start_fresh,
+        times: what.times,
+        rules: what.rules ?? {},
         // Any first run time given means "run now" (#260); none waits one interval.
-        ...(what.now ? { next_run_at: new Date().toISOString() } : {}) }));
-  } else {
-    must(
-      await db.from("loops").insert({ kind: "tasks", session_id: session.id, task_ids: what.task_ids }),
-    );
-  }
+        ...(what.now ? { next_run_at: new Date().toISOString() } : {}),
+      })
+      .select("id")
+      .single(),
+  ) as { id: string };
+  if (what.watches.length) must(await db.from("loop_watches").insert(what.watches.map((w) => ({ ...w, loop_id: row.id }))));
 }

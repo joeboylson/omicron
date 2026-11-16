@@ -19,6 +19,7 @@ import {
   type ClaudeSession,
   type LoopPlan,
   type LoopRules,
+  type LoopWatch,
   type ProjectData,
   type Run,
   type SessionLoop,
@@ -103,11 +104,13 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
     })),
     ...[...project.loops, ...project.pastLoops].map((l) => ({
       key: `l${l.id}`,
-      kind: "command" as const,
-      what: l.prompt,
+      // One that only watches tasks reads as working through tasks (#278).
+      kind: (!l.prompt && (l.watches?.length ?? 0) > 0 ? "tasks" : "command") as "command" | "tasks",
+      // Its message, or what it watches (#278).
+      what: l.prompt || watching(project, l.watches ?? []),
       session: sessionName(l.session_id),
       state: (l.state === "finished" ? "Finished" : l.state === "stopped" ? "Stopped" : "Running") as State,
-      progress: `${l.times ? `${l.runs} of ${l.times}` : `${l.runs}`} runs, every ${sayEvery(l.every_seconds)}`,
+      progress: `${l.times ? `${l.runs} of ${l.times}` : `${l.runs}`} runs, ${l.asap ? "as soon as it's done" : `every ${sayEvery(l.every_seconds)}`}`,
       when: l.started_at ?? l.next_run_at,
       loop: l,
     })),
@@ -115,6 +118,7 @@ export function LoopsTab({ project, dev, onChanged }: { project: ProjectData; de
   const asTemplate = (r: Row) => {
     const prompt = r.plan?.prompt ?? r.loop?.prompt ?? "";
     setNaming({
+      // A loop that only watches tasks is kept as "work through tasks" (#278).
       kind: r.kind,
       prompt,
       every_seconds: r.plan?.every_seconds ?? r.loop?.every_seconds ?? null,
@@ -344,6 +348,23 @@ const RULE_CASES: [keyof LoopRules, string][] = [
  * is; on a template, it starts from it (a template's tasks and session are
  * always chosen fresh).
  */
+/** What a loop watches, in a few words (#278): "Watching To do", "Watching #4, #7". */
+function watching(project: ProjectData, watches: LoopWatch[]): string {
+  if (watches.length === 0) return "Nothing yet";
+  const one = (w: LoopWatch) => {
+    if (w.task_id) {
+      const t = project.tasks.find((t) => t.id === w.task_id);
+      return t ? `#${t.number}` : "a task that's gone";
+    }
+    const parts = [
+      ...w.status_ids.map((id) => project.statuses.find((s) => s.id === id)?.name ?? "a status"),
+      ...w.label_ids.map((id) => `label ${project.labels.find((l) => l.id === id)?.name ?? "?"}`),
+    ];
+    return parts.join(", ") || "tasks";
+  };
+  return `Watching ${watches.map(one).join(", ")}`;
+}
+
 /** Only the cases that were filled in (blank ones use the default). */
 function cleanRules(rules: LoopRules): LoopRules {
   return Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v?.trim()]).filter(([, v]) => v)) as LoopRules;
@@ -383,6 +404,14 @@ function NewLoop({
   const [rules, setRules] = useState<LoopRules>(from?.rules ?? {});
   // The first run straight away, instead of after one interval (#260).
   const [runNow, setRunNow] = useState(false);
+  // The next run as soon as the session's done (#278); work through tasks always is.
+  const [asap, setAsap] = useState(editing?.asap ?? false);
+  // Hand off and clear the session before each run (#278).
+  const [startFresh, setStartFresh] = useState(editing?.start_fresh ?? true);
+  // Work through tasks: ones picked, or a column (with a label, if one's chosen).
+  const [mode, setMode] = useState<"pick" | "column">("pick");
+  const [watchStatus, setWatchStatus] = useState(project.statuses.find((s) => !s.is_done)?.id ?? "");
+  const [watchLabel, setWatchLabel] = useState("");
   const [picked, setPicked] = useState<string[]>(draft?.task_ids ?? []);
   const [sessionId, setSessionId] = useState<string | null>(draft?.session_id ?? null);
   const [query, setQuery] = useState("");
@@ -424,15 +453,38 @@ function NewLoop({
         // On its own computer: started by the computer itself, so remote
         // control being off doesn't hold it (#152).
         const numbers = picked.map((id) => project.tasks.find((t) => t.id === id)?.number).filter(Boolean);
-        await devAction(
-          db,
-          "/run",
-          kind === "command"
-            ? { action: "loops-start", session: session.name, project: project.name, prompt: prompt.trim(), every: sayEvery(every), times: times ? String(times) : "", now: runNow ? "true" : "", ...ruleFlags(rules) }
-            : { action: "runs-start", session: session.name, project: project.name, tasks: numbers.join(",") },
-        );
+        const tasks = kind === "tasks";
+        await devAction(db, "/run", {
+          action: "loops-start",
+          session: session.name,
+          project: project.name,
+          prompt: tasks ? "" : prompt.trim(),
+          asap: tasks || asap ? "true" : "",
+          every: sayEvery(every),
+          start_fresh: startFresh ? "true" : "false",
+          times: !tasks && times ? String(times) : "",
+          now: !tasks && runNow ? "true" : "",
+          watch_tasks: tasks && mode === "pick" ? numbers.join(",") : "",
+          watch_status: tasks && mode === "column" ? (project.statuses.find((s) => s.id === watchStatus)?.name ?? "") : "",
+          watch_label: tasks && mode === "column" ? (project.labels.find((l) => l.id === watchLabel)?.name ?? "") : "",
+          ...(tasks ? {} : ruleFlags(rules)),
+        });
       } else {
-        await startLoop(db, session, kind === "command" ? { kind, prompt: prompt.trim(), every_seconds: every, times, now: runNow, rules: cleanRules(rules) } : { kind, task_ids: picked });
+        const tasks = kind === "tasks";
+        await startLoop(db, session, {
+          prompt: tasks ? "" : prompt.trim(),
+          every_seconds: every,
+          asap: tasks || asap,
+          times: tasks ? null : times,
+          now: !tasks && runNow,
+          rules: tasks ? {} : cleanRules(rules),
+          start_fresh: startFresh,
+          watches: !tasks
+            ? []
+            : mode === "pick"
+              ? picked.map((id) => ({ task_id: id }))
+              : [{ status_ids: [watchStatus], label_ids: watchLabel ? [watchLabel] : [] }],
+        });
       }
       if (draft) await deletePlan(db, draft);
       onChanged();
@@ -461,7 +513,7 @@ function NewLoop({
       onClose();
     });
   const title = { kind: "New Loop", template: "From a Template", command: editing ? "Edit Loop" : "The Command", rules: "Instructions", tasks: "The Tasks", session: "The Session" }[step];
-  const canNext = step === "command" ? prompt.trim() !== "" : step === "tasks" ? picked.length > 0 : true;
+  const canNext = step === "command" ? prompt.trim() !== "" : step === "tasks" ? (mode === "pick" ? picked.length > 0 : watchStatus !== "") : true;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent noClose className="max-h-[92dvh] gap-4 overflow-y-auto sm:max-w-lg" onOpenAutoFocus={focusSheet}>
@@ -530,7 +582,16 @@ function NewLoop({
             <div className="grid grid-cols-2 gap-3">
               <label className="grid gap-1.5 text-sm font-medium">
                 Every
-                <select value={every} onChange={(e) => setEvery(Number(e.target.value))} className="h-10 rounded-md border bg-background px-2 font-normal">
+                <select
+                  value={asap ? 0 : every}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setAsap(v === 0);
+                    if (v) setEvery(v);
+                  }}
+                  className="h-10 rounded-md border bg-background px-2 font-normal"
+                >
+                  <option value={0}>As soon as it's done</option>
                   {/* A loop's own timing, when it isn't one of these (set from the command line). */}
                   {[...EVERY, ...(EVERY.some(([v]) => v === every) ? [] : ([[every, sayEvery(every)]] as [number, string][]))].map(([v, t]) => (
                     <option key={v} value={v}>
@@ -560,6 +621,54 @@ function NewLoop({
 
         {step === "tasks" && (
           <div className="grid gap-2">
+            {/* Tasks picked one by one, or a whole column (#278). */}
+            <div role="radiogroup" aria-label="Which tasks" className="grid grid-cols-2 rounded-lg bg-muted p-0.5">
+              {(
+                [
+                  ["pick", "Pick Tasks"],
+                  ["column", "A Column"],
+                ] as const
+              ).map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === m}
+                  onKeyDown={radioArrows}
+                  onClick={() => setMode(m)}
+                  className={cn("min-h-9 rounded-md text-sm transition-colors", mode === m ? "bg-background font-medium shadow-sm" : "text-foreground/75")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {mode === "column" && (
+              <div className="grid grid-cols-2 gap-3">
+                <label className="grid gap-1.5 text-sm font-medium">
+                  Column
+                  <select value={watchStatus} onChange={(e) => setWatchStatus(e.target.value)} className="h-10 rounded-md border bg-background px-2 font-normal">
+                    {project.statuses.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium">
+                  Label
+                  <select value={watchLabel} onChange={(e) => setWatchLabel(e.target.value)} className="h-10 rounded-md border bg-background px-2 font-normal">
+                    <option value="">Any</option>
+                    {project.labels.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {mode === "pick" && (
+            <>
             <Input type="search" aria-label="Filter tasks" placeholder="Filter tasks" value={query} onChange={(e) => setQuery(e.target.value)} />
             <ul aria-label="Tasks to work through" className="max-h-[45dvh] divide-y overflow-y-auto rounded-lg border">
               {shown.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted-foreground">Nothing matches.</li>}
@@ -579,6 +688,8 @@ function NewLoop({
             <span className="text-sm text-muted-foreground" aria-live="polite">
               {picked.length} {picked.length === 1 ? "task" : "tasks"} chosen, worked in the order chosen
             </span>
+            </>
+            )}
           </div>
         )}
 
@@ -634,10 +745,17 @@ function NewLoop({
             ))}
           </div>
         )}
-        {step === "session" && kind === "command" && (
+        {step === "session" && kind === "command" && !asap && (
           <label className="flex min-h-11 items-center gap-3 rounded-lg border px-4 py-2">
             <span className="flex-1">Run Now</span>
             <Switch checked={runNow} onCheckedChange={setRunNow} aria-label="Run Now" />
+          </label>
+        )}
+        {step === "session" && (
+          // Hand off and clear before each run, so a long loop stays light (#278).
+          <label className="flex min-h-11 items-center gap-3 rounded-lg border px-4 py-2">
+            <span className="flex-1">Start Fresh Each Run</span>
+            <Switch checked={startFresh} onCheckedChange={setStartFresh} aria-label="Start Fresh Each Run" />
           </label>
         )}
 
@@ -656,9 +774,11 @@ function NewLoop({
           )}
           {step === "session" && (
             <>
-              <Button type="button" variant="outline" onClick={saveDraft}>
-                Save as Draft
-              </Button>
+              {!(kind === "tasks" && mode === "column") && (
+                <Button type="button" variant="outline" onClick={saveDraft}>
+                  Save as Draft
+                </Button>
+              )}
               <Button type="button" disabled={!session} onClick={start}>
                 Start
               </Button>

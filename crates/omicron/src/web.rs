@@ -591,7 +591,28 @@ impl WebMachine {
             "start-at-login" => vec!["daemon".into(), "start-at-login".into()],
             "teams-stop" => vec!["teams".into(), "stop".into(), s("team"), "--as-machine".into()],
             "loops-start" => {
-                let mut a = vec!["loops".into(), "start".into(), s("prompt"), "--every".into(), s("every")];
+                // A message (optional with watches, #278), then the timer.
+                let mut a: Vec<String> = vec!["loops".into(), "start".into()];
+                if !s("prompt").is_empty() {
+                    a.push(s("prompt"));
+                }
+                if s("asap") == "true" {
+                    a.push("--asap".into());
+                } else {
+                    a.extend(["--every".into(), s("every")]);
+                }
+                if s("start_fresh") == "false" {
+                    a.push("--no-start-fresh".into());
+                }
+                if !s("watch_tasks").is_empty() {
+                    a.extend(["--watch-tasks".into(), s("watch_tasks")]);
+                }
+                if !s("watch_status").is_empty() {
+                    a.extend(["--watch-status".into(), s("watch_status")]);
+                }
+                if !s("watch_label").is_empty() {
+                    a.extend(["--watch-label".into(), s("watch_label")]);
+                }
                 a.extend(["--session".into(), s("session"), "--project".into(), s("project"), "--as-machine".into()]);
                 if !s("times").is_empty() {
                     a.extend(["--times".into(), s("times")]);
