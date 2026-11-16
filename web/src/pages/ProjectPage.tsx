@@ -663,8 +663,9 @@ export function ProjectPage({ id }: { id: string }) {
   }
   return (
     // The board fills the screen and each column scrolls on its own.
-    <WatchContext.Provider value={{ open: setWatchFor, stop: (w) => act(() => stopWatching(db, project, dev, w)).then(() => reload()) }}>
+    <>
     <main className={cn("flex h-dvh min-h-0 flex-none flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
+    <WatchContext.Provider value={{ open: setWatchFor, stop: (w) => act(() => stopWatching(db, project, dev, w)).then(() => reload()) }}>
       {nav}
       <div className="flex flex-wrap items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] pb-2">
         <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
@@ -986,10 +987,11 @@ export function ProjectPage({ id }: { id: string }) {
         }}
       />
       <WatchDialog project={project} dev={dev} target={watchFor} onClose={() => setWatchFor(null)} onChanged={reload} />
+    </WatchContext.Provider>
     </main>
     {tabs}
     {besidePane}
-    </WatchContext.Provider>
+    </>
   );
 }
 
