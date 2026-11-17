@@ -236,6 +236,16 @@ async function escape(page) {
     await shot("4r-conversation-rules");
     await escape(page);
     await page.getByRole("dialog").waitFor({ state: "detached" });
+    // Pinned tasks and adding one (#283): on a phone, in their sheet.
+    if (kind === "phone") await page.getByRole("button", { name: "2 tasks" }).click();
+    await page.getByRole("button", { name: "Add Task" }).filter({ visible: true }).click();
+    await page.getByRole("option").filter({ visible: true }).first().waitFor();
+    await shot("4s-conversation-add-task");
+    await escape(page);
+    if (kind === "phone") {
+      if (await page.getByRole("dialog").count()) await escape(page);
+      await page.getByRole("dialog").waitFor({ state: "detached" });
+    }
     await tab("Tasks");
     // Dispatch: one that worked, one the machine never picked up.
     await page.getByRole("button", { name: /Parse the change list/ }).click();

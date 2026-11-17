@@ -205,7 +205,9 @@ function ConversationView({
   const [adding, setAdding] = useState(false);
   const [rules, setRules] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
+  // The side panel's picker, and the one in the phone's sheet.
   const [picking, setPicking] = useState(false);
+  const [pickingHere, setPickingHere] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [viewing, setViewing] = useState<{ images: string[]; at: number } | null>(null);
   const [, setLinksVersion] = useState(0);
@@ -262,8 +264,10 @@ function ConversationView({
       .map((t) => ({ insert: `#${t.number}`, label: `#${t.number} ${t.title}` }));
   };
 
-  const pinnedList = (
-    <ul aria-label="Pinned tasks" className="grid gap-1">
+  // In the phone's sheet the picker opens in place: a popover outside the
+  // sheet would be hidden from screen readers by it (#283).
+  const pinnedList = (inSheet: boolean) => (
+    <ul aria-label="Pinned tasks" className="grid min-w-0 gap-1">
       {pinned.length === 0 && <li className="px-1 py-2 text-sm text-muted-foreground">No pinned tasks.</li>}
       {pinned.map((t) => (
         <li key={t.id} className="group flex items-center gap-1 rounded-md hover:bg-accent">
@@ -273,7 +277,7 @@ function ConversationView({
             onClick={() => (setPinsOpen(false), onOpenTask(t.number))}
           >
             <span className="truncate">
-              <span className="tabular-nums text-muted-foreground">#{t.number}</span> {t.title}
+              <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">#{t.number}</span> {t.title}
             </span>
             <span className="text-xs text-muted-foreground">{project.statuses.find((s) => s.id === t.status_id)?.name}</span>
           </button>
@@ -282,7 +286,34 @@ function ConversationView({
           </Button>
         </li>
       ))}
-      <li>
+      <li className="min-w-0">
+        {inSheet ? (
+          <>
+            <Button variant="ghost" size="sm" className="w-full justify-start gap-1 text-link" aria-expanded={pickingHere} onClick={() => setPickingHere(!pickingHere)}>
+              <Plus className="h-4 w-4" aria-hidden /> Add Task
+            </Button>
+            {pickingHere && (
+              <div className="mt-1 min-w-0 overflow-hidden rounded-md border">
+            <Command>
+              <CommandInput placeholder="Search" aria-label="Search tasks" />
+              <CommandList>
+                <CommandEmpty>No tasks.</CommandEmpty>
+                <CommandGroup>
+                  {project.tasks
+                    .filter((t) => !conversation.task_ids.includes(t.id))
+                    .map((t) => (
+                      <CommandItem key={t.id} value={`#${t.number} ${t.title}`} onSelect={() => (setPicking(false), setPickingHere(false), change(() => pinTask(db, conversation.id, t.id)))}>
+                        <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">#{t.number}</span>
+                        <span className="min-w-0 truncate">{t.title}</span>
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+              </div>
+            )}
+          </>
+        ) : (
         <Popover modal open={picking} onOpenChange={setPicking}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className="w-full justify-start gap-1 text-link">
@@ -298,9 +329,9 @@ function ConversationView({
                   {project.tasks
                     .filter((t) => !conversation.task_ids.includes(t.id))
                     .map((t) => (
-                      <CommandItem key={t.id} value={`#${t.number} ${t.title}`} onSelect={() => (setPicking(false), change(() => pinTask(db, conversation.id, t.id)))}>
-                        <span className="tabular-nums text-muted-foreground">#{t.number}</span>
-                        <span className="truncate">{t.title}</span>
+                      <CommandItem key={t.id} value={`#${t.number} ${t.title}`} onSelect={() => (setPicking(false), setPickingHere(false), change(() => pinTask(db, conversation.id, t.id)))}>
+                        <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">#{t.number}</span>
+                        <span className="min-w-0 truncate">{t.title}</span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
@@ -308,6 +339,7 @@ function ConversationView({
             </Command>
           </PopoverContent>
         </Popover>
+        )}
       </li>
     </ul>
   );
@@ -450,7 +482,7 @@ function ConversationView({
         </div>
         <aside aria-label="Pinned" className="hidden w-72 shrink-0 overflow-y-auto border-l p-2 lg:block">
           <h3 className="px-2 py-1 text-sm font-semibold">Pinned Tasks</h3>
-          {pinnedList}
+          {pinnedList(false)}
         </aside>
       </div>
 
@@ -460,7 +492,7 @@ function ConversationView({
             <DialogTitle>Pinned Tasks</DialogTitle>
             <DialogDescription className="sr-only">Tasks pinned to {conversation.name}.</DialogDescription>
           </DialogHeader>
-          {pinnedList}
+          {pinnedList(true)}
         </DialogContent>
       </Dialog>
 
