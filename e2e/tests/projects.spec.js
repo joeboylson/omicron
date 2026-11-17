@@ -2538,11 +2538,14 @@ test("a conversation: started, a session added, a task pinned, messages with #12
     const tabBar = page.getByRole("navigation", { name: "Project" });
     await tabBar.getByRole("button", { name: /Conversations/ }).click();
     await expect(page.getByText("No conversations yet.")).toBeVisible();
-    await page.getByRole("button", { name: "New Conversation" }).click();
+    await page.getByRole("button", { name: "New Conversation" }).first().click();
     await page.getByRole("dialog", { name: "New Conversation" }).getByLabel("Name").fill("PR review");
     await page.getByRole("button", { name: "Start" }).click();
     const view = page.getByRole("region", { name: "PR review" });
     await expect(view.getByRole("heading", { name: "PR review" })).toBeVisible();
+    // Three columns: the list down the left, with this one open and current.
+    const list = page.getByRole("navigation", { name: "Conversations" });
+    await expect(list.getByRole("button", { name: /PR review/ })).toHaveAttribute("aria-current", "page");
 
     // Add parser: it starts a loop.
     await view.getByRole("button", { name: "Add Session" }).click();

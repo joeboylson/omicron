@@ -658,7 +658,7 @@ export function ProjectPage({ id }: { id: string }) {
       <>
       <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
         {nav}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
+        <div className="flex min-h-0 flex-1 flex-col pt-2">
           <ConversationsTab project={project} dev={dev} onChanged={reload} onOpenTask={(n) => (setTab("tasks"), setOpenTask(n))} onEditLoops={() => setTab("loops")} />
         </div>
       </main>

@@ -25,7 +25,6 @@ import {
   type Message,
   type ProjectData,
 } from "@/lib/data";
-import { DataTable, SortHeader, type ColumnDef } from "@/components/DataTable";
 import { Composer, type Suggestion } from "@/components/Composer";
 import { ImageViewer } from "@/components/ImageViewer";
 import { Markdown } from "@/components/Markdown";
@@ -105,9 +104,46 @@ export function ConversationsTab({
     </Dialog>
   );
 
-  if (open) {
-    return (
-      <>
+  // On a wide screen the newest opens straight away; a phone shows the list first.
+  useEffect(() => {
+    if (!open && project.conversations.length > 0 && window.matchMedia("(min-width: 768px)").matches) setOpenId(project.conversations[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open?.id, project.conversations.length]);
+
+  return (
+    <div className="flex min-h-0 flex-1">
+      <nav aria-label="Conversations" className={cn("flex w-full shrink-0 flex-col md:w-64 md:border-r", open && "max-md:hidden")}>
+        <div className="px-[max(0.75rem,env(safe-area-inset-left))] pb-2 md:px-3">
+          <Button size="sm" className="w-full gap-1" onClick={() => setNaming({ name: "" })}>
+            <Plus className="h-4 w-4" aria-hidden /> New Conversation
+          </Button>
+        </div>
+        {project.conversations.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No conversations yet.</p>}
+        <ul className="min-h-0 flex-1 overflow-y-auto px-[max(0.5rem,env(safe-area-inset-left))] pb-2 md:px-2">
+          {project.conversations.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                aria-current={c.id === open?.id ? "page" : undefined}
+                onClick={() => setOpenId(c.id, true)}
+                className={cn(
+                  "grid min-h-11 w-full grid-cols-[auto_1fr_auto] items-center gap-x-2 rounded-md px-2 py-1.5 text-left text-sm",
+                  c.id === open?.id ? "bg-accent" : "hover:bg-accent/60",
+                )}
+              >
+                <span className={cn("h-2 w-2 rounded-full", c.unread ? "bg-[var(--sys-indigo)]" : "bg-transparent")} aria-hidden />
+                <span className={cn("truncate", c.unread && "font-semibold")}>
+                  {c.name}
+                  {c.unread && <span className="sr-only">, unread</span>}
+                </span>
+                <span className="text-xs tabular-nums text-muted-foreground">{c.last_message_at ? when(c.last_message_at) : ""}</span>
+                {sessionsIn(c).length > 0 && <span className="col-start-2 col-end-4 truncate text-xs text-muted-foreground">{sessionsIn(c).join(", ")}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      {open ? (
         <ConversationView
           key={open.id}
           project={project}
@@ -119,60 +155,17 @@ export function ConversationsTab({
           onEditLoops={onEditLoops}
           onRename={() => setNaming({ id: open.id, name: open.name })}
         />
-        {nameDialog}
-      </>
-    );
-  }
-
-  const columns: ColumnDef<Conversation, any>[] = [
-    {
-      accessorKey: "name",
-      header: ({ column }) => <SortHeader column={column} label="Name" />,
-      cell: ({ row }) => (
-        <button type="button" className="inline-flex min-h-8 items-center gap-2 text-left font-medium hover:underline" onClick={() => setOpenId(row.original.id, true)}>
-          {row.original.unread && <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--sys-indigo)]" aria-label="Unread" role="img" />}
-          {row.original.name}
-        </button>
-      ),
-      meta: { phone: "main" },
-    },
-    {
-      id: "sessions",
-      header: "Sessions",
-      enableSorting: false,
-      cell: ({ row }) => <span className="text-muted-foreground">{sessionsIn(row.original).join(", ")}</span>,
-      meta: { className: "hidden sm:table-cell", phone: "below" },
-    },
-    {
-      id: "when",
-      accessorFn: (c) => c.last_message_at ?? c.created_at,
-      header: ({ column }) => <SortHeader column={column} label="Last Message" />,
-      cell: ({ row }) => (
-        <span className="tabular-nums text-muted-foreground">{row.original.last_message_at ? when(row.original.last_message_at) : ""}</span>
-      ),
-      meta: { className: "w-0 whitespace-nowrap text-right", phone: "end" },
-    },
-  ];
-
-  return (
-    <section aria-label="Conversations" className="mx-auto grid w-full max-w-4xl content-start gap-3 px-[max(1rem,env(safe-area-inset-left))] pb-4">
-      <div className="flex items-center gap-2">
-        <Button size="sm" className="ml-auto gap-1" onClick={() => setNaming({ name: "" })}>
-          <Plus className="h-4 w-4" aria-hidden /> New Conversation
-        </Button>
-      </div>
-      <DataTable
-        label="Conversations"
-        columns={columns}
-        data={project.conversations}
-        initialSort={[]}
-        rowLabel={(c) => c.name}
-        onRowTap={(c) => setOpenId(c.id, true)}
-        search={{ label: "Search conversations", placeholder: "Search Conversations", text: (c) => c.name }}
-        empty={<p className="py-6 text-center text-sm text-muted-foreground">No conversations yet.</p>}
-      />
+      ) : (
+        project.conversations.length === 0 && (
+          <div className="hidden flex-1 items-center justify-center md:flex">
+            <Button variant="outline" className="gap-1" onClick={() => setNaming({ name: "" })}>
+              <Plus className="h-4 w-4" aria-hidden /> New Conversation
+            </Button>
+          </div>
+        )
+      )}
       {nameDialog}
-    </section>
+    </div>
   );
 }
 
@@ -345,11 +338,11 @@ function ConversationView({
   );
 
   return (
-    <section aria-label={conversation.name} className="flex min-h-0 flex-1 flex-col">
+    <section aria-label={conversation.name} className="flex min-w-0 min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-1 border-b px-[max(0.5rem,env(safe-area-inset-left))] pb-2">
-        <Button variant="ghost" size="sm" className="gap-0 px-1 text-link" onClick={onBack} aria-label="Back to Conversations">
+        {/* A phone shows one at a time: back to the list. */}
+        <Button variant="ghost" size="sm" className="gap-0 px-1 text-link md:hidden" onClick={onBack} aria-label="Back to Conversations">
           <ChevronLeft className="h-5 w-5" aria-hidden />
-          <span className="max-sm:sr-only">Conversations</span>
         </Button>
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{conversation.name}</h2>
         {/* On a phone, its actions on a line of their own under the name. */}

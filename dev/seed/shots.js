@@ -226,9 +226,12 @@ async function escape(page) {
     await shot("4o-runs-tab");
     // Conversations (#281): the list, then one open.
     await tab("Conversations");
-    await page.getByRole("table", { name: "Conversations" }).or(page.getByRole("list", { name: "Conversations" })).first().waitFor();
-    await shot("4p-conversations");
-    await page.getByRole("button", { name: "Sessions strip review" }).filter({ visible: true }).first().click();
+    // A phone shows the list first; a wide screen opens the newest beside it.
+    await page.getByRole("navigation", { name: "Conversations" }).waitFor();
+    if (kind === "phone") {
+      await shot("4p-conversations");
+      await page.getByRole("navigation", { name: "Conversations" }).getByRole("button", { name: /Sessions strip review/ }).click();
+    }
     await page.getByRole("list", { name: "Messages" }).getByText("Nothing to do on my side").waitFor();
     await shot("4q-conversation");
     await page.getByRole("button", { name: "Rules" }).click();
