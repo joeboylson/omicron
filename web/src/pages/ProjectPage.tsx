@@ -121,9 +121,10 @@ export function ProjectPage({ id }: { id: string }) {
   // tab on a wide screen; kept in this browser.
   const [pinned, setPinned] = useStored<string[]>(`omicron.pinned.${id}`, []);
   const [beside, setBeside] = useStored<string | null>(`omicron.beside.${id}`, null);
-  // A task opened from anywhere (a link, ⌘K) opens on the Tasks tab, where its sheet is.
+  // A task opened from anywhere (a link, ⌘K) opens on the Tasks tab, where its
+  // sheet is; on Conversations it opens over the conversation (#285).
   useEffect(() => {
-    if (openTask !== null && tab !== "tasks") setViewInAddress(null);
+    if (openTask !== null && tab !== "tasks" && tab !== "conversations") setViewInAddress(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTask]);
   const [groupBy, setGroupBy] = useStored<"status" | "topic" | "person">(`omicron.groupBy.${id}`, "status");
@@ -597,6 +598,37 @@ export function ProjectPage({ id }: { id: string }) {
   );
   // One tab bar, the same element whichever tab is showing, so focus stays
   // on the tab just chosen (it's always the root fragment's second child).
+  // A task's sheet: over the board, or over a conversation (#285).
+  const taskDialog = (
+      <TaskDialog
+        project={project}
+        task={task}
+        focusNotes={task !== null && task.number === notesFor}
+        onClose={() => {
+          closedTask.current = openTask;
+          setOpenTask(null);
+        }}
+        onClosed={() => {
+          // Back to the task's card (the board may have redrawn it while the
+          // sheet was open, so the browser can't find it by itself).
+          const number = closedTask.current;
+          const card = number === null ? null : document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`);
+          // Without scrolling: a task just moved (to the bottom of Done,
+          // say) mustn't drag the board away from where you were (#56).
+          card?.focus({ preventScroll: true });
+        }}
+        onChanged={reload}
+        onDelete={removeTask}
+        onPatch={(taskId, change) => {
+          const before = project.tasks.find((t) => t.id === taskId);
+          if (before) movedTask(before, change);
+          const done = saving.hold(taskId, change);
+          setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p));
+          // Called when the save is done (saved or not): stop holding it.
+          return done;
+        }}
+      />
+  );
   const unread = project.tasks.filter((t) => t.needs_review).length;
   const unreadTalk = project.conversations.filter((c) => c.unread).length;
   const tabs = <ProjectTabs tab={tab} onTab={setTab} badges={{ ...(unread ? { tasks: unread } : {}), ...(unreadTalk ? { conversations: unreadTalk } : {}) }} />;
@@ -659,9 +691,10 @@ export function ProjectPage({ id }: { id: string }) {
       <main className={cn("flex h-dvh min-h-0 flex-col", TAB_BAR_SPACE, besideOpen && "lg:pr-[32rem]")}>
         {nav}
         <div className="flex min-h-0 flex-1 flex-col pt-2">
-          <ConversationsTab project={project} dev={dev} onChanged={reload} onOpenTask={(n) => (setTab("tasks"), setOpenTask(n))} onEditLoops={() => setTab("loops")} />
+          <ConversationsTab project={project} dev={dev} onChanged={reload} onOpenTask={setOpenTask} onEditLoops={() => setTab("loops")} />
         </div>
       </main>
+      {taskDialog}
       {tabs}
       {besidePane}
       </>
@@ -978,34 +1011,7 @@ export function ProjectPage({ id }: { id: string }) {
           if (!open) setTimeout(() => document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`)?.scrollIntoView({ block: "nearest", behavior: scrollMotion() }), 400);
         }}
       />
-      <TaskDialog
-        project={project}
-        task={task}
-        focusNotes={task !== null && task.number === notesFor}
-        onClose={() => {
-          closedTask.current = openTask;
-          setOpenTask(null);
-        }}
-        onClosed={() => {
-          // Back to the task's card (the board may have redrawn it while the
-          // sheet was open, so the browser can't find it by itself).
-          const number = closedTask.current;
-          const card = number === null ? null : document.querySelector<HTMLElement>(`[aria-label^="#${number} "]`);
-          // Without scrolling: a task just moved (to the bottom of Done,
-          // say) mustn't drag the board away from where you were (#56).
-          card?.focus({ preventScroll: true });
-        }}
-        onChanged={reload}
-        onDelete={removeTask}
-        onPatch={(taskId, change) => {
-          const before = project.tasks.find((t) => t.id === taskId);
-          if (before) movedTask(before, change);
-          const done = saving.hold(taskId, change);
-          setProject((p) => (p ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...change } : t)) } : p));
-          // Called when the save is done (saved or not): stop holding it.
-          return done;
-        }}
-      />
+      {taskDialog}
       <WatchDialog project={project} dev={dev} target={watchFor} onClose={() => setWatchFor(null)} onChanged={reload} />
     </WatchContext.Provider>
     </main>

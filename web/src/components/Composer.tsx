@@ -2,7 +2,7 @@
 // dropping or picking files, uploaded right away (so Send is quick). In a
 // conversation, @ suggests sessions and # suggests tasks (#281).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertCircle, ImagePlus, Loader2, X } from "lucide-react";
 import { useApp } from "@/lib/app";
 import { imageProblem, randomId, IMAGE_TYPES, IMAGES_PER_COMMENT, uploadImage } from "@/lib/data";
@@ -59,13 +59,23 @@ export function Composer({
   const options = word && dismissed !== `${word.start}:${word.kind}` ? suggest!(word.kind, word.query).slice(0, 6) : [];
   useEffect(() => setPicked(0), [word?.kind, word?.query]);
 
-  function choose(s: Suggestion) {
-    if (!word) return;
-    const next = value.slice(0, word.start) + s.insert + " " + value.slice(caret);
-    onChange(next);
-    const at = word.start + s.insert.length + 1;
+  // Where the cursor goes once a picked suggestion is in the text.
+  const nextCaret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const at = nextCaret.current;
+    if (at === null || !box.current) return;
+    nextCaret.current = null;
+    box.current.setSelectionRange(at, at);
     setCaret(at);
-    requestAnimationFrame(() => box.current?.setSelectionRange(at, at));
+  }, [value]);
+
+  function choose(s: Suggestion) {
+    // From where the cursor really is, not where it was last seen.
+    const now = box.current?.selectionStart ?? caret;
+    const w = typing(value, now);
+    if (!w) return;
+    nextCaret.current = w.start + s.insert.length + 1;
+    onChange(value.slice(0, w.start) + s.insert + " " + value.slice(now));
   }
 
   function add(files: File[]) {

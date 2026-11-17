@@ -2589,11 +2589,19 @@ test("a conversation: started, a session added, a task pinned, messages with #12
     await view.getByRole("button", { name: "Mark as Read" }).click();
     await expect(view.getByRole("button", { name: "Mark as Read" })).toHaveCount(0);
 
-    // #1 links to the task, and the task back to the conversation.
+    // #1 opens the task over the conversation (#285); closing it leaves you there.
     await messages.getByRole("link", { name: "#1" }).first().click();
     const task = page.getByRole("dialog");
     await expect(task.getByText("Mentioned in")).toBeVisible();
-    await task.getByRole("link", { name: "PR review" }).click();
+    await expect(page).toHaveURL(/view=conversations/);
+    await escape(page);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(view.getByRole("list", { name: "Messages" })).toContainText("On it.");
+    // So does a pinned task; and the task links back to the conversation.
+    if (narrow) await view.getByRole("button", { name: "1 task" }).click();
+    await pins.getByRole("button", { name: /#1 Write the parser/ }).click();
+    await expect(page.getByRole("dialog").getByText("Mentioned in")).toBeVisible();
+    await page.getByRole("dialog").getByRole("link", { name: "PR review" }).click();
     await expect(page.getByRole("region", { name: "PR review" })).toBeVisible();
   } finally {
     win.kill();
